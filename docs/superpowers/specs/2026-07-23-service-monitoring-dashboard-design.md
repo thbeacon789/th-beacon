@@ -17,7 +17,7 @@
 | --- | --- |
 | 技術棧 | Next.js 全棧（App Router） |
 | 儲存 | Supabase Postgres（＋ Auth ＋ Realtime） |
-| 資料來源 | ① 服務主動推送事件到 ingest webhook；② 整合 Sentry 拉取；③ 主動輪詢各服務（health 存活偵測 ＋ error 端點補漏） |
+| 資料來源 | ① 服務主動推送事件到 ingest webhook；② 主動輪詢各服務（health 存活偵測 ＋ error 端點補漏） |
 | 檢傷分級 | 規則引擎 → P0 / P1 / P2 |
 | Discord | 依分級觸發 ＋ 依 fingerprint 去重聚合 |
 | 存取控制 | Dashboard 走 Supabase Auth 登入；ingest webhook 用每服務金鑰（HMAC）驗證 |
@@ -29,8 +29,7 @@
 所有來源都正規化成**單一 canonical event 模型**，匯流到同一條處理管線。
 
 ```
-服務 ────POST /api/ingest (HMAC 金鑰)──────┐
-Sentry ──Cron 拉取 /api/poll/sentry ───────┤
+服務 ────────POST /api/ingest (HMAC 金鑰)──┐
 輪詢 health ──Cron /api/poll/services ─────┤─▶ 正規化 ─▶ 依 fingerprint upsert issue
 輪詢 error 端點 ──Cron /api/poll/services ─┘        ├─▶ 規則引擎判級 (P0/P1/P2)
                                                    ├─▶ 更新服務健康狀態 (輪詢優先，取最差)
@@ -38,7 +37,7 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
                                                    └─▶ Supabase Realtime ─▶ Dashboard 即時更新
 ```
 
-**核心原則**：三條入口（push ingest、Sentry 拉取、主動輪詢）匯流到相同的 `normalize → upsert → rules → notify` 管線。日後新增來源（如自建 log）只需再寫一個 normalizer，管線本體不動。輪詢失敗/不健康也會合成一筆 canonical event（`source=poll`、`error_type=health_check_failed`）進入同一管線，因此「服務掛掉」本身就能被判級並觸發 Discord 告警。
+**核心原則**：兩條入口（push ingest、主動輪詢）匯流到相同的 `normalize → upsert → rules → notify` 管線。日後新增來源（如自建 log 或第三方追蹤平台）只需再寫一個 normalizer，管線本體不動。輪詢失敗/不健康也會合成一筆 canonical event（`source=poll`、`error_type=health_check_failed`）進入同一管線，因此「服務掛掉」本身就能被判級並觸發 Discord 告警。
 
 ## 4. 主要模組
 
@@ -50,32 +49,26 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 - 職責：解析 payload → 呼叫 normalizer 轉成 canonical event → 交給共用管線。
 - 相依：`services` 表（取 secret）、正規化管線。
 
-### 4.2 Sentry 拉取器
-- 路由：`GET /api/poll/sentry`（由 Vercel Cron 定時觸發）
-- 職責：以 Sentry API 拉取自上次游標後的新 issue/event；用 Sentry 的外部 id 去重（避免重複匯入）；正規化成同一 canonical event 模型。
-- 游標：記錄上次拉取位置（存於設定表或 `services` metadata），確保不漏不重。
-- 相依：Sentry API token（env）、正規化管線。
-
-### 4.3 服務輪詢器
+### 4.2 服務輪詢器
 - 路由：`GET /api/poll/services`（由 Vercel Cron 定時觸發）
 - **health 存活偵測**：依各服務設定定期 GET 其 `/health`（或指定 URL），檢查回應碼與（可選）status JSON。逾時 / 非預期狀態碼 / status 判為不健康時，合成一筆 `source=poll`、`error_type=health_check_failed` 的 canonical event 進入共用管線；同時更新服務健康狀態。連續成功則清除該 health issue（回 open→resolved）。
 - **error 端點補漏**：依設定定期拉各服務自曝的「近期錯誤」端點（如 `/errors`），把回傳錯誤正規化後走同一管線；以錯誤自身 id 或 fingerprint＋時間去重，避免與 push 來源重複計數。
 - 每服務可設定：health URL、error URL、輪詢間隔、逾時、預期狀態碼 / status 判準。缺設定則該服務不參與該類輪詢。
 - 相依：`services` 表（輪詢設定與游標）、正規化管線。
 
-### 4.4 正規化 / Fingerprint 分組
-- Canonical event 欄位（概念）：`service_id`、`source`(push|sentry)、`level`、`error_type`、`message`、`fingerprint`、`occurred_at`、`metadata`(JSON)。
+### 4.3 正規化 / Fingerprint 分組
+- Canonical event 欄位（概念）：`service_id`、`source`(push|poll)、`level`、`error_type`、`message`、`fingerprint`、`occurred_at`、`metadata`(JSON)。
 - Fingerprint = `hash(service_id + error_type + 正規化後 message)`。訊息正規化需去除變動部分（數字、UUID、路徑參數等）以利同類聚合。
 - 同 fingerprint 的事件聚合成一筆 `issue`：累計 `count`、更新 `last_seen`、保留 `first_seen`。
 
-### 4.5 規則引擎
+### 4.4 規則引擎
 - 規則來源：`triage_rules` 表（MVP 以 seed / 設定檔管理，不做視覺化編輯器）。
 - 規則條件（可組合）：`service`、`level`、`error_type`、訊息關鍵字、**時間窗內頻率/影響量**。
 - 輸出：`severity`(P0/P1/P2) ＋ `tags`。
 - 評估時機：事件進入管線、upsert issue 後評估並寫回 issue 的 severity。
 - 規則優先序：依規則設定的優先權由高到低比對，命中即定級；無規則命中時給預設級（如 P2）。
 
-### 4.6 健康度計算
+### 4.5 健康度計算
 - **輪詢優先，取最差**：
   1. 若最近一次 health 輪詢失敗 / 判為不健康 → 🔴 **Down**（直接定案）。
   2. 否則依「近 N 分鐘內最嚴重的**未解**（status = open/acknowledged）issue」推導：未解 P0 → 🔴 **Down**；未解 P1 → 🟡 **Degraded**；否則 → 🟢 **Healthy**。
@@ -83,14 +76,14 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 - N 與「連續幾次輪詢失敗才算 Down」為可設定參數（預設值於實作計畫決定）。
 - 未設定 health 輪詢的服務：退回純 issue 推導（等同原始行為）。
 
-### 4.7 Discord 通知器
+### 4.6 Discord 通知器
 - 觸發：issue 的 severity 達設定門檻（如 P0/P1）才發。
 - 去重 / 冷卻：同 fingerprint 在冷卻期內只發一次，期間累計 count；分級升級（如 P1→P0）時追發。
 - 內容：Discord embed，含服務、severity、錯誤摘要、累計次數、first/last seen、連向 dashboard 的連結。
 - 紀錄：發送結果寫入 `notifications` 表，供冷卻/去重判斷與稽核。
 - 設定：Discord webhook URL 存於 env / 服務設定。多頻道路由不在 MVP。
 
-### 4.8 Dashboard UI（Next.js）
+### 4.7 Dashboard UI（Next.js）
 - **服務總覽**：每服務一張卡，顯示健康狀態燈號 ＋ 各分級未解 issue 數。
 - **檢傷列表**：可依 service / severity / status 篩選；列出聚合後的 issue。
 - **事件詳情**：單一 issue 的 metadata、原始事件、發生趨勢；可手動改操作狀態。
@@ -98,7 +91,7 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 
 ## 5. 資料模型（Supabase 表）
 
-- `services` — 服務清單、webhook secret、Sentry 對應、Discord 路由設定、健康度視窗設定、**輪詢設定**（health URL、error URL、間隔、逾時、預期狀態碼 / status 判準、拉取游標、連續失敗計數）。
+- `services` — 服務清單、webhook secret、Discord 路由設定、健康度視窗設定、**輪詢設定**（health URL、error URL、間隔、逾時、預期狀態碼 / status 判準、拉取游標、連續失敗計數）。
 - `issues` — 依 fingerprint 聚合的問題；欄位含 `severity`、`status`、`count`、`first_seen`、`last_seen`。
 - `events` — 原始事件，外鍵歸屬於某 `issue`。
 - `triage_rules` — 檢傷規則設定。
@@ -114,7 +107,6 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 
 ## 7. 排程作業（Vercel Cron）
 
-- Sentry 拉取（定期）。
 - 服務輪詢（health 存活偵測 ＋ error 端點補漏，定期）。
 - 冷卻期聚合 flush（若採「低分級批次摘要」延伸時；MVP 以即時去重為主）。
 
@@ -122,7 +114,6 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 
 **做**：
 - ingest webhook（HMAC 驗證）
-- Sentry 拉取整合
 - 服務輪詢（health 存活偵測 ＋ error 端點補漏）
 - 正規化 ＋ fingerprint 聚合
 - 規則引擎判級（seed 規則）
@@ -136,6 +127,7 @@ Sentry ──Cron 拉取 /api/poll/sentry ───────┤
 - 報表 / 統計圖表
 - on-call 排班
 - 服務主動回報 heartbeat（改由主動輪詢 health 偵測失聯，已納入 MVP）
+- 第三方錯誤追蹤平台整合（如 Sentry）——管線已保留擴充點，需要時再加 normalizer
 
 ## 9. 測試策略
 
