@@ -46,4 +46,18 @@ describe('deriveHealth', () => {
     const issues: OpenIssue[] = [{ severity: 'P1', status: 'acknowledged', lastSeen: recent }]
     expect(deriveHealth({ ...base, poll: null, openIssues: issues })).toBe('degraded')
   })
+
+  it('takes the worst across multiple concurrently-valid issues', () => {
+    const bothOpen: OpenIssue[] = [
+      { severity: 'P1', status: 'open', lastSeen: recent },
+      { severity: 'P0', status: 'open', lastSeen: recent },
+    ]
+    expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: bothOpen })).toBe('down')
+
+    const p2AndP1: OpenIssue[] = [
+      { severity: 'P2', status: 'open', lastSeen: recent },
+      { severity: 'P1', status: 'acknowledged', lastSeen: recent },
+    ]
+    expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: p2AndP1 })).toBe('degraded')
+  })
 })

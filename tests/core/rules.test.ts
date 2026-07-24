@@ -51,4 +51,11 @@ describe('evaluateSeverity', () => {
     // 次數不足 → 不命中
     expect(evaluateSeverity(issue({ count: 3 }), rules).severity).toBe('P2')
   })
+
+  it('treats an empty match as a catch-all', () => {
+    const rules: TriageRule[] = [
+      { id: 'catch-all', priority: 1, severity: 'P1', match: {} },
+    ]
+    expect(evaluateSeverity(issue(), rules)).toEqual({ severity: 'P1', tags: [] })
+  })
 })
