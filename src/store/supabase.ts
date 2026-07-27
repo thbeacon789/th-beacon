@@ -3,7 +3,7 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -23,6 +23,16 @@ export class SupabaseStore implements Store {
       .maybeSingle()
     if (error) throw new Error(`getService failed: ${error.message}`)
     return data === null ? null : rowToService(data)
+  }
+
+  async getServiceByName(name: string): Promise<ServiceAuth | null> {
+    const { data, error } = await this.client
+      .from('services')
+      .select('*')
+      .eq('name', name)
+      .maybeSingle()
+    if (error) throw new Error(`getServiceByName failed: ${error.message}`)
+    return data === null ? null : { service: rowToService(data), webhookSecret: data.webhook_secret }
   }
 
   async upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome> {

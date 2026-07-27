@@ -15,6 +15,11 @@ export interface ServiceRecord {
   poll: PollState | null
 }
 
+export interface ServiceAuth {
+  service: ServiceRecord
+  webhookSecret: string | null
+}
+
 export interface UpsertOutcome {
   issue: StoredIssue
   created: boolean
@@ -23,6 +28,7 @@ export interface UpsertOutcome {
 
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
+  getServiceByName(name: string): Promise<ServiceAuth | null>
   upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome>
   loadRules(serviceId: string): Promise<TriageRule[]>
   updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void>

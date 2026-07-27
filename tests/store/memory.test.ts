@@ -168,4 +168,15 @@ describe('InMemoryStore', () => {
     const svcAgain = await store.getService('s-1')
     expect(svcAgain?.name).toBe('svc-a')
   })
+
+  it('getServiceByName returns service with secret; null when unknown', async () => {
+    const withSecret = { ...svc, id: 's-sec', name: 'svc-sec' }
+    store.seedService(withSecret, 'topsecret')
+    expect(await store.getServiceByName('svc-sec')).toEqual({
+      service: withSecret,
+      webhookSecret: 'topsecret',
+    })
+    expect(await store.getServiceByName('svc-a')).toEqual({ service: svc, webhookSecret: null })
+    expect(await store.getServiceByName('nope')).toBeNull()
+  })
 })

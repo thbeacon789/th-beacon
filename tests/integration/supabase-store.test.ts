@@ -180,3 +180,16 @@ describe('SupabaseStore service/issue updates', () => {
     expect(await store.getService('00000000-0000-0000-0000-000000000001')).toBeNull()
   })
 })
+
+describe('SupabaseStore.getServiceByName', () => {
+  it('returns service with webhook secret; null when unknown', async () => {
+    await client
+      .from('services')
+      .update({ webhook_secret: 'int-secret' })
+      .eq('id', serviceId)
+    const auth = await store.getServiceByName('svc-int')
+    expect(auth?.service.id).toBe(serviceId)
+    expect(auth?.webhookSecret).toBe('int-secret')
+    expect(await store.getServiceByName('no-such-service')).toBeNull()
+  })
+})

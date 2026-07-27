@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -13,10 +13,12 @@ export class InMemoryStore implements Store {
   private issues = new Map<string, StoredIssue>() // key: `${serviceId}:${fingerprint}`
   private dedup = new Map<string, string>() // key: `${serviceId}:${externalId}` → issueId
   private rules: SeededRule[] = []
+  private secrets = new Map<string, string | null>() // serviceId → webhookSecret
   private nextId = 1
 
-  seedService(service: ServiceRecord): void {
+  seedService(service: ServiceRecord, webhookSecret: string | null = null): void {
     this.services.set(service.id, service)
+    this.secrets.set(service.id, webhookSecret)
   }
 
   seedRule(serviceId: string | null, rule: TriageRule): void {
@@ -37,6 +39,18 @@ export class InMemoryStore implements Store {
     const service = this.services.get(serviceId)
     if (service === undefined) return null
     return { ...service, poll: service.poll ? { ...service.poll } : null }
+  }
+
+  async getServiceByName(name: string): Promise<ServiceAuth | null> {
+    for (const service of this.services.values()) {
+      if (service.name === name) {
+        return {
+          service: { ...service, poll: service.poll ? { ...service.poll } : null },
+          webhookSecret: this.secrets.get(service.id) ?? null,
+        }
+      }
+    }
+    return null
   }
 
   async upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome> {
