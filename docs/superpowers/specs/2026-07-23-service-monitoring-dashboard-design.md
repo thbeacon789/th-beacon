@@ -18,6 +18,7 @@
 | 技術棧 | Next.js 全棧（App Router） |
 | 儲存 | Supabase Postgres（＋ Auth ＋ Realtime） |
 | 資料來源 | ① 服務主動推送事件到 ingest webhook；② 主動輪詢各服務（health 存活偵測 ＋ error 端點補漏） |
+| 每日自動測試 | 有自動測試的專案：各專案 CI 自排程每日跑測試，失敗結果經入口①（push ingest）回報（`error_type=test_failure`）；無自動測試的服務：靠入口②的 health 輪詢。非新入口，是 push 入口的使用慣例 |
 | 檢傷分級 | 規則引擎 → P0 / P1 / P2 |
 | Discord | 依分級觸發 ＋ 依 fingerprint 去重聚合 |
 | 存取控制 | Dashboard 走 Supabase Auth 登入；ingest webhook 用每服務金鑰（HMAC）驗證 |
@@ -48,6 +49,7 @@
 - 驗證：每服務一組 secret，請求帶 HMAC 簽章（如 `X-Signature` header），伺服器以該服務 secret 驗簽；驗不過回 401。
 - 職責：解析 payload → 呼叫 normalizer 轉成 canonical event → 交給共用管線。
 - 相依：`services` 表（取 secret）、正規化管線。
+- **CI 每日測試回報（使用慣例）**：有自動測試的專案在自己的 CI（如 GitHub Actions cron）每日執行測試，失敗時 POST 到本入口，`error_type=test_failure`，metadata 建議附 CI run URL 與失敗摘要。專案側提供回報 script 範例（curl ＋ HMAC 簽章）。seed 規則含一條 `test_failure` 預設判級（如 P1），使測試失敗自動影響健康度並可觸發告警。
 
 ### 4.2 服務輪詢器
 - 路由：`GET /api/poll/services`（由 Vercel Cron 定時觸發）
@@ -115,6 +117,7 @@
 **做**：
 - ingest webhook（HMAC 驗證）
 - 服務輪詢（health 存活偵測 ＋ error 端點補漏）
+- CI 每日測試回報慣例：回報 script 範例（curl ＋ HMAC）＋ `test_failure` seed 判級規則
 - 正規化 ＋ fingerprint 聚合
 - 規則引擎判級（seed 規則）
 - Discord 通知（去重 / 冷卻聚合）

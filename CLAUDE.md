@@ -25,6 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **儲存 / 平台**：Supabase Postgres（＋ Auth ＋ Realtime）。
 - **部署**：Vercel（含 Vercel Cron）＋ Supabase。
 - **錯誤接收有兩條入口**：① 服務推送到 `POST /api/ingest`（每服務 HMAC 金鑰驗證）；② 主動輪詢各服務（health 存活偵測 ＋ error 端點補漏，由 Vercel Cron 觸發）。**不做** Sentry 等第三方整合（列為未來擴充）。
+- **每日自動測試**：有自動測試的專案由各自 CI 排程每日跑測試，失敗經入口①回報（`error_type=test_failure`）；無自動測試的服務靠入口②的 health 輪詢。這是 push 入口的使用慣例，不是第三條入口。
 - **存取控制**：Dashboard 走 Supabase Auth 登入；ingest webhook 用 HMAC；Cron 路由用內部 token。
 
 ## 核心架構觀念（實作時的骨幹）
