@@ -25,4 +25,5 @@ export interface Issue {
   level: string
   errorType: string
   message: string
+  tags: string[]
 }
