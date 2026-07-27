@@ -311,4 +311,13 @@ git commit -m "feat(db): generate TypeScript types from schema"
 
 ## 完成後
 
-Plan 2 交付可運作的本地 Supabase 環境、含 RLS 的 schema、與自動產生的 TS 型別。下一份 **Plan 3｜持久層與管線接線** 會定義 `Store` port、`InMemoryStore`（純 TDD 測 orchestrator）、管線 orchestrator（`normalize → 依 fingerprint upsert → evaluateSeverity → 更新 severity → deriveHealth → 更新 health`），以及以本計畫 schema 為後盾的 `SupabaseStore` adapter（對本地 stack 做整合測試）。
+Plan 2 交付可運作的本地 Supabase 環境、含 RLS 的 schema（含 updated_at 自動 bump trigger）、與自動產生的 TS 型別。
+
+### Plan 3 必要驗收條件（來自 Plan 2 最終 whole-branch review，勿遺漏）
+
+1. **externalId lift 契約**：`normalizePolledError` 把 `externalId` 放在 `metadata.externalId`，但 poll 去重靠 `events.external_id` 欄位的 partial unique index。Plan 3 adapter **必須**把 `externalId` 提升到 `events.external_id` 欄位（否則去重靜默失效），並測試：重複 externalId 以 `on conflict do nothing` 落地時 issue.count 不重複累計。
+2. **triage_rules 的 service_id 單一權威來源**：規則引擎只認 `match.serviceId`；DB 另有 `triage_rules.service_id` 欄位（null=全域）。Plan 3 載入規則時以查詢端過濾（`where service_id = $1 or service_id is null`）為權威，jsonb `match` 內不重複放 serviceId；加對應測試防「規則意外全域套用」。
+3. 產生型別中 severity/status/source 為寬鬆 `string`：adapter 載回 domain 型別時必須 narrow/驗證，不可直接 cast。
+4. Plan 1 的 `Issue` 介面無 `tags` 欄位而 DB 有：Plan 3 擴充 `Issue.tags` 或明確對映。
+
+（其餘 deferred：poller 的 status-JSON 判準欄位與 events.service_id 一般索引留待 Plan 4 依查詢模式決定；Plan 6 對 services 開放讀取 policy 時須以 column grant/view 排除 webhook_secret 與 discord_webhook_url；通知冷卻只計 status='sent'。）下一份 **Plan 3｜持久層與管線接線** 會定義 `Store` port、`InMemoryStore`（純 TDD 測 orchestrator）、管線 orchestrator（`normalize → 依 fingerprint upsert → evaluateSeverity → 更新 severity → deriveHealth → 更新 health`），以及以本計畫 schema 為後盾的 `SupabaseStore` adapter（對本地 stack 做整合測試）。
