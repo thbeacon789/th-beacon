@@ -22,6 +22,9 @@ declare
 begin
   -- poll 來源去重：同服務同 external_id 只計一次（Plan 2 review 驗收條件 #1）
   if p_external_id is not null then
+    -- 序列化同 (service_id, external_id) 的併發呼叫，關閉 check-then-act 窗口
+    perform pg_advisory_xact_lock(hashtextextended(p_service_id::text || ':' || p_external_id, 0));
+
     select e.issue_id into v_issue_id
     from public.events e
     where e.service_id = p_service_id and e.external_id = p_external_id;

@@ -93,6 +93,39 @@ describe('SupabaseStore.upsertIssueWithEvent', () => {
     expect(issue.count).toBe(2)
   })
 
+  it('concurrent duplicate externalId submissions count once (race guard)', async () => {
+    const ev = event({ source: 'poll', metadata: { externalId: 'race-1' } })
+    const [a, b] = await Promise.all([
+      store.upsertIssueWithEvent(ev),
+      store.upsertIssueWithEvent(ev),
+    ])
+    expect([a.duplicate, b.duplicate].filter(Boolean)).toHaveLength(1)
+    const winner = a.duplicate ? b : a
+    expect(winner.issue.count).toBe(1)
+    const { count } = await client
+      .from('events')
+      .select('*', { count: 'exact', head: true })
+      .eq('service_id', serviceId)
+    expect(count).toBe(1)
+    const { data: issueRow } = await client
+      .from('issues')
+      .select('count')
+      .eq('service_id', serviceId)
+      .single()
+    expect(issueRow?.count).toBe(1)
+  })
+
+  it('keeps latest level across out-of-order arrival, last_seen never regresses', async () => {
+    await store.upsertIssueWithEvent(
+      event({ level: 'error', occurredAt: '2026-07-27T10:05:00.000Z' }),
+    )
+    const { issue } = await store.upsertIssueWithEvent(
+      event({ level: 'fatal', occurredAt: '2026-07-27T10:01:00.000Z' }),
+    )
+    expect(issue.level).toBe('fatal')
+    expect(new Date(issue.lastSeen).toISOString()).toBe('2026-07-27T10:05:00.000Z')
+  })
+
   it('reopens resolved issue; ignored stays', async () => {
     const { issue } = await store.upsertIssueWithEvent(event())
     await client.from('issues').update({ status: 'resolved' }).eq('id', issue.id)
