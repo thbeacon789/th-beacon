@@ -1421,3 +1421,13 @@ git commit -m "test(pipeline): end-to-end integration against local Supabase"
 Plan 3 交付：可注入任何 `Store` 的 `processEvent` 管線、雙 Store 實作（記憶體／Supabase）、原子 upsert rpc、外加落實 Plan 2 review 的四項驗收條件。下一份 **Plan 4｜錯誤接收入口** 會實作 `POST /api/ingest`（HMAC 驗證、wire 格式定案含 CI 測試回報 script 範例）與服務輪詢 Cron（health 偵測 + PollState 寫回 + 連續成功清 health issue + error 端點補漏），皆呼叫本計畫的 `processEvent`。
 
 **給 Plan 4 的既定事項**：poll 成功清除 health issue 需要新的 store 方法（如 `resolveIssueByFingerprint`）與 PollState 寫回方法——屆時擴充 `Store` port；`ProcessResult.previousSeverity` 已為 Plan 5 的升級追發準備好。
+
+### Plan 4/5 必要事項（來自 Plan 3 最終 whole-branch review，勿遺漏）
+
+**Plan 5 前置決策（唯一 Important）**：頻率規則的 window 用 `lastSeen - firstSeen`（單調遞增），超窗後永久不匹配 → severity 自動回落 P2 並清空 tags，之後又可能升回，P0↔P2 震盪會讓「升級才追發」洗版。開工前二選一：(a) severity 只升不降（ratchet，`processEvent` 加一行 rank 比較即可）；或 (b) 允許降級，通知端以 `notifications` 歷史判斷「淨升級」而非相鄰兩次比較。
+
+**Plan 4 必要事項**：
+1. ingest/poll 邊界必須先驗 serviceId 為合法 UUID 才可進 `loadRules`（`.or()` 字串插值的防護前提）。
+2. poller 每週期重算健康度，需確認覆蓋兩個已知過期窗口：併發 read-compute-write 的 last-writer-wins 低報、duplicate 短路回傳的過期健康度快照。
+3. 擴充 `Store` port 時統一「0 rows affected」語意（InMemoryStore throw vs SupabaseStore 靜默成功；建議 Supabase 端檢查 affected rows）。
+4. 可於 ingest 邊界收緊 `CanonicalEvent.metadata` 為 JSON-safe 型別（消除 `as Json` 斷言風險）。

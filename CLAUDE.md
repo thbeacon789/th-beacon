@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 
-進度：Plan 1（`src/core/` 純邏輯：types/fingerprint/normalize/rules/health）與 Plan 2（本地 Supabase + schema/RLS/型別）已完成。後續：Plan 3 持久層＋管線 orchestrator → Plan 4 ingest/poller → Plan 5 Discord → Plan 6 dashboard。**寫 Plan 3 前必讀** `docs/superpowers/plans/2026-07-24-plan2-supabase-schema.md` 的「Plan 3 必要驗收條件」章節。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + InMemoryStore + `processEvent` orchestrator + SupabaseStore 原子 upsert rpc）已完成。後續：Plan 4 ingest/poller → Plan 5 Discord → Plan 6 dashboard。**寫 Plan 4/5 前必讀** `docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md` 的「Plan 4/5 必要事項」章節（含 Plan 5 的 severity 降級策略前置決策）。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 
