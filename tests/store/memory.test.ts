@@ -120,4 +120,52 @@ describe('InMemoryStore', () => {
     expect((await store.getService('s-1'))?.healthStatus).toBe('down')
     expect(await store.getService('nope')).toBeNull()
   })
+
+  it('setIssueStatus throws on unknown issue', () => {
+    expect(() => store.setIssueStatus('unknown-id', 'acknowledged')).toThrow(/unknown issue/)
+  })
+
+  it('updateIssueTriage throws on unknown issue', async () => {
+    await expect(store.updateIssueTriage('unknown-id', 'P0', [])).rejects.toThrow(
+      /unknown issue/,
+    )
+  })
+
+  it('updateServiceHealth throws on unknown service', async () => {
+    await expect(store.updateServiceHealth('unknown-svc', 'down')).rejects.toThrow(
+      /unknown service/,
+    )
+  })
+
+  it('level takes last-arriving event regardless of occurredAt order', async () => {
+    // First event: occurredAt 10:05, level 'error'
+    await store.upsertIssueWithEvent(
+      event({ occurredAt: '2026-07-27T10:05:00.000Z', level: 'error' }),
+    )
+    // Second event: occurredAt 10:01 (older), level 'fatal' (more severe)
+    const { issue } = await store.upsertIssueWithEvent(
+      event({ occurredAt: '2026-07-27T10:01:00.000Z', level: 'fatal' }),
+    )
+    // lastSeen should not move backward
+    expect(issue.lastSeen).toBe('2026-07-27T10:05:00.000Z')
+    // level should be from the last-arriving event ('fatal')
+    expect(issue.level).toBe('fatal')
+  })
+
+  it('defensive copies prevent external mutation of stored state', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    issue.tags.push('mutated')
+    // Fetch again and verify tags are still empty (defensive copy worked)
+    const { issue: refetched } = await store.upsertIssueWithEvent(event())
+    expect(refetched.tags).toEqual([])
+  })
+
+  it('getService returns defensive copy of ServiceRecord', async () => {
+    const svcCopy = await store.getService('s-1')
+    if (svcCopy) {
+      svcCopy.name = 'mutated'
+    }
+    const svcAgain = await store.getService('s-1')
+    expect(svcAgain?.name).toBe('svc-a')
+  })
 })

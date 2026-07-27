@@ -34,7 +34,9 @@ export class InMemoryStore implements Store {
   }
 
   async getService(serviceId: string): Promise<ServiceRecord | null> {
-    return this.services.get(serviceId) ?? null
+    const service = this.services.get(serviceId)
+    if (service === undefined) return null
+    return { ...service, poll: service.poll ? { ...service.poll } : null }
   }
 
   async upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome> {
@@ -45,7 +47,7 @@ export class InMemoryStore implements Store {
       const issueId = this.dedup.get(`${event.serviceId}:${externalId}`)
       if (issueId !== undefined) {
         const issue = this.findIssueById(issueId)
-        return { issue, created: false, duplicate: true }
+        return { issue: this.defensiveCopy(issue), created: false, duplicate: true }
       }
     }
 
@@ -78,6 +80,7 @@ export class InMemoryStore implements Store {
           new Date(existing.lastSeen) >= new Date(event.occurredAt)
             ? existing.lastSeen
             : event.occurredAt,
+        // 取最後到達（與 SQL upsert 的 excluded.level 一致）
         level: event.level,
         status: existing.status === 'resolved' ? 'open' : existing.status,
       }
@@ -85,7 +88,7 @@ export class InMemoryStore implements Store {
 
     this.issues.set(key, issue)
     if (externalId !== null) this.dedup.set(`${event.serviceId}:${externalId}`, issue.id)
-    return { issue, created, duplicate: false }
+    return { issue: this.defensiveCopy(issue), created, duplicate: false }
   }
 
   async loadRules(serviceId: string): Promise<TriageRule[]> {
@@ -117,6 +120,10 @@ export class InMemoryStore implements Store {
     const service = this.services.get(serviceId)
     if (service === undefined) throw new Error(`unknown service: ${serviceId}`)
     this.services.set(serviceId, { ...service, healthStatus: health })
+  }
+
+  private defensiveCopy(issue: StoredIssue): StoredIssue {
+    return { ...issue, tags: [...issue.tags] }
   }
 
   private findIssueById(issueId: string): StoredIssue {
