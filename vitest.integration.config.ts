@@ -7,7 +7,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
-    exclude: ['tests/integration/**', '**/node_modules/**'],
+    include: ['tests/integration/**/*.test.ts'],
+    fileParallelism: false, // 共用本地 DB，避免跨檔清庫互踩
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 })

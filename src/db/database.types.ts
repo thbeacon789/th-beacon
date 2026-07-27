@@ -310,7 +310,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      upsert_issue_with_event: {
+        Args: {
+          p_error_type: string
+          p_external_id: string
+          p_fingerprint: string
+          p_level: string
+          p_message: string
+          p_metadata: Json
+          p_occurred_at: string
+          p_service_id: string
+          p_source: string
+        }
+        Returns: {
+          created: boolean
+          duplicate: boolean
+          issue_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
