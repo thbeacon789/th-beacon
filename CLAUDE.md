@@ -2,14 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 目前狀態：設計已定案，尚未 scaffold
-
-這個 repo **還沒有任何程式碼**——只有一份已核准的設計 spec。專案尚未初始化（無 `package.json`、無原始碼），因此目前**沒有可用的 build / lint / test 指令**；這些會在依 spec scaffold 出 Next.js 專案後，由 `package.json` 的 scripts 產生。
+## 目前狀態：Plan 1–2 已完成，Plan 3 起尚未動工
 
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 
-實作前的工作流程走 superpowers：brainstorming（已完成，產出上述 spec）→ writing-plans（下一步，尚未執行）→ 實作。若要開始實作，先確認實作計畫是否已寫出。
+進度：Plan 1（`src/core/` 純邏輯：types/fingerprint/normalize/rules/health）與 Plan 2（本地 Supabase + schema/RLS/型別）已完成。後續：Plan 3 持久層＋管線 orchestrator → Plan 4 ingest/poller → Plan 5 Discord → Plan 6 dashboard。**寫 Plan 3 前必讀** `docs/superpowers/plans/2026-07-24-plan2-supabase-schema.md` 的「Plan 3 必要驗收條件」章節。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+
+## 常用指令
+
+- `pnpm test`（Vitest）／`pnpm test:watch`／`pnpm typecheck`（tsc --noEmit，strict）
+- 單檔測試：`pnpm vitest run tests/core/<name>.test.ts`
+- 本地 Supabase（OrbStack Docker 需先開）：`supabase start`／`supabase status`／`supabase db reset`（重建並套用全部 migrations）
+- Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db reset` → `supabase db advisors --local --type security` → `pnpm db:types`（重生 `src/db/database.types.ts`，自動產物勿手改）
+- 涉及 Supabase 的任務先載入 `supabase:supabase` skill；本專案為**本地優先**開發（勿用遠端 MCP apply_migration 迭代）
+
+## 程式碼架構要點
+
+- `src/core/**` 為**純函式**（禁 I/O、禁 Date.now；時鐘一律由參數注入）——這是硬性約束，測試依賴它。
+- 型別集中 `src/core/types.ts`；DB 型別 `src/db/database.types.ts`（gen types 自動產生）。
+- 所有 public 表已啟用 RLS 且 **deny-by-default（無 policy）**；伺服器端走 service_role，dashboard policy 留待 Plan 6。勿為了消 advisors 的 rls_enabled_no_policy INFO 而加 policy。
 
 ## 產品定位
 
