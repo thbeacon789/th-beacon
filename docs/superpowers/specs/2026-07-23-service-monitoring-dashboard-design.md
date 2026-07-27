@@ -50,6 +50,11 @@
 - 職責：解析 payload → 呼叫 normalizer 轉成 canonical event → 交給共用管線。
 - 相依：`services` 表（取 secret）、正規化管線。
 - **CI 每日測試回報（使用慣例）**：有自動測試的專案在自己的 CI（如 GitHub Actions cron）每日執行測試，失敗時 POST 到本入口，`error_type=test_failure`，metadata 建議附 CI run URL 與失敗摘要。專案側提供回報 script 範例（curl ＋ HMAC 簽章）。seed 規則含一條 `test_failure` 預設判級（如 P1），使測試失敗自動影響健康度並可觸發告警。
+- **Wire 契約（已定案）**：
+  - Headers：`X-Beacon-Service`（services.name）、`X-Beacon-Timestamp`（unix 秒）、`X-Beacon-Signature`（`sha256=<hex>`，HMAC-SHA256(secret, `"${timestamp}.${rawBody}"`)）。
+  - 防重放：時戳偏差 > 300 秒即拒。驗證失敗一律 `401 {"error":"unauthorized"}`（不洩漏服務名是否存在）。
+  - Payload：`{"message"(必填), "errorType"?, "level"?, "occurredAt"?, "metadata"?}` 單筆事件；`400` JSON 解析失敗、`422` schema 不符（附 details）、`201` 成功（回 issueId/severity/health/duplicate）。
+  - 回報 script 範例：`scripts/report-to-beacon.sh`（jq + openssl + curl）；`test_failure → P1` 種子規則見 `supabase/seed.sql`。
 
 ### 4.2 服務輪詢器
 - 路由：`GET /api/poll/services`（由 Vercel Cron 定時觸發）

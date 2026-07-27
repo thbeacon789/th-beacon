@@ -66,4 +66,17 @@ describe('verifyIngestSignature', () => {
       verifyIngestSignature({ secret, rawBody: body, timestamp: other, signature: sign(secret, ts, body), now }),
     ).toEqual({ ok: false, reason: 'signature_mismatch' })
   })
+
+  it('accepts a signature produced by the CI script openssl pipeline', () => {
+    // fixture 由 scripts/report-to-beacon.sh 相同的 openssl 指令產生：
+    // printf '%s.%s' 1785276000 '{"message":"fixture"}' | openssl dgst -sha256 -hmac fixture-secret -hex
+    const result = verifyIngestSignature({
+      secret: 'fixture-secret',
+      rawBody: '{"message":"fixture"}',
+      timestamp: '1785276000',
+      signature: 'sha256=60c57df42a75d0d399b8847e989acefbbc14c5906ad12e86083e31319ad56619',
+      now: new Date(1785276000 * 1000),
+    })
+    expect(result).toEqual({ ok: true })
+  })
 })
