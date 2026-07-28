@@ -1,6 +1,6 @@
 import { processEvent, type ProcessResult } from '@/pipeline/process-event'
 import { shouldNotify } from '@/notify/decision'
-import { buildDiscordMessage } from '@/notify/message'
+import { buildDiscordMessage, extractNotifyDetails } from '@/notify/message'
 import type { DiscordSender } from '@/notify/discord'
 import type { CanonicalEvent } from '@/core/types'
 import type { Store } from '@/store/contracts'
@@ -63,6 +63,7 @@ async function notifyStage(
     firstSeen: result.issue.firstSeen,
     lastSeen: result.issue.lastSeen,
     ...(deps.dashboardUrl !== undefined ? { dashboardUrl: deps.dashboardUrl } : {}),
+    details: extractNotifyDetails(event.metadata),
   })
   const sendResult = await deps.sender(webhookUrl, message)
   await store.recordNotification({

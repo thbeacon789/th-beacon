@@ -27,6 +27,41 @@ const SEVERITY_COLOR: Record<Severity, number> = {
 
 const DESCRIPTION_LIMIT = 500
 
+export interface NotifyDetails {
+  summary?: string
+  runUrl?: string
+  reason?: string
+  lastRunAt?: string
+}
+
+// Discord field value 上限為 1024，留 buffer 截到 1000。
+const FIELD_LIMIT = 1000
+const TEXT_DETAIL_KEYS = ['summary', 'reason', 'lastRunAt'] as const
+
+function pickString(metadata: Record<string, unknown>, key: string): string | undefined {
+  const value = metadata[key]
+  if (typeof value !== 'string' || value === '') return undefined
+  return value.length > FIELD_LIMIT ? `${value.slice(0, FIELD_LIMIT - 1)}…` : value
+}
+
+// metadata 來自外部（CI 回報／輪詢目標），一律白名單萃取，不整包倒進通知。
+export function extractNotifyDetails(metadata: Record<string, unknown>): NotifyDetails {
+  const details: NotifyDetails = {}
+  for (const key of TEXT_DETAIL_KEYS) {
+    const value = pickString(metadata, key)
+    if (value !== undefined) details[key] = value
+  }
+  const runUrl = pickString(metadata, 'runUrl')
+  if (runUrl !== undefined && /^https?:\/\//i.test(runUrl)) details.runUrl = runUrl
+  return details
+}
+
+const DETAIL_LABELS: Array<[key: (typeof TEXT_DETAIL_KEYS)[number], label: string]> = [
+  ['summary', '失敗摘要'],
+  ['reason', '原因'],
+  ['lastRunAt', '最後回報'],
+]
+
 export function buildDiscordMessage(params: {
   serviceName: string
   severity: Severity
@@ -36,11 +71,24 @@ export function buildDiscordMessage(params: {
   firstSeen: string
   lastSeen: string
   dashboardUrl?: string
+  details?: NotifyDetails
 }): DiscordMessage {
   const description =
     params.message.length > DESCRIPTION_LIMIT
       ? `${params.message.slice(0, DESCRIPTION_LIMIT - 1)}…`
       : params.message
+  const detailFields: DiscordEmbedField[] = []
+  for (const [key, label] of DETAIL_LABELS) {
+    const value = params.details?.[key]
+    if (value !== undefined) detailFields.push({ name: label, value, inline: false })
+  }
+  if (params.details?.runUrl !== undefined) {
+    detailFields.push({
+      name: 'CI Run',
+      value: `[查看 run](${params.details.runUrl})`,
+      inline: false,
+    })
+  }
   return {
     username: 'th-beacon',
     embeds: [
@@ -53,6 +101,7 @@ export function buildDiscordMessage(params: {
           { name: '次數', value: String(params.count), inline: true },
           { name: 'First seen', value: params.firstSeen, inline: true },
           { name: 'Last seen', value: params.lastSeen, inline: true },
+          ...detailFields,
         ],
       },
     ],
