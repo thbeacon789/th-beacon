@@ -1477,4 +1477,17 @@ git commit -m "docs: finalize dashboard access model in spec"
 
 ## 完成後
 
-Plan 7 交付 MVP dashboard——至此 **spec 的 MVP 範圍全部完成**（兩條入口、判級、健康度、Discord 告警、dashboard）。剩餘已知事項在各計畫「交接事項」章節：reopen 復發語意與恢復通知、部署驗證清單（Vercel Cron/env/maxDuration）、error 補漏硬化、觀測面。使用者驗收：`pnpm dev`（自管）→ Supabase 後台建使用者 → 登入操作三頁 → 以 `scripts/report-to-beacon.sh` 打事件驗證即時刷新與 Discord。
+Plan 7 交付 MVP dashboard——至此 **spec 的 MVP 範圍全部完成**（兩條入口、判級、健康度、Discord 告警、dashboard）。使用者驗收：`pnpm dev`（自管）→ Supabase Studio 建使用者 → 登入操作三頁 → 以 `scripts/report-to-beacon.sh` 打事件驗證即時刷新與 Discord。
+
+### 部署清單（go-live 前置，來自 Plan 7 最終 review；Vercel 行為項未實地驗證）
+
+1. **Hosted Supabase**：關閉 signup（**本地 config.toml 不會生效於雲端**，需在專案設定操作）；套用全部 migrations 與 seed；建正式使用者。
+2. **Vercel env**：`NEXT_PUBLIC_SUPABASE_URL`／`NEXT_PUBLIC_SUPABASE_ANON_KEY`／`SUPABASE_URL`／`SUPABASE_SERVICE_ROLE_KEY`／`CRON_SECRET`／`DISCORD_WEBHOOK_URL`（選）／`APP_URL`（選）。
+3. **Vercel Cron**：實地驗證 `CRON_SECRET` 的 Bearer 注入行為；方案的 cron 頻率限制；評估 poll route `maxDuration` vs 服務數×timeout 上界。
+4. **Next 16**：middleware→proxy 改名警告，升版前處理。
+
+### Deferred（記錄於各 task review）
+
+- reopen 復發語意與恢復通知（Plan 6 交接，另案裁量）。
+- server action 錯誤走 Next 通用錯誤頁（可補 app/error.tsx）；`getServicesOverview` O(n×m)（量大再改）；memory store 線性找 id ×3；error 補漏硬化與 truncated 旗標消費（Plan 5 交接）。
+- fix wave `9d26879` 已修：非 UUID 404 而非 500、realtime 1.5s debounce + 60s backstop（涵蓋燈號恢復缺口）、/login 不渲染 nav、Pixel-12x10 移除載入（ttf 保留）、signout 303、ratchet 說明句。
