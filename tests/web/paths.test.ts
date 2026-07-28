@@ -12,4 +12,9 @@ describe('isPublicPath', () => {
       expect(isPublicPath(p)).toBe(false)
     }
   })
+  it('does not treat prefix-lookalikes as public', () => {
+    for (const p of ['/api/ingest2', '/api/pollx', '/loginx']) {
+      expect(isPublicPath(p)).toBe(false)
+    }
+  })
 })
