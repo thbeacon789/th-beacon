@@ -53,7 +53,7 @@
 - **Wire 契約（已定案）**：
   - Headers：`X-Beacon-Service`（services.name）、`X-Beacon-Timestamp`（unix 秒）、`X-Beacon-Signature`（`sha256=<hex>`，HMAC-SHA256(secret, `"${timestamp}.${rawBody}"`)）。
   - 防重放：時戳偏差 > 300 秒即拒。驗證失敗一律 `401 {"error":"unauthorized"}`（不洩漏服務名是否存在）。
-  - Payload：`{"message"(必填), "errorType"?, "level"?, "occurredAt"?, "metadata"?}` 單筆事件；`400` JSON 解析失敗、`422` schema 不符（附 details）、`201` 成功（回 issueId/severity/health/duplicate）。
+  - Payload：`{"message"(必填), "errorType"?, "level"?, "occurredAt"?, "metadata"?}` 單筆事件；`400` JSON 解析失敗、`422` schema 不符（附 details）、`201` 成功（回 issueId/severity/health/duplicate/notified）。
   - 回報 script 範例：`scripts/report-to-beacon.sh`（jq + openssl + curl）；`test_failure → P1` 種子規則見 `supabase/seed.sql`。
   - 簽章 hex 為**小寫**（openssl/node 預設輸出；大寫 hex 會被判格式不符而 401）。
   - `metadata.externalId`（若提供）具**冪等語意**：同服務同 externalId 的重複提交會被去重（不累計 count，回 `duplicate: true`）——與 poll 來源共用同一機制。
@@ -76,6 +76,7 @@
 - 輸出：`severity`(P0/P1/P2) ＋ `tags`。
 - 評估時機：事件進入管線、upsert issue 後評估並寫回 issue 的 severity。
 - 規則優先序：依規則設定的優先權由高到低比對，命中即定級；無規則命中時給預設級（如 P2）。
+- **Ratchet（已拍板）**：severity 只升不降——規則回落（如頻率超窗）時 issue 維持歷史最嚴重值，tags 一併凍結；人工降級走操作狀態（resolve/ignore）。
 
 ### 4.5 健康度計算
 - **輪詢優先，取最差**：
@@ -91,6 +92,7 @@
 - 內容：Discord embed，含服務、severity、錯誤摘要、累計次數、first/last seen、連向 dashboard 的連結。
 - 紀錄：發送結果寫入 `notifications` 表，供冷卻/去重判斷與稽核。
 - 設定：Discord webhook URL 存於 env / 服務設定。多頻道路由不在 MVP。
+- **定案值**：門檻 P1（P2 不發）；冷卻 30 分鐘；升級無視冷卻立即追發；冷卻判斷只計 `status='sent'`；發送失敗記 `failed` 且不阻斷管線（下次事件自動重試）；webhook 解析 `services.discord_webhook_url` → env `DISCORD_WEBHOOK_URL`，皆無則跳過。
 
 ### 4.7 Dashboard UI（Next.js）
 - **服務總覽**：每服務一張卡，顯示健康狀態燈號 ＋ 各分級未解 issue 數。
