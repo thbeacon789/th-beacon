@@ -12,7 +12,6 @@ export default async function LoginPage({
     <main className="login">
       <div className="card login-card">
         <h1>th-beacon</h1>
-        <p className="hint">僅限白名單內的 Google 帳號登入</p>
         <GoogleLoginButton />
         {error !== null && <p className="error">{error}</p>}
       </div>

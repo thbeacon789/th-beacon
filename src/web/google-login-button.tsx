@@ -33,8 +33,8 @@ export function GoogleLoginButton() {
 
   return (
     <>
-      <button type="button" onClick={onClick} disabled={busy}>
-        {busy ? '前往 Google…' : '使用 Google 登入'}
+      <button type="button" className="google-login" onClick={onClick} disabled={busy}>
+        {busy ? 'Loading…' : 'Google Login'}
       </button>
       {error !== null && <p className="error">{error}</p>}
     </>
