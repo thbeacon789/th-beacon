@@ -14,8 +14,6 @@ const password = 'test-password-123'
 beforeAll(async () => {
   const { url, serviceRoleKey } = getLocalSupabaseEnv()
   admin = createServiceRoleClient()
-  const env = getLocalSupabaseEnv()
-  void env
 
   // 讀 anon key（supabase status -o env 的 ANON_KEY；鍵名以實跑為準）
   const { execSync } = await import('node:child_process')

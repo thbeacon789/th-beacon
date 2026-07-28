@@ -32,6 +32,7 @@ export default async function IssueDetailPage({
         {new Date(issue.lastSeen).toLocaleString('zh-TW')}
         {issue.tags.length > 0 && <>｜tags: {issue.tags.join(', ')}</>}
       </p>
+      <p className="hint">severity 為歷史最高判級（只升不降）；降級請改操作狀態（resolve / ignore）。</p>
       <div className="actions">
         {NEXT_STATUSES.filter((s) => s !== issue.status).map((status) => (
           <form key={status} action={changeIssueStatusAction.bind(null, issue.id, status)}>

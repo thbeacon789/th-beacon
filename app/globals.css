@@ -195,3 +195,7 @@ pre {
   overflow-x: auto;
   color: var(--lilac);
 }
+.hint {
+  color: var(--lilac);
+  font-size: 0.85rem;
+}
