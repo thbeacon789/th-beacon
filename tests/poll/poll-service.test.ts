@@ -129,6 +129,36 @@ describe('pollService — errors endpoint', () => {
   })
 })
 
+describe('pollService — health + errors combined', () => {
+  it('error-branch cursor write preserves health-branch poll state', async () => {
+    const store = new InMemoryStore()
+    store.seedService(svc)
+    const c = config({ errorUrl: 'https://a/errors' }) // healthUrl 沿用預設 https://a/health
+    store.seedPollConfig('s-1', c)
+    const body = JSON.stringify({ errors: [{ id: 'e-1', message: 'db down' }] })
+    const { http } = fakeHttp({
+      'https://a/health': { ok: true, status: 500, bodyText: '' },
+      'https://a/errors': { ok: true, status: 200, bodyText: body },
+    })
+    const pollableNow = (await store.listPollableServices())[0]
+    const outcome = await pollService(store, http, pollableNow, now)
+
+    expect(outcome.healthChecked).toBe(true)
+    expect(outcome.healthy).toBe(false)
+    expect(outcome.errorsProcessed).toBe(1)
+    // health 分支寫入的 poll state 不被 error 分支的 cursor 寫入蓋壞
+    expect((await store.getService('s-1'))?.poll).toEqual({
+      lastPollAt: now.toISOString(),
+      healthy: false,
+      consecutiveFailures: 1,
+    })
+    const after = (await store.listPollableServices())[0]
+    expect(after.config.cursor).toBe(now.toISOString())
+    // 兩類 issue 都建立：health_check_failed + polled error
+    expect(await store.listOpenIssues('s-1')).toHaveLength(2)
+  })
+})
+
 describe('runPoll', () => {
   it('polls only due services', async () => {
     const store = new InMemoryStore()
