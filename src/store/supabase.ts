@@ -126,7 +126,7 @@ export class SupabaseStore implements Store {
   }
 
   async updatePollState(serviceId: string, state: PollStateUpdate): Promise<void> {
-    const patch: Record<string, unknown> = {
+    const patch: Database['public']['Tables']['services']['Update'] = {
       last_poll_at: state.lastPollAt,
       last_poll_healthy: state.healthy,
       poll_consecutive_failures: state.consecutiveFailures,
@@ -134,7 +134,7 @@ export class SupabaseStore implements Store {
     if (state.cursor !== undefined) patch.poll_cursor = state.cursor
     const { data, error } = await this.client
       .from('services')
-      .update(patch as any)
+      .update(patch)
       .eq('id', serviceId)
       .select('id')
     if (error) throw new Error(`updatePollState failed: ${error.message}`)

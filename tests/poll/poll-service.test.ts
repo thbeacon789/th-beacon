@@ -172,4 +172,23 @@ describe('runPoll', () => {
     const outcomes = await runPoll(store, http, now)
     expect(outcomes.map((o) => o.serviceId)).toEqual(['s-1'])
   })
+
+  it('continues polling remaining services when one throws', async () => {
+    class ThrowingStore extends InMemoryStore {
+      async updatePollState(serviceId: string, state: import('@/store/contracts').PollStateUpdate): Promise<void> {
+        if (serviceId === 's-1') throw new Error('boom')
+        return super.updatePollState(serviceId, state)
+      }
+    }
+    const store = new ThrowingStore()
+    store.seedService(svc)
+    store.seedPollConfig('s-1', config())
+    store.seedService({ ...svc, id: 's-2', name: 'svc-b' })
+    store.seedPollConfig('s-2', config())
+    const { http } = fakeHttp({ 'https://a/health': { ok: true, status: 200, bodyText: 'ok' } })
+    const outcomes = await runPoll(store, http, now)
+    expect(outcomes).toHaveLength(2)
+    expect(outcomes[0]).toMatchObject({ serviceId: 's-1', error: 'boom' })
+    expect(outcomes[1]).toMatchObject({ serviceId: 's-2', healthy: true })
+  })
 })

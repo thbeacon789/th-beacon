@@ -78,7 +78,7 @@ beforeEach(async () => {
     priority: 100,
     severity: 'P0',
     tags: ['availability'],
-    match: { errorType: 'health_check_failed' } as Json,
+    match: { errorType: 'health_check_failed', minCountInWindow: 2, windowMinutes: 15 } as Json,
   })
 })
 
@@ -94,6 +94,14 @@ describe('GET /api/poll/services', () => {
     const first = await GET(cronRequest())
     expect(first.status).toBe(200)
     expect((await first.json()).polled).toBe(1)
+
+    // 第一輪失敗未達 threshold：不得 Down（threshold gate 真正生效）
+    const { data: mid } = await client
+      .from('services')
+      .select('health_status')
+      .eq('id', serviceId)
+      .single()
+    expect(mid?.health_status).toBe('healthy')
 
     // 第二次到期：把 last_poll_at 撥回過去
     await client

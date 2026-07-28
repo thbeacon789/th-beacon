@@ -19,6 +19,7 @@ export interface PollOutcome {
   errorsProcessed: number
   errorsTruncated: boolean
   errorFetchFailed: boolean
+  error?: string
 }
 
 export async function pollService(
@@ -124,7 +125,21 @@ export async function runPoll(store: Store, http: HttpGet, now: Date): Promise<P
   const due = pollables.filter((p) => isPollDue(p.lastPollAt, p.config.intervalSeconds, now))
   const outcomes: PollOutcome[] = []
   for (const pollable of due) {
-    outcomes.push(await pollService(store, http, pollable, now))
+    try {
+      outcomes.push(await pollService(store, http, pollable, now))
+    } catch (error) {
+      // 單一服務失敗不得中斷整輪：記為 outcome，繼續下一個
+      outcomes.push({
+        serviceId: pollable.service.id,
+        healthChecked: false,
+        healthy: null,
+        healthIssueResolved: false,
+        errorsProcessed: 0,
+        errorsTruncated: false,
+        errorFetchFailed: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
   return outcomes
 }
