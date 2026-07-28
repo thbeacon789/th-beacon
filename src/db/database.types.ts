@@ -109,6 +109,59 @@ export type Database = {
           },
         ]
       }
+      heartbeats: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          grace_seconds: number
+          id: string
+          interval_seconds: number
+          last_run_at: string | null
+          last_run_status: string | null
+          last_run_url: string | null
+          last_success_at: string | null
+          name: string
+          service_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          grace_seconds?: number
+          id?: string
+          interval_seconds: number
+          last_run_at?: string | null
+          last_run_status?: string | null
+          last_run_url?: string | null
+          last_success_at?: string | null
+          name: string
+          service_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          grace_seconds?: number
+          id?: string
+          interval_seconds?: number
+          last_run_at?: string | null
+          last_run_status?: string | null
+          last_run_url?: string | null
+          last_success_at?: string | null
+          name?: string
+          service_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "heartbeats_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       issues: {
         Row: {
           count: number

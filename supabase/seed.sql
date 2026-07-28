@@ -9,6 +9,12 @@ values (null, 100, 'P1', array['ci'], '{"errorType": "test_failure"}'::jsonb);
 insert into public.triage_rules (service_id, priority, severity, tags, match)
 values (null, 100, 'P0', array['availability'], '{"errorType": "health_check_failed", "minCountInWindow": 2, "windowMinutes": 15}'::jsonb);
 
+-- 心跳逾期：排程工作完全沒回報（workflow 被停用／cron 壞掉）。
+-- P1 而非 P0——排程沒跑不等於服務本體死亡（那是 health_check_failed 的 P0）。
+-- P1 已達 NOTIFY_MIN_SEVERITY，會發 Discord。
+insert into public.triage_rules (service_id, priority, severity, tags, match)
+values (null, 100, 'P1', array['heartbeat'], '{"errorType": "heartbeat_missed"}'::jsonb);
+
 -- 登入白名單（本地開發預設；正式環境由管理員在 Studio 維護 allowed_emails）
 insert into public.allowed_emails (email, note)
 values ('navibluer@gmail.com', 'dev admin');
