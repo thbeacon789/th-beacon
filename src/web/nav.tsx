@@ -8,7 +8,7 @@ export function NavBar() {
   if (pathname.startsWith('/login')) return null
   return (
     <nav className="nav">
-      <span className="brand">th-beacon</span>
+      <span className="brand">Transfer Helper Beacon</span>
       <Link href="/">服務總覽</Link>
       <Link href="/issues">檢傷列表</Link>
       <form action="/auth/signout" method="post">

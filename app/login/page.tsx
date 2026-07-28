@@ -11,7 +11,7 @@ export default async function LoginPage({
   return (
     <main className="login">
       <div className="card login-card">
-        <h1>th-beacon</h1>
+        <h1>Transfer Helper Beacon</h1>
         <GoogleLoginButton />
         {error !== null && <p className="error">{error}</p>}
       </div>
