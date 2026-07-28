@@ -70,6 +70,44 @@ describe('extractNotifyDetails', () => {
     })
   })
 
+  it('丟棄含 ) 的 runUrl（markdown 連結注入 payload）', () => {
+    const details = extractNotifyDetails({
+      runUrl: 'https://ci.example.com/1) [🔥點我看詳情](https://evil.example.com/phish',
+    })
+    expect(details).not.toHaveProperty('runUrl')
+  })
+
+  it('丟棄含空白或換行的 runUrl', () => {
+    expect(extractNotifyDetails({ runUrl: 'https://ci.example.com/run 1' })).not.toHaveProperty(
+      'runUrl',
+    )
+    expect(
+      extractNotifyDetails({ runUrl: 'https://ci.example.com/run\n1' }),
+    ).not.toHaveProperty('runUrl')
+  })
+
+  it('放行正常的 GitHub Actions run URL', () => {
+    expect(
+      extractNotifyDetails({
+        runUrl: 'https://github.com/org/repo/actions/runs/1234567890',
+      }),
+    ).toEqual({ runUrl: 'https://github.com/org/repo/actions/runs/1234567890' })
+  })
+
+  it('放行帶 query string 的 URL', () => {
+    expect(
+      extractNotifyDetails({ runUrl: 'https://ci.example.com/run?id=42&x=1' }),
+    ).toEqual({ runUrl: 'https://ci.example.com/run?id=42&x=1' })
+  })
+
+  it('scheme 驗證的對抗性測資', () => {
+    expect(extractNotifyDetails({ runUrl: ' https://x' })).not.toHaveProperty('runUrl')
+    expect(extractNotifyDetails({ runUrl: 'https:/evil' })).not.toHaveProperty('runUrl')
+    expect(extractNotifyDetails({ runUrl: 'HTTPS://ci.example.com/1' })).toEqual({
+      runUrl: 'HTTPS://ci.example.com/1',
+    })
+  })
+
   it('過長的值截斷至 1000 字元並補省略號', () => {
     const details = extractNotifyDetails({ summary: 'x'.repeat(2000) })
     expect(details.summary).toHaveLength(1000)
