@@ -3,6 +3,18 @@ import { computeFingerprint } from '@/core/fingerprint'
 
 export type HeartbeatRunStatus = 'pass' | 'fail'
 
+// runUrl 來自外部輸入（CI 回報、心跳表既有資料），且會被嵌進 markdown 連結
+// `[查看 run](${runUrl})` 或 dashboard 的 <a href>。除了 scheme 檢查，整串都必須落在
+// 合法 URL 字元白名單內——尤其要擋掉 `(`、`)`、空白（含換行/tab）與反引號，否則可被
+// 注入內容提前閉合連結、偽造第二個連結（釣魚），或以 `javascript:` 等 scheme 執行任意程式碼。
+// 用白名單而非黑名單更穩固。此為唯一權威實作，寫入端（parseHeartbeatPayload）、
+// 讀取端（web/queries extractRunUrl）、通知端（notify/message extractNotifyDetails）皆共用。
+const RUN_URL_PATTERN = /^https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'*+,;=%]+$/i
+
+export function isSafeRunUrl(value: unknown): value is string {
+  return typeof value === 'string' && RUN_URL_PATTERN.test(value)
+}
+
 export interface HeartbeatDefinition {
   name: string
   intervalSeconds: number

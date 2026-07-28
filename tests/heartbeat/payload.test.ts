@@ -42,4 +42,10 @@ describe('parseHeartbeatPayload', () => {
     const result = parseHeartbeatPayload({ name: 'x', status: 'pass', runUrl: 42 })
     expect(result.ok).toBe(false)
   })
+
+  it('runUrl 非 http(s) scheme 時拒絕', () => {
+    const result = parseHeartbeatPayload({ name: 'x', status: 'pass', runUrl: 'javascript:alert(1)' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.join()).toContain('runUrl')
+  })
 })

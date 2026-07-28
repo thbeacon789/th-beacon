@@ -1,4 +1,5 @@
 import type { Severity } from '@/core/types'
+import { isSafeRunUrl } from '@/core/heartbeat'
 
 export interface DiscordEmbedField {
   name: string
@@ -44,12 +45,9 @@ function pickString(metadata: Record<string, unknown>, key: string): string | un
   return value.length > FIELD_LIMIT ? `${value.slice(0, FIELD_LIMIT - 1)}…` : value
 }
 
-// runUrl 會被嵌進 markdown 連結 `[查看 run](${runUrl})`，因此除了 scheme 檢查，
-// 整串都必須落在合法 URL 字元白名單內——尤其要擋掉 `(`、`)`、空白（含換行/tab）與反引號，
-// 否則可被注入內容提前閉合連結、偽造第二個連結（釣魚）。用白名單而非黑名單更穩固。
-const RUN_URL_PATTERN = /^https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'*+,;=%]+$/i
-
 // metadata 來自外部（CI 回報／輪詢目標），一律白名單萃取，不整包倒進通知。
+// runUrl 會被嵌進 markdown 連結 `[查看 run](${runUrl})`，scheme／字元白名單見 isSafeRunUrl
+// （@/core/heartbeat）——與 web/queries.ts、heartbeat/payload.ts 共用同一份規則。
 export function extractNotifyDetails(metadata: Record<string, unknown>): NotifyDetails {
   const details: NotifyDetails = {}
   for (const key of TEXT_DETAIL_KEYS) {
@@ -57,7 +55,7 @@ export function extractNotifyDetails(metadata: Record<string, unknown>): NotifyD
     if (value !== undefined) details[key] = value
   }
   const runUrl = pickString(metadata, 'runUrl')
-  if (runUrl !== undefined && RUN_URL_PATTERN.test(runUrl)) details.runUrl = runUrl
+  if (runUrl !== undefined && isSafeRunUrl(runUrl)) details.runUrl = runUrl
   return details
 }
 

@@ -3,6 +3,7 @@ import {
   heartbeatFingerprint,
   heartbeatDueAt,
   isHeartbeatOverdue,
+  isSafeRunUrl,
   synthesizeHeartbeatMissedEvent,
   normalizeHeartbeatFailure,
   type HeartbeatDefinition,
@@ -41,6 +42,50 @@ describe('isHeartbeatOverdue', () => {
     const nograce = { ...base, graceSeconds: 0 }
     expect(isHeartbeatOverdue(nograce, new Date('2026-07-29T03:00:00.000Z'))).toBe(false)
     expect(isHeartbeatOverdue(nograce, new Date('2026-07-29T03:00:00.001Z'))).toBe(true)
+  })
+})
+
+describe('isSafeRunUrl', () => {
+  it('拒絕非 http(s) scheme', () => {
+    expect(isSafeRunUrl('javascript:alert(1)')).toBe(false)
+  })
+
+  it('拒絕含 ) 的注入 payload', () => {
+    expect(
+      isSafeRunUrl('https://ci.example.com/1) [🔥點我看詳情](https://evil.example.com/phish'),
+    ).toBe(false)
+  })
+
+  it('拒絕含空白或換行', () => {
+    expect(isSafeRunUrl('https://ci.example.com/run 1')).toBe(false)
+    expect(isSafeRunUrl('https://ci.example.com/run\n1')).toBe(false)
+  })
+
+  it('拒絕前置空白', () => {
+    expect(isSafeRunUrl(' https://x')).toBe(false)
+  })
+
+  it('拒絕單斜線 scheme', () => {
+    expect(isSafeRunUrl('https:/evil')).toBe(false)
+  })
+
+  it('拒絕非字串輸入', () => {
+    expect(isSafeRunUrl(42)).toBe(false)
+    expect(isSafeRunUrl(null)).toBe(false)
+    expect(isSafeRunUrl(undefined)).toBe(false)
+    expect(isSafeRunUrl({})).toBe(false)
+  })
+
+  it('放行正常的 GitHub Actions run URL', () => {
+    expect(isSafeRunUrl('https://github.com/org/repo/actions/runs/1234567890')).toBe(true)
+  })
+
+  it('放行帶 query string 的 URL', () => {
+    expect(isSafeRunUrl('https://ci.example.com/run?id=42&x=1')).toBe(true)
+  })
+
+  it('放行大小寫混合的 scheme', () => {
+    expect(isSafeRunUrl('HTTPS://ci.example.com/1')).toBe(true)
   })
 })
 

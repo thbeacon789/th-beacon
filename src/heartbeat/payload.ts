@@ -1,4 +1,4 @@
-import type { HeartbeatRunStatus } from '@/core/heartbeat'
+import { isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
 
 export interface RawHeartbeatReport {
   name: string
@@ -29,6 +29,11 @@ export function parseHeartbeatPayload(input: unknown): HeartbeatParseResult {
   }
   for (const key of ['runUrl', 'summary'] as const) {
     if (obj[key] !== undefined && typeof obj[key] !== 'string') errors.push(`${key} must be a string`)
+  }
+  // runUrl 會被寫進 heartbeats 表並在 dashboard 渲染成 <a href>，寫入端就要擋非 http(s)
+  // scheme（如 javascript:），不能只靠讀取端過濾——讀取端是防禦既有髒資料的最後一道。
+  if (typeof obj.runUrl === 'string' && !isSafeRunUrl(obj.runUrl)) {
+    errors.push('runUrl must be an http(s) URL')
   }
 
   if (errors.length > 0) return { ok: false, errors }

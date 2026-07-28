@@ -10,7 +10,7 @@ import {
   rowToIssue,
   rowToHeartbeat,
 } from '@/store/mapping'
-import { isHeartbeatOverdue, type HeartbeatRunStatus } from '@/core/heartbeat'
+import { isHeartbeatOverdue, isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
 
 type Client = SupabaseClient<Database>
 
@@ -78,7 +78,8 @@ export async function getServicesOverview(client: Client, now: Date): Promise<Se
             lastRunAt: hb.lastRunAt,
             lastSuccessAt: hb.lastSuccessAt,
             lastRunStatus: hb.lastRunStatus,
-            lastRunUrl: hb.lastRunUrl,
+            // 讀取端也要擋：DB 可能存有修正前寫入、或繞過 API 直接改 DB 的髒資料
+            lastRunUrl: isSafeRunUrl(hb.lastRunUrl) ? hb.lastRunUrl : null,
           }
         }),
     }
@@ -198,9 +199,9 @@ export async function getIssueDetail(client: Client, issueId: string): Promise<I
 }
 
 // event metadata 是外部輸入：只接受 http(s) 連結，避免渲染任意 scheme
+// 驗證規則與 isSafeRunUrl（@/core/heartbeat）共用，勿另開一套較寬鬆的檢查。
 export function extractRunUrl(metadata: unknown): string | null {
   if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null
   const value = (metadata as Record<string, unknown>).runUrl
-  if (typeof value !== 'string' || !/^https?:\/\//i.test(value)) return null
-  return value
+  return isSafeRunUrl(value) ? value : null
 }
