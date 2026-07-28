@@ -113,6 +113,31 @@ Body：
 
 邏輯放 `src/heartbeat/handle-heartbeat.ts`，route 只做 HTTP 轉接——比照 `handle-ingest` 的分層。
 
+### Discord 通知內容
+
+issue 的 `message` 必須固定才能聚合（見 §4），但**變動細節仍要出現在 Discord 通知裡**——否則收到告警只看得到「Test failed: daily-test」，得再點進 dashboard 才知道發生什麼事。
+
+`notifyStage`（`src/pipeline/process-and-notify.ts`）手上本來就持有當前的 `CanonicalEvent`，因此摘要不需要回查 DB：直接把 `event.metadata` 交給訊息組裝即可。
+
+新增純函式 `extractNotifyDetails(metadata): NotifyDetails`（放 `src/notify/message.ts`），**白名單**萃取已知鍵，不把整包 metadata 倒進 Discord：
+
+| 來源鍵 | Discord 呈現 | 出現於 |
+|---|---|---|
+| `summary` | 「失敗摘要」欄位 | `test_failure` |
+| `runUrl` | 「CI Run」欄位，markdown 連結 `[查看 run](url)` | `test_failure` |
+| `reason` | 「原因」欄位 | `health_check_failed` |
+| `lastRunAt` | 「最後回報」欄位 | `heartbeat_missed` |
+
+萃取規則（metadata 是外部輸入，不可信）：
+
+- 只接受 `typeof === 'string'` 的值，其餘型別忽略。
+- `runUrl` 須以 `https://` 或 `http://` 開頭，否則丟棄——避免把任意 scheme 的連結渲染進通知。
+- 每個 field value 截斷至 **1000 字元**（Discord 上限 1024，留 buffer），截斷時補 `…`。
+
+Discord 官方限制（2026-07-29 查證）：embed title 256、description 4096、field name 256、field value 1024、單一 embed 至多 25 個 field，且單則訊息所有 embed 的文字總和不得超過 6000 字元，超過會收到 Bad Request。現行實作已有 `DESCRIPTION_LIMIT = 500`，新增欄位後總量仍遠低於上限。
+
+`buildDiscordMessage` 增加可選參數 `details: NotifyDetails`，有值的鍵才附加成 field，維持既有三個欄位（次數／First seen／Last seen）不變。
+
 ### 與 `/api/ingest` 的分工
 
 | | 適用對象 | 額外提供 |
@@ -188,6 +213,7 @@ Supabase 與 memory 兩個 store 實作同步補上。
 - **`tests/core/heartbeat.test.ts`**：到期計算、寬限期邊界（剛好等於到期時刻不算逾期）、`last_run_at` 為 null 時以 `created_at` 為基準、fail 回報後仍以 `last_run_at` 判定不逾期。
 - **`tests/heartbeat/handle-heartbeat.test.ts`**：驗簽失敗 401、未登記名稱 404、payload 非法 422、pass 更新兩個時間戳並 resolve 兩類 issue、fail 只更新 `last_run_at` 且產生 `test_failure` issue。
 - **`tests/heartbeat/scan.test.ts`**：僅逾期者合成事件、`enabled=false` 跳過、單筆丟例外不中斷整輪、連續掃描聚合進同一筆 issue。
+- **`tests/notify/message.test.ts`**（既有檔案擴充）：`extractNotifyDetails` 忽略非字串值、丟棄非 http(s) 的 `runUrl`、超長值截斷至 1000 並補 `…`；`buildDiscordMessage` 在無 details 時輸出與現況一致（回歸保護）。
 - **整合測試**（需本地 stack）：打 `/api/heartbeat` → 驗證 DB 欄位更新與 issue 狀態轉換。
 
 ## 12. 已排除的替代方案
