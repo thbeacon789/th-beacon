@@ -1,8 +1,7 @@
 import Link from 'next/link'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { listIssues, type IssueListFilters } from '@/web/queries'
-import { narrowSeverity, narrowIssueStatus } from '@/store/mapping'
+import { listIssues, parseIssueFilters } from '@/web/queries'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,16 +15,7 @@ export default async function IssuesPage({
 }) {
   await requireUser()
   const params = await searchParams
-  const filters: IssueListFilters = {}
-  if (typeof params.serviceId === 'string' && params.serviceId !== '') {
-    filters.serviceId = params.serviceId
-  }
-  if (typeof params.severity === 'string' && params.severity !== '') {
-    filters.severity = narrowSeverity(params.severity)
-  }
-  if (typeof params.status === 'string' && params.status !== '') {
-    filters.status = narrowIssueStatus(params.status)
-  }
+  const filters = parseIssueFilters(params)
 
   const issues = await listIssues(createServerStore().rawClient(), filters)
 

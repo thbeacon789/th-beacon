@@ -63,6 +63,31 @@ export interface IssueListFilters {
   status?: IssueStatus
 }
 
+// searchParams 是不受信輸入：非法值視為未篩選（而非 throw 讓整頁 500）
+export function parseIssueFilters(
+  params: Record<string, string | string[] | undefined>,
+): IssueListFilters {
+  const filters: IssueListFilters = {}
+  if (typeof params.serviceId === 'string' && params.serviceId !== '') {
+    filters.serviceId = params.serviceId
+  }
+  if (typeof params.severity === 'string' && params.severity !== '') {
+    try {
+      filters.severity = narrowSeverity(params.severity)
+    } catch {
+      // ignore invalid
+    }
+  }
+  if (typeof params.status === 'string' && params.status !== '') {
+    try {
+      filters.status = narrowIssueStatus(params.status)
+    } catch {
+      // ignore invalid
+    }
+  }
+  return filters
+}
+
 export async function listIssues(client: Client, filters: IssueListFilters): Promise<IssueListItem[]> {
   let query = client
     .from('issues')
