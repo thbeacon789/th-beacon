@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { getIssueDetail } from '@/web/queries'
+import { getIssueDetail, extractRunUrl } from '@/web/queries'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -58,6 +58,18 @@ export default async function IssueDetailPage({
               <td>{event.level}</td>
               <td>
                 {event.message}
+                {extractRunUrl(event.metadata) !== null && (
+                  <>
+                    {' '}
+                    <a
+                      href={extractRunUrl(event.metadata) as string}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      查看 CI run
+                    </a>
+                  </>
+                )}
                 {event.metadata !== null && Object.keys(event.metadata as object).length > 0 && (
                   <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
                 )}

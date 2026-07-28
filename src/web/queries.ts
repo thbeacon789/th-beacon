@@ -8,7 +8,9 @@ import {
   narrowIssueStatus,
   narrowSeverity,
   rowToIssue,
+  rowToHeartbeat,
 } from '@/store/mapping'
+import { isHeartbeatOverdue, type HeartbeatRunStatus } from '@/core/heartbeat'
 
 type Client = SupabaseClient<Database>
 
@@ -18,14 +20,24 @@ export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value)
 }
 
+export interface HeartbeatSummary {
+  name: string
+  overdue: boolean
+  lastRunAt: string | null
+  lastSuccessAt: string | null
+  lastRunStatus: HeartbeatRunStatus | null
+  lastRunUrl: string | null
+}
+
 export interface ServiceOverview {
   id: string
   name: string
   healthStatus: HealthStatus
   openCounts: Record<Severity, number>
+  heartbeats: HeartbeatSummary[]
 }
 
-export async function getServicesOverview(client: Client): Promise<ServiceOverview[]> {
+export async function getServicesOverview(client: Client, now: Date): Promise<ServiceOverview[]> {
   const { data: services, error } = await client
     .from('services')
     .select('id,name,health_status')
@@ -38,6 +50,13 @@ export async function getServicesOverview(client: Client): Promise<ServiceOvervi
     .in('status', ['open', 'acknowledged'])
   if (issueError) throw new Error(`getServicesOverview issues failed: ${issueError.message}`)
 
+  const { data: heartbeatRows, error: hbError } = await client
+    .from('heartbeats')
+    .select('*')
+    .eq('enabled', true)
+    .order('name')
+  if (hbError) throw new Error(`getServicesOverview heartbeats failed: ${hbError.message}`)
+
   return services.map((service) => {
     const openCounts: Record<Severity, number> = { P0: 0, P1: 0, P2: 0 }
     for (const issue of openIssues.filter((i) => i.service_id === service.id)) {
@@ -48,6 +67,20 @@ export async function getServicesOverview(client: Client): Promise<ServiceOvervi
       name: service.name,
       healthStatus: narrowHealthStatus(service.health_status),
       openCounts,
+      // 逾期狀態即時推導：Hobby cron 一天一次，health_status 欄位不足以反映心跳狀態
+      heartbeats: heartbeatRows
+        .filter((row) => row.service_id === service.id)
+        .map((row) => {
+          const hb = rowToHeartbeat(row)
+          return {
+            name: hb.name,
+            overdue: isHeartbeatOverdue(hb, now),
+            lastRunAt: hb.lastRunAt,
+            lastSuccessAt: hb.lastSuccessAt,
+            lastRunStatus: hb.lastRunStatus,
+            lastRunUrl: hb.lastRunUrl,
+          }
+        }),
     }
   })
 }
@@ -162,4 +195,12 @@ export async function getIssueDetail(client: Client, issueId: string): Promise<I
       metadata: event.metadata,
     })),
   }
+}
+
+// event metadata 是外部輸入：只接受 http(s) 連結，避免渲染任意 scheme
+export function extractRunUrl(metadata: unknown): string | null {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null
+  const value = (metadata as Record<string, unknown>).runUrl
+  if (typeof value !== 'string' || !/^https?:\/\//i.test(value)) return null
+  return value
 }

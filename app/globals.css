@@ -207,3 +207,21 @@ pre {
   color: var(--lilac);
   font-size: 0.85rem;
 }
+.heartbeats {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  font-size: 0.85em;
+}
+
+.heartbeat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.2rem 0;
+}
+
+.heartbeat.overdue strong {
+  color: #e67e22;
+}

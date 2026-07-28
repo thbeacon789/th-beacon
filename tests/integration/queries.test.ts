@@ -39,7 +39,7 @@ beforeEach(async () => {
 
 describe('getServicesOverview', () => {
   it('returns services ordered by name with per-severity open counts', async () => {
-    const overview = await getServicesOverview(client)
+    const overview = await getServicesOverview(client, now)
     expect(overview.map((s) => s.name)).toEqual(['svc-a', 'svc-b'])
     expect(overview[0].openCounts).toEqual({ P0: 0, P1: 1, P2: 1 })
     expect(overview[0].healthStatus).toBe('degraded')
@@ -49,7 +49,7 @@ describe('getServicesOverview', () => {
   it('excludes resolved/ignored from counts', async () => {
     const issues = await listIssues(client, { serviceId: svcA, severity: 'P1' })
     await store.updateIssueStatus(issues[0].id, 'resolved')
-    const overview = await getServicesOverview(client)
+    const overview = await getServicesOverview(client, now)
     expect(overview[0].openCounts).toEqual({ P0: 0, P1: 0, P2: 1 })
   })
 })
