@@ -3,6 +3,8 @@ import { deriveHealth } from '@/core/health'
 import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
 import type { Store, StoredIssue } from '@/store/contracts'
 
+const SEVERITY_RANK: Record<Severity, number> = { P2: 0, P1: 1, P0: 2 }
+
 export interface ProcessResult {
   issue: StoredIssue
   created: boolean
@@ -32,12 +34,18 @@ export async function processEvent(
 
   const previousSeverity = created ? null : issue.severity
   const rules = await store.loadRules(event.serviceId)
-  const { severity, tags } = evaluateSeverity(issue, rules)
+  const { severity: evaluated, tags } = evaluateSeverity(issue, rules)
 
+  // Ratchet（已拍板）：severity 只升不降——頻率規則超窗回落時維持歷史最嚴重值，
+  // 避免 P0↔P2 震盪讓「升級才追發」的通知洗版。未升級時 tags 一併凍結。
+  const escalated = SEVERITY_RANK[evaluated] > SEVERITY_RANK[issue.severity]
   let triaged = issue
-  if (severity !== issue.severity || !sameTags(tags, issue.tags)) {
-    await store.updateIssueTriage(issue.id, severity, tags)
-    triaged = { ...issue, severity, tags }
+  if (escalated) {
+    await store.updateIssueTriage(issue.id, evaluated, tags)
+    triaged = { ...issue, severity: evaluated, tags }
+  } else if (created && !sameTags(tags, issue.tags)) {
+    await store.updateIssueTriage(issue.id, issue.severity, tags)
+    triaged = { ...issue, tags }
   }
 
   const openIssues = await store.listOpenIssues(event.serviceId)

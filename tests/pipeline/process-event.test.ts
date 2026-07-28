@@ -97,4 +97,33 @@ describe('processEvent', () => {
     const result = await processEvent(store, event({ serviceId: 's-2' }), now)
     expect(result.health).toBe('down')
   })
+
+  it('ratchet: severity never demotes when rules stop matching', async () => {
+    // 頻率規則：1 分鐘窗內 >=2 次 → P0
+    store.seedRule(null, {
+      id: 'freq',
+      priority: 10,
+      severity: 'P0',
+      tags: ['burst'],
+      match: { minCountInWindow: 2, windowMinutes: 1 },
+    })
+    await processEvent(store, event({ occurredAt: '2026-07-28T10:00:00.000Z' }), now)
+    const second = await processEvent(store, event({ occurredAt: '2026-07-28T10:00:30.000Z' }), now)
+    expect(second.issue.severity).toBe('P0')
+
+    // 第三次事件把 lastSeen-firstSeen 撐超過 1 分鐘窗 → 規則不再命中（evaluated P2）
+    const third = await processEvent(store, event({ occurredAt: '2026-07-28T10:05:00.000Z' }), now)
+    expect(third.issue.severity).toBe('P0') // 不降級
+    expect(third.issue.tags).toEqual(['burst']) // tags 凍結
+    expect(third.previousSeverity).toBe('P0')
+    const open = await store.listOpenIssues('s-1')
+    expect(open[0].severity).toBe('P0') // 持久化也未降
+  })
+
+  it('ratchet: created issue still gets initial tags for a P2 rule', async () => {
+    store.seedRule(null, { id: 'tagger', priority: 1, severity: 'P2', tags: ['noise'], match: {} })
+    const result = await processEvent(store, event(), now)
+    expect(result.issue.severity).toBe('P2')
+    expect(result.issue.tags).toEqual(['noise'])
+  })
 })
