@@ -12,14 +12,14 @@ const email = 'dash-test@example.com'
 const password = 'test-password-123'
 
 beforeAll(async () => {
-  const { url, serviceRoleKey } = getLocalSupabaseEnv()
+  const { url } = getLocalSupabaseEnv()
   admin = createServiceRoleClient()
 
-  // 讀 anon key（supabase status -o env 的 ANON_KEY；鍵名以實跑為準）
+  // 讀 publishable key（supabase status -o env 的 PUBLISHABLE_KEY；鍵名以實跑為準）
   const { execSync } = await import('node:child_process')
   const statusEnv = execSync('supabase status -o env', { encoding: 'utf8' })
-  const anonKey = statusEnv.match(/^ANON_KEY="?([^"\n]+)"?$/m)?.[1]
-  if (anonKey === undefined) throw new Error('ANON_KEY not found in supabase status')
+  const anonKey = statusEnv.match(/^PUBLISHABLE_KEY="?([^"\n]+)"?$/m)?.[1]
+  if (anonKey === undefined) throw new Error('PUBLISHABLE_KEY not found in supabase status')
 
   anonClient = createClient<Database>(url, anonKey, { auth: { persistSession: false } })
 

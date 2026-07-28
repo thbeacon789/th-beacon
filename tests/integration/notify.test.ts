@@ -30,9 +30,9 @@ function signedRequest(body: string): Request {
 }
 
 beforeAll(async () => {
-  const { url, serviceRoleKey } = getLocalSupabaseEnv()
+  const { url, secretKey } = getLocalSupabaseEnv()
   process.env.SUPABASE_URL = url
-  process.env.SUPABASE_SERVICE_ROLE_KEY = serviceRoleKey
+  process.env.SUPABASE_SECRET_KEY = secretKey
   client = createServiceRoleClient()
 
   discordStub = createServer((req, res) => {

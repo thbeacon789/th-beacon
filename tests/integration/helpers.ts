@@ -12,14 +12,14 @@ function readVar(output: string, name: string): string {
   return match[1]
 }
 
-export function getLocalSupabaseEnv(): { url: string; serviceRoleKey: string } {
+export function getLocalSupabaseEnv(): { url: string; secretKey: string } {
   const env = execSync('supabase status -o env', { encoding: 'utf8' })
-  return { url: readVar(env, 'API_URL'), serviceRoleKey: readVar(env, 'SERVICE_ROLE_KEY') }
+  return { url: readVar(env, 'API_URL'), secretKey: readVar(env, 'SECRET_KEY') }
 }
 
 export function createServiceRoleClient(): SupabaseClient<Database> {
-  const { url, serviceRoleKey } = getLocalSupabaseEnv()
-  return createClient<Database>(url, serviceRoleKey, { auth: { persistSession: false } })
+  const { url, secretKey } = getLocalSupabaseEnv()
+  return createClient<Database>(url, secretKey, { auth: { persistSession: false } })
 }
 
 export async function cleanDatabase(client: SupabaseClient<Database>): Promise<void> {

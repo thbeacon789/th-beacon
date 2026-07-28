@@ -26,9 +26,9 @@ function signedRequest(body: string, over: Record<string, string> = {}): Request
 }
 
 beforeAll(() => {
-  const { url, serviceRoleKey } = getLocalSupabaseEnv()
+  const { url, secretKey } = getLocalSupabaseEnv()
   process.env.SUPABASE_URL = url
-  process.env.SUPABASE_SERVICE_ROLE_KEY = serviceRoleKey
+  process.env.SUPABASE_SECRET_KEY = secretKey
   client = createServiceRoleClient()
 })
 

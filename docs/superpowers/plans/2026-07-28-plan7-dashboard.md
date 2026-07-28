@@ -1482,7 +1482,7 @@ Plan 7 交付 MVP dashboard——至此 **spec 的 MVP 範圍全部完成**（�
 ### 部署清單（go-live 前置，來自 Plan 7 最終 review；Vercel 行為項未實地驗證）
 
 1. **Hosted Supabase**：關閉 signup（**本地 config.toml 不會生效於雲端**，需在專案設定操作）；套用全部 migrations 與 seed；建正式使用者。
-2. **Vercel env**：`NEXT_PUBLIC_SUPABASE_URL`／`NEXT_PUBLIC_SUPABASE_ANON_KEY`／`SUPABASE_URL`／`SUPABASE_SERVICE_ROLE_KEY`／`CRON_SECRET`／`DISCORD_WEBHOOK_URL`（選）／`APP_URL`（選）。
+2. **Vercel env**：`NEXT_PUBLIC_SUPABASE_URL`／`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`（sb_publishable_...）／`SUPABASE_URL`／`SUPABASE_SECRET_KEY`（sb_secret_...）／`CRON_SECRET`／`DISCORD_WEBHOOK_URL`（選）／`APP_URL`（選）。金鑰用 hosted 專案的新制 API keys（非 legacy anon/service_role JWT）。
 3. **Vercel Cron**：實地驗證 `CRON_SECRET` 的 Bearer 注入行為；方案的 cron 頻率限制；評估 poll route `maxDuration` vs 服務數×timeout 上界。
 4. **Next 16**：middleware→proxy 改名警告，升版前處理。
 

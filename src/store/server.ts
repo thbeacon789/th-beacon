@@ -6,9 +6,9 @@ import type { NotifyDeps } from '@/pipeline/process-and-notify'
 
 export function createServerStore(): SupabaseStore {
   const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const key = process.env.SUPABASE_SECRET_KEY
   if (url === undefined || key === undefined) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set')
+    throw new Error('SUPABASE_URL and SUPABASE_SECRET_KEY must be set')
   }
   return new SupabaseStore(createClient<Database>(url, key, { auth: { persistSession: false } }))
 }
