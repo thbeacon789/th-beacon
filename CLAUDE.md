@@ -2,12 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 目前狀態：Plan 1–2 已完成，Plan 3 起尚未動工
+## 目前狀態：Plan 1–8 全部完成，尚未部署
 
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
+心跳存活證明另有專屬 spec：`docs/superpowers/specs/2026-07-29-heartbeat-liveness-design.md`
 
-進度：**MVP 全部完成**（Plan 1–7）：`src/core/` 純邏輯 → 本地 Supabase schema/RLS → Store port + `processEvent` → `POST /api/ingest`（HMAC）→ 服務輪詢器（cron）→ Discord 通知器（ratchet + 冷卻/升級，`processAndNotify` 唯一入口）→ dashboard（Google OAuth 登入 + `allowed_emails` 白名單經 before_user_created hook 把關、server-side service_role 讀取、Realtime、trading-stream 像素視覺）。**未完事項**：部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md` 的「部署清單」；reopen 復發語意與恢復通知另案（Plan 6 交接）。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+進度：**MVP 全部完成**（Plan 1–7）：`src/core/` 純邏輯 → 本地 Supabase schema/RLS → Store port + `processEvent` → `POST /api/ingest`（HMAC）→ 服務輪詢器（cron）→ Discord 通知器（ratchet + 冷卻/升級，`processAndNotify` 唯一入口）→ dashboard（Google OAuth 登入 + `allowed_emails` 白名單經 before_user_created hook 把關、server-side service_role 讀取、Realtime、trading-stream 像素視覺）。
+
+**Plan 8（心跳存活證明）已完成**：`POST /api/heartbeat` 單一入口，CI 在 `if: always()` 下回報 `{name, status: pass|fail, runUrl, summary}`；具名心跳表 `heartbeats` 預先登記（未登記名稱回 404）；逾期判定用 `last_run_at`（有沒有回報）而非 `last_success_at`（有沒有成功），與 `test_failure` 正交；逾期掃描掛在既有 cron route；dashboard 的心跳逾期在**讀取端即時推導**並把燈號取最差（Hobby cron 一天一次，`health_status` 欄位會過期）。
+
+**未完事項**：部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md` 的「部署清單」；心跳上線前必須先在 DB 登記 `heartbeats` 列再接 CI（順序反了 CI 會收 404）；reopen 復發語意與恢復通知另案（Plan 6 交接）。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 
