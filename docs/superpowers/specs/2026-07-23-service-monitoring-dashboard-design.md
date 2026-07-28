@@ -99,6 +99,7 @@
 - **檢傷列表**：可依 service / severity / status 篩選；列出聚合後的 issue。
 - **事件詳情**：單一 issue 的 metadata、原始事件、發生趨勢；可手動改操作狀態。
 - **即時更新**：透過 Supabase Realtime 訂閱 issue 變動，前端即時反映。
+- **實作定案**：讀取走 server components + service_role（`services`/`events` 不開瀏覽器端 policy，敏感欄位不出伺服器）；RLS 僅 `issues` 開 authenticated SELECT 供 Realtime；即時更新=訂閱 issues 變更後 `router.refresh()`；狀態變更走 server action（驗 session → 更新 → 立即重算健康度）。趨勢圖表列未來擴充。
 
 ## 5. 資料模型（Supabase 表）
 
@@ -112,7 +113,7 @@
 
 ## 6. 存取控制
 
-- **Dashboard**：Supabase Auth 登入，限公司成員（網域 / allowlist）。middleware 保護 dashboard 頁面與管理型 API。
+- **Dashboard**：Supabase Auth 登入（invite-only email/password，signup 關閉，成員由管理者建立；網域 allowlist 列未來擴充）。middleware 保護除 `/login` 與自帶驗證 API 外的全部路徑。
 - **Ingest webhook**：公開路由，但以每服務 secret 的 HMAC 簽章驗證。
 - **Cron 路由**：以 Vercel Cron secret / 內部 token 驗證，避免被外部觸發。
 
