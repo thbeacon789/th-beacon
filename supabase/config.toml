@@ -326,6 +326,8 @@ enabled = true
 # Google Cloud Console 建立的 OAuth client（Web application）；值放 supabase/.env（gitignored）
 client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+# GoTrue 的 OAuth 回呼端點（與 Google Cloud Console 的 Authorized redirect URI 一致）
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
 # 本地以 signInWithOAuth 走 GoTrue callback 時官方註記需跳過 nonce 檢查
 skip_nonce_check = true
 
