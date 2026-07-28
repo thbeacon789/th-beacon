@@ -3,13 +3,14 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
   rowToIssue,
   rowToService,
   ruleRowToTriageRule,
+  rowToPollConfig,
 } from '@/store/mapping'
 
 export class SupabaseStore implements Store {
@@ -78,11 +79,13 @@ export class SupabaseStore implements Store {
   }
 
   async updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void> {
-    const { error } = await this.client
+    const { data, error } = await this.client
       .from('issues')
       .update({ severity, tags })
       .eq('id', issueId)
+      .select('id')
     if (error) throw new Error(`updateIssueTriage failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
   }
 
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
@@ -100,10 +103,58 @@ export class SupabaseStore implements Store {
   }
 
   async updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void> {
-    const { error } = await this.client
+    const { data, error } = await this.client
       .from('services')
       .update({ health_status: health })
       .eq('id', serviceId)
+      .select('id')
     if (error) throw new Error(`updateServiceHealth failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown service: ${serviceId}`)
+  }
+
+  async listPollableServices(): Promise<PollableService[]> {
+    const { data, error } = await this.client
+      .from('services')
+      .select('*')
+      .or('poll_health_url.not.is.null,poll_error_url.not.is.null')
+    if (error) throw new Error(`listPollableServices failed: ${error.message}`)
+    return data.map((row) => ({
+      service: rowToService(row),
+      config: rowToPollConfig(row),
+      lastPollAt: row.last_poll_at,
+    }))
+  }
+
+  async updatePollState(serviceId: string, state: PollStateUpdate): Promise<void> {
+    let query = this.client
+      .from('services')
+      .update({
+        last_poll_at: state.lastPollAt,
+        last_poll_healthy: state.healthy,
+        poll_consecutive_failures: state.consecutiveFailures,
+      })
+    if (state.cursor !== undefined) {
+      query = this.client.from('services').update({
+        last_poll_at: state.lastPollAt,
+        last_poll_healthy: state.healthy,
+        poll_consecutive_failures: state.consecutiveFailures,
+        poll_cursor: state.cursor,
+      })
+    }
+    const { data, error } = await query.eq('id', serviceId).select('id')
+    if (error) throw new Error(`updatePollState failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown service: ${serviceId}`)
+  }
+
+  async resolveHealthCheckIssue(serviceId: string): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('issues')
+      .update({ status: 'resolved' })
+      .eq('service_id', serviceId)
+      .eq('error_type', 'health_check_failed')
+      .in('status', ['open', 'acknowledged'])
+      .select('id')
+    if (error) throw new Error(`resolveHealthCheckIssue failed: ${error.message}`)
+    return data.length > 0
   }
 }

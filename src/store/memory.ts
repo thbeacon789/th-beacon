@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -14,6 +14,8 @@ export class InMemoryStore implements Store {
   private dedup = new Map<string, string>() // key: `${serviceId}:${externalId}` → issueId
   private rules: SeededRule[] = []
   private secrets = new Map<string, string | null>() // serviceId → webhookSecret
+  private pollConfigs = new Map<string, PollConfig>()
+  private lastPollAts = new Map<string, string>()
   private nextId = 1
 
   seedService(service: ServiceRecord, webhookSecret: string | null = null): void {
@@ -23,6 +25,10 @@ export class InMemoryStore implements Store {
 
   seedRule(serviceId: string | null, rule: TriageRule): void {
     this.rules.push({ serviceId, rule })
+  }
+
+  seedPollConfig(serviceId: string, config: PollConfig): void {
+    this.pollConfigs.set(serviceId, { ...config })
   }
 
   setIssueStatus(issueId: string, status: IssueStatus): void {
@@ -134,6 +140,56 @@ export class InMemoryStore implements Store {
     const service = this.services.get(serviceId)
     if (service === undefined) throw new Error(`unknown service: ${serviceId}`)
     this.services.set(serviceId, { ...service, healthStatus: health })
+  }
+
+  async listPollableServices(): Promise<PollableService[]> {
+    const result: PollableService[] = []
+    for (const [serviceId, config] of this.pollConfigs) {
+      const service = this.services.get(serviceId)
+      if (service === undefined) continue
+      if (config.healthUrl === null && config.errorUrl === null) continue
+      result.push({
+        service: { ...service, poll: service.poll ? { ...service.poll } : null },
+        config: { ...config },
+        lastPollAt: this.lastPollAts.get(serviceId) ?? null,
+      })
+    }
+    return result
+  }
+
+  async updatePollState(serviceId: string, state: PollStateUpdate): Promise<void> {
+    const service = this.services.get(serviceId)
+    if (service === undefined) throw new Error(`unknown service: ${serviceId}`)
+    this.lastPollAts.set(serviceId, state.lastPollAt)
+    const config = this.pollConfigs.get(serviceId)
+    if (state.cursor !== undefined && config !== undefined) {
+      this.pollConfigs.set(serviceId, { ...config, cursor: state.cursor })
+    }
+    if (config?.healthUrl != null) {
+      this.services.set(serviceId, {
+        ...service,
+        poll: {
+          lastPollAt: state.lastPollAt,
+          healthy: state.healthy,
+          consecutiveFailures: state.consecutiveFailures,
+        },
+      })
+    }
+  }
+
+  async resolveHealthCheckIssue(serviceId: string): Promise<boolean> {
+    let changed = false
+    for (const [key, issue] of this.issues) {
+      if (
+        issue.serviceId === serviceId &&
+        issue.errorType === 'health_check_failed' &&
+        (issue.status === 'open' || issue.status === 'acknowledged')
+      ) {
+        this.issues.set(key, { ...issue, status: 'resolved' })
+        changed = true
+      }
+    }
+    return changed
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {

@@ -26,6 +26,28 @@ export interface UpsertOutcome {
   duplicate: boolean
 }
 
+export interface PollConfig {
+  healthUrl: string | null
+  errorUrl: string | null
+  intervalSeconds: number | null
+  timeoutMs: number
+  expectedStatus: number
+  cursor: string | null
+}
+
+export interface PollableService {
+  service: ServiceRecord
+  config: PollConfig
+  lastPollAt: string | null
+}
+
+export interface PollStateUpdate {
+  lastPollAt: string
+  healthy: boolean | null
+  consecutiveFailures: number
+  cursor?: string
+}
+
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
   getServiceByName(name: string): Promise<ServiceAuth | null>
@@ -34,4 +56,7 @@ export interface Store {
   updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void>
   listOpenIssues(serviceId: string): Promise<OpenIssue[]>
   updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void>
+  listPollableServices(): Promise<PollableService[]>
+  updatePollState(serviceId: string, state: PollStateUpdate): Promise<void>
+  resolveHealthCheckIssue(serviceId: string): Promise<boolean>
 }

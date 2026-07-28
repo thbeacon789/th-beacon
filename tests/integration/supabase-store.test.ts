@@ -193,3 +193,50 @@ describe('SupabaseStore.getServiceByName', () => {
     expect(await store.getServiceByName('no-such-service')).toBeNull()
   })
 })
+
+describe('SupabaseStore poll extensions', () => {
+  it('listPollableServices/updatePollState roundtrip incl. cursor', async () => {
+    await client
+      .from('services')
+      .update({ poll_health_url: 'https://a/health', poll_error_url: 'https://a/errors' })
+      .eq('id', serviceId)
+    const before = await store.listPollableServices()
+    expect(before).toHaveLength(1)
+    expect(before[0].config).toMatchObject({
+      healthUrl: 'https://a/health',
+      errorUrl: 'https://a/errors',
+      timeoutMs: 5000,
+      expectedStatus: 200,
+      cursor: null,
+    })
+    await store.updatePollState(serviceId, {
+      lastPollAt: '2026-07-28T10:00:00.000Z',
+      healthy: true,
+      consecutiveFailures: 0,
+      cursor: '2026-07-28T10:00:00.000Z',
+    })
+    const after = await store.listPollableServices()
+    expect(after[0].lastPollAt).not.toBeNull()
+    expect(after[0].config.cursor).not.toBeNull()
+  })
+
+  it('unknown ids reject across update methods (0-rows unified)', async () => {
+    const ghost = '00000000-0000-0000-0000-000000000001'
+    await expect(store.updateServiceHealth(ghost, 'down')).rejects.toThrow(/unknown service/)
+    await expect(store.updateIssueTriage(ghost, 'P0', [])).rejects.toThrow(/unknown issue/)
+    await expect(
+      store.updatePollState(ghost, { lastPollAt: '2026-07-28T10:00:00.000Z', healthy: null, consecutiveFailures: 0 }),
+    ).rejects.toThrow(/unknown service/)
+  })
+
+  it('resolveHealthCheckIssue resolves health issues only', async () => {
+    await store.upsertIssueWithEvent(event({ errorType: 'health_check_failed', fingerprint: 'fp-h', source: 'poll' }))
+    await store.upsertIssueWithEvent(event({ fingerprint: 'fp-o' }))
+    expect(await store.resolveHealthCheckIssue(serviceId)).toBe(true)
+    expect(await store.resolveHealthCheckIssue(serviceId)).toBe(false)
+    const { data } = await client.from('issues').select('error_type,status').eq('service_id', serviceId)
+    const byType = Object.fromEntries(data!.map((r) => [r.error_type, r.status]))
+    expect(byType.health_check_failed).toBe('resolved')
+    expect(byType.TypeError).toBe('open')
+  })
+})

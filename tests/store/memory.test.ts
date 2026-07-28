@@ -12,6 +12,16 @@ const svc: ServiceRecord = {
   poll: null,
 }
 
+const pollConfig = (over: Partial<import('@/store/contracts').PollConfig> = {}) => ({
+  healthUrl: 'https://a/health',
+  errorUrl: null,
+  intervalSeconds: 60,
+  timeoutMs: 5000,
+  expectedStatus: 200,
+  cursor: null,
+  ...over,
+})
+
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({
   serviceId: 's-1',
   source: 'push',
@@ -178,5 +188,47 @@ describe('InMemoryStore', () => {
     })
     expect(await store.getServiceByName('svc-a')).toEqual({ service: svc, webhookSecret: null })
     expect(await store.getServiceByName('nope')).toBeNull()
+  })
+
+  it('listPollableServices returns only services with poll config', async () => {
+    store.seedService({ ...svc, id: 's-p', name: 'svc-p' })
+    store.seedPollConfig('s-p', pollConfig())
+    const pollables = await store.listPollableServices()
+    expect(pollables).toHaveLength(1)
+    expect(pollables[0].service.id).toBe('s-p')
+    expect(pollables[0].lastPollAt).toBeNull()
+  })
+
+  it('updatePollState updates lastPollAt/poll and rejects unknown id', async () => {
+    store.seedService({ ...svc, id: 's-p', name: 'svc-p' })
+    store.seedPollConfig('s-p', pollConfig())
+    await store.updatePollState('s-p', {
+      lastPollAt: '2026-07-28T10:00:00.000Z',
+      healthy: false,
+      consecutiveFailures: 2,
+      cursor: 'c-1',
+    })
+    const pollables = await store.listPollableServices()
+    expect(pollables[0].lastPollAt).toBe('2026-07-28T10:00:00.000Z')
+    expect(pollables[0].config.cursor).toBe('c-1')
+    expect((await store.getService('s-p'))?.poll).toEqual({
+      lastPollAt: '2026-07-28T10:00:00.000Z',
+      healthy: false,
+      consecutiveFailures: 2,
+    })
+    await expect(
+      store.updatePollState('nope', { lastPollAt: 'x', healthy: null, consecutiveFailures: 0 }),
+    ).rejects.toThrow(/unknown service/)
+  })
+
+  it('resolveHealthCheckIssue resolves only health_check_failed open issues', async () => {
+    const health = await store.upsertIssueWithEvent(event({ errorType: 'health_check_failed', fingerprint: 'fp-h' }))
+    const other = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-o' }))
+    expect(await store.resolveHealthCheckIssue('s-1')).toBe(true)
+    expect(await store.resolveHealthCheckIssue('s-1')).toBe(false) // 已無可 resolve
+    const open = await store.listOpenIssues('s-1')
+    expect(open).toHaveLength(1) // 只剩 other
+    void health
+    void other
   })
 })

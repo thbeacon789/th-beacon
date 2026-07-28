@@ -1,7 +1,7 @@
 import type { Database } from '@/db/database.types'
 import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
-import type { ServiceRecord, StoredIssue } from '@/store/contracts'
+import type { ServiceRecord, StoredIssue, PollConfig } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
@@ -89,5 +89,16 @@ export function ruleRowToTriageRule(row: RuleRow): TriageRule {
     severity: narrowSeverity(row.severity),
     tags: row.tags,
     match,
+  }
+}
+
+export function rowToPollConfig(row: ServiceRow): PollConfig {
+  return {
+    healthUrl: row.poll_health_url,
+    errorUrl: row.poll_error_url,
+    intervalSeconds: row.poll_interval_seconds,
+    timeoutMs: row.poll_timeout_ms,
+    expectedStatus: row.poll_expected_status,
+    cursor: row.poll_cursor,
   }
 }
