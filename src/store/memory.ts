@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -17,7 +17,12 @@ export class InMemoryStore implements Store {
   private pollConfigs = new Map<string, PollConfig>()
   private lastPollAts = new Map<string, string>()
   private notifications: NotificationRecord[] = []
+  private heartbeats: StoredHeartbeat[] = []
   private nextId = 1
+
+  seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
+    this.heartbeats.push({ ...hb, serviceId })
+  }
 
   seedService(service: ServiceRecord, webhookSecret: string | null = null): void {
     this.services.set(service.id, service)
@@ -216,6 +221,49 @@ export class InMemoryStore implements Store {
 
   async recordNotification(record: NotificationRecord): Promise<void> {
     this.notifications.push({ ...record })
+  }
+
+  async listEnabledHeartbeats(): Promise<StoredHeartbeat[]> {
+    return this.heartbeats.filter((h) => h.enabled).map((h) => ({ ...h }))
+  }
+
+  async listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]> {
+    return this.heartbeats.filter((h) => h.serviceId === serviceId).map((h) => ({ ...h }))
+  }
+
+  async recordHeartbeatRun(
+    serviceId: string,
+    name: string,
+    run: HeartbeatRun,
+  ): Promise<StoredHeartbeat | null> {
+    const index = this.heartbeats.findIndex((h) => h.serviceId === serviceId && h.name === name)
+    if (index === -1) return null
+    const current = this.heartbeats[index]
+    const updated: StoredHeartbeat = {
+      ...current,
+      lastRunAt: run.at,
+      lastRunStatus: run.status,
+      lastRunUrl: run.runUrl,
+      // pass 才推進 last_success_at；fail 保留舊值
+      lastSuccessAt: run.status === 'pass' ? run.at : current.lastSuccessAt,
+    }
+    this.heartbeats[index] = updated
+    return { ...updated }
+  }
+
+  async resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean> {
+    let changed = false
+    for (const [key, issue] of this.issues) {
+      if (
+        issue.serviceId === serviceId &&
+        issue.fingerprint === fingerprint &&
+        (issue.status === 'open' || issue.status === 'acknowledged')
+      ) {
+        this.issues.set(key, { ...issue, status: 'resolved' })
+        changed = true
+      }
+    }
+    return changed
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {

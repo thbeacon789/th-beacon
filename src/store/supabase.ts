@@ -3,7 +3,7 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -11,6 +11,7 @@ import {
   rowToService,
   ruleRowToTriageRule,
   rowToPollConfig,
+  rowToHeartbeat,
 } from '@/store/mapping'
 
 export class SupabaseStore implements Store {
@@ -196,5 +197,55 @@ export class SupabaseStore implements Store {
       sent_at: record.sentAt,
     })
     if (error) throw new Error(`recordNotification failed: ${error.message}`)
+  }
+
+  async listEnabledHeartbeats(): Promise<StoredHeartbeat[]> {
+    const { data, error } = await this.client.from('heartbeats').select('*').eq('enabled', true)
+    if (error) throw new Error(`listEnabledHeartbeats failed: ${error.message}`)
+    return data.map(rowToHeartbeat)
+  }
+
+  async listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]> {
+    const { data, error } = await this.client
+      .from('heartbeats')
+      .select('*')
+      .eq('service_id', serviceId)
+      .order('name')
+    if (error) throw new Error(`listHeartbeatsByService failed: ${error.message}`)
+    return data.map(rowToHeartbeat)
+  }
+
+  async recordHeartbeatRun(
+    serviceId: string,
+    name: string,
+    run: HeartbeatRun,
+  ): Promise<StoredHeartbeat | null> {
+    const patch = {
+      last_run_at: run.at,
+      last_run_status: run.status,
+      last_run_url: run.runUrl,
+      // pass 才推進 last_success_at；fail 不帶這個鍵，保留舊值
+      ...(run.status === 'pass' ? { last_success_at: run.at } : {}),
+    }
+    const { data, error } = await this.client
+      .from('heartbeats')
+      .update(patch)
+      .eq('service_id', serviceId)
+      .eq('name', name)
+      .select('*')
+    if (error) throw new Error(`recordHeartbeatRun failed: ${error.message}`)
+    return data.length === 0 ? null : rowToHeartbeat(data[0])
+  }
+
+  async resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('issues')
+      .update({ status: 'resolved' })
+      .eq('service_id', serviceId)
+      .eq('fingerprint', fingerprint)
+      .in('status', ['open', 'acknowledged'])
+      .select('id')
+    if (error) throw new Error(`resolveIssueByFingerprint failed: ${error.message}`)
+    return data.length > 0
   }
 }

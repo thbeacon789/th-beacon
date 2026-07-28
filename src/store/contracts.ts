@@ -1,6 +1,7 @@
 import type { CanonicalEvent, HealthStatus, Issue, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
+import type { HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 
 export interface StoredIssue extends Issue {
   id: string
@@ -64,6 +65,21 @@ export interface NotificationRecord {
   sentAt: string
 }
 
+export interface StoredHeartbeat extends HeartbeatDefinition {
+  id: string
+  serviceId: string
+  enabled: boolean
+  lastSuccessAt: string | null
+  lastRunStatus: HeartbeatRunStatus | null
+  lastRunUrl: string | null
+}
+
+export interface HeartbeatRun {
+  status: HeartbeatRunStatus
+  runUrl: string | null
+  at: string // ISO 8601
+}
+
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
   getServiceByName(name: string): Promise<ServiceAuth | null>
@@ -78,4 +94,8 @@ export interface Store {
   resolveHealthCheckIssue(serviceId: string): Promise<boolean>
   getLatestSentNotification(serviceId: string, fingerprint: string): Promise<LatestNotification | null>
   recordNotification(record: NotificationRecord): Promise<void>
+  listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
+  listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]>
+  recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
+  resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean>
 }

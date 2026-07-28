@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { InMemoryStore } from '@/store/memory'
-import type { ServiceRecord } from '@/store/contracts'
+import type { ServiceRecord, StoredHeartbeat } from '@/store/contracts'
 import type { CanonicalEvent } from '@/core/types'
 
 const svc: ServiceRecord = {
@@ -262,5 +262,107 @@ describe('InMemoryStore', () => {
     updated.tags.push('mutate') // 呼叫端改動不得污染 store
     expect((await store.listOpenIssues('s-1'))[0].status).toBe('acknowledged')
     await expect(store.updateIssueStatus('nope', 'resolved')).rejects.toThrow(/unknown issue/)
+  })
+})
+
+describe('InMemoryStore 心跳', () => {
+  const svc: ServiceRecord = {
+    id: 's-1',
+    name: 'svc-a',
+    healthWindowMinutes: 15,
+    healthFailureThreshold: 2,
+    healthStatus: 'healthy',
+    poll: null,
+    discordWebhookUrl: null,
+  }
+  const hb: Omit<StoredHeartbeat, 'serviceId'> = {
+    id: 'hb-1',
+    name: 'daily-test',
+    intervalSeconds: 86_400,
+    graceSeconds: 3_600,
+    enabled: true,
+    lastRunAt: null,
+    lastSuccessAt: null,
+    lastRunStatus: null,
+    lastRunUrl: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+  }
+
+  let store: InMemoryStore
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService(svc)
+    store.seedHeartbeat('s-1', hb)
+  })
+
+  it('pass 回報同時更新 last_run_at 與 last_success_at', async () => {
+    const updated = await store.recordHeartbeatRun('s-1', 'daily-test', {
+      status: 'pass',
+      runUrl: 'https://ci/run/1',
+      at: '2026-07-29T03:00:00.000Z',
+    })
+    expect(updated?.lastRunAt).toBe('2026-07-29T03:00:00.000Z')
+    expect(updated?.lastSuccessAt).toBe('2026-07-29T03:00:00.000Z')
+    expect(updated?.lastRunStatus).toBe('pass')
+    expect(updated?.lastRunUrl).toBe('https://ci/run/1')
+  })
+
+  it('fail 回報只更新 last_run_at，不動 last_success_at', async () => {
+    await store.recordHeartbeatRun('s-1', 'daily-test', {
+      status: 'pass',
+      runUrl: null,
+      at: '2026-07-28T03:00:00.000Z',
+    })
+    const updated = await store.recordHeartbeatRun('s-1', 'daily-test', {
+      status: 'fail',
+      runUrl: null,
+      at: '2026-07-29T03:00:00.000Z',
+    })
+    expect(updated?.lastRunAt).toBe('2026-07-29T03:00:00.000Z')
+    expect(updated?.lastSuccessAt).toBe('2026-07-28T03:00:00.000Z')
+    expect(updated?.lastRunStatus).toBe('fail')
+  })
+
+  it('未登記的心跳回傳 null', async () => {
+    const result = await store.recordHeartbeatRun('s-1', 'nope', {
+      status: 'pass',
+      runUrl: null,
+      at: '2026-07-29T03:00:00.000Z',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('listEnabledHeartbeats 略過 enabled=false', async () => {
+    store.seedHeartbeat('s-1', { ...hb, id: 'hb-2', name: 'off', enabled: false })
+    const list = await store.listEnabledHeartbeats()
+    expect(list.map((h) => h.name)).toEqual(['daily-test'])
+  })
+
+  it('resolveIssueByFingerprint 只關掉指定指紋的未解 issue', async () => {
+    await store.upsertIssueWithEvent({
+      serviceId: 's-1',
+      source: 'poll',
+      level: 'error',
+      errorType: 'heartbeat_missed',
+      message: 'Heartbeat missed: daily-test',
+      fingerprint: 'fp-a',
+      occurredAt: '2026-07-29T01:00:00.000Z',
+      metadata: {},
+    })
+    await store.upsertIssueWithEvent({
+      serviceId: 's-1',
+      source: 'push',
+      level: 'error',
+      errorType: 'other',
+      message: 'unrelated',
+      fingerprint: 'fp-b',
+      occurredAt: '2026-07-29T01:00:00.000Z',
+      metadata: {},
+    })
+
+    expect(await store.resolveIssueByFingerprint('s-1', 'fp-a')).toBe(true)
+    const open = await store.listOpenIssues('s-1')
+    expect(open).toHaveLength(1)
+    expect(await store.resolveIssueByFingerprint('s-1', 'fp-a')).toBe(false)
   })
 })

@@ -1,11 +1,13 @@
 import type { Database } from '@/db/database.types'
 import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
-import type { ServiceRecord, StoredIssue, PollConfig } from '@/store/contracts'
+import type { HeartbeatRunStatus } from '@/core/heartbeat'
+import type { ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
 type RuleRow = Database['public']['Tables']['triage_rules']['Row']
+type HeartbeatRow = Database['public']['Tables']['heartbeats']['Row']
 
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 const ISSUE_STATUSES: readonly IssueStatus[] = ['open', 'acknowledged', 'resolved', 'ignored']
@@ -101,5 +103,26 @@ export function rowToPollConfig(row: ServiceRow): PollConfig {
     timeoutMs: row.poll_timeout_ms,
     expectedStatus: row.poll_expected_status,
     cursor: row.poll_cursor,
+  }
+}
+
+const RUN_STATUSES: readonly HeartbeatRunStatus[] = ['pass', 'fail']
+
+export function rowToHeartbeat(row: HeartbeatRow): StoredHeartbeat {
+  return {
+    id: row.id,
+    serviceId: row.service_id,
+    name: row.name,
+    intervalSeconds: row.interval_seconds,
+    graceSeconds: row.grace_seconds,
+    enabled: row.enabled,
+    lastRunAt: row.last_run_at,
+    lastSuccessAt: row.last_success_at,
+    lastRunStatus:
+      row.last_run_status === null
+        ? null
+        : narrow(row.last_run_status, RUN_STATUSES, 'heartbeat run status'),
+    lastRunUrl: row.last_run_url,
+    createdAt: row.created_at,
   }
 }
