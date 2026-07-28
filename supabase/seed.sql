@@ -8,3 +8,7 @@ values (null, 100, 'P1', array['ci'], '{"errorType": "test_failure"}'::jsonb);
 -- 低於門檻維持預設 P2，避免單次瞬斷即拉滿告警）。服務級規則若要覆蓋，priority 需 > 100
 insert into public.triage_rules (service_id, priority, severity, tags, match)
 values (null, 100, 'P0', array['availability'], '{"errorType": "health_check_failed", "minCountInWindow": 2, "windowMinutes": 15}'::jsonb);
+
+-- 登入白名單（本地開發預設；正式環境由管理員在 Studio 維護 allowed_emails）
+insert into public.allowed_emails (email, note)
+values ('navibluer@gmail.com', 'dev admin');

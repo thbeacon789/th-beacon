@@ -3,7 +3,7 @@ import { isPublicPath } from '@/web/paths'
 
 describe('isPublicPath', () => {
   it('login and self-authenticating APIs are public', () => {
-    for (const p of ['/login', '/api/ingest', '/api/poll/services']) {
+    for (const p of ['/login', '/auth/callback', '/api/ingest', '/api/poll/services']) {
       expect(isPublicPath(p)).toBe(true)
     }
   })

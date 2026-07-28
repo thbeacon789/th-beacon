@@ -83,4 +83,41 @@ describe('dashboard RLS boundary', () => {
     expect((await anonClient.from('issues').select('id')).data).toEqual([])
     expect((await anonClient.from('services').select('id')).data).toEqual([])
   })
+
+  it('login whitelist (allowed_emails) is invisible to authenticated and anon', async () => {
+    expect((await userClient.from('allowed_emails').select('email')).data).toEqual([])
+    expect((await anonClient.from('allowed_emails').select('email')).data).toEqual([])
+  })
+
+  it('signup is rejected for emails outside the whitelist (before_user_created hook)', async () => {
+    const { error } = await anonClient.auth.signUp({
+      email: 'not-on-whitelist@example.com',
+      password: 'test-password-123',
+    })
+    expect(error?.status).toBe(403)
+    expect(error?.message).toContain('Email not allowed')
+  })
+
+  it('signup passes for whitelisted emails', async () => {
+    const allowed = 'hook-pass-test@example.com'
+    await admin.from('allowed_emails').insert({ email: allowed })
+    const { data, error } = await anonClient.auth.signUp({
+      email: allowed,
+      password: 'test-password-123',
+    })
+    expect(error).toBeNull()
+    expect(data.user).not.toBeNull()
+    await admin.auth.admin.deleteUser(data.user!.id)
+    await admin.from('allowed_emails').delete().eq('email', allowed)
+  })
+
+  it('service_role manages the login whitelist', async () => {
+    const email = 'rls-whitelist-test@example.com'
+    const { error: insertError } = await admin.from('allowed_emails').insert({ email })
+    expect(insertError).toBeNull()
+    const { data } = await admin.from('allowed_emails').select('email').eq('email', email)
+    expect(data).toHaveLength(1)
+    const { error: deleteError } = await admin.from('allowed_emails').delete().eq('email', email)
+    expect(deleteError).toBeNull()
+  })
 })
