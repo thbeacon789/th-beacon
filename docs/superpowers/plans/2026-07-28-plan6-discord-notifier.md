@@ -1031,3 +1031,10 @@ git commit -m "test(notify): end-to-end Discord notification flow; spec finalize
 ## 完成後
 
 Plan 6 交付完整告警鏈：事件 → 判級（ratchet）→ 門檻/冷卻/升級決策 → Discord embed → `notifications` 稽核，ingest 與 poller 共用同一 `processAndNotify` 入口。**spec 三大功能（健康度總覽資料、檢傷分類、重要錯誤即時告警）的後端全部就位**。下一份 **Plan 7｜Dashboard**（服務總覽 + 檢傷列表 + Supabase Auth + Realtime + dashboard 讀取 policy——注意 Plan 2 的交接：對 services 開放讀取時須以 column grant/view 排除 `webhook_secret` 與 `discord_webhook_url`）。
+
+### Plan 7+ 交接事項（來自 Plan 6 最終 whole-branch review 與 fix wave）
+
+- **已修**（fix wave `f8ec4d3`）：Discord 發送 5s timeout + body 消費；通知段例外隔離（`notify_error`，已成功的管線處理不再被通知層故障炸成 5xx）。
+- **復發語意瑕疵（Plan 7 或後續裁量，最終 review 詳述）**：issue reopen（resolved→open）後 severity 被 ratchet 釘在歷史最高、count/firstSeen 終身累計——復發事故第一次瞬斷就會立即 Down + 立即發 P0（新事故要 2 次），且頻率規則因終身 span 永遠超窗而實質失效。建議方向：reopen 視為新事故（severity 重置 P2、tags 清空、或 per-incident window），並考慮「恢復通知」（resolve 時發綠色 embed）。
+- **Ratchet 對 dashboard 的含意**：severity 是「歷史最嚴重」非「當下評估」——UI 須讓 resolve/ignore 顯眼可操作，否則長壽 issue 永遠頂 P0 撐紅服務卡。
+- **Defer minors**：併發同 fingerprint 雙發（爆炸半徑=多一則訊息，冷卻照常；可用 advisory lock 關窗）；「一次性錯誤×Discord 恰好掛」的 duplicate 路徑永無 retry（雙重巧合才觸發）；發送失敗時 notifyReason 仍回 first/escalation（可加 send_failed）；getLatestSentNotification 同時戳平手無次序保證（可加 secondary order）；notify.test 規則 insert 未檢查 error。

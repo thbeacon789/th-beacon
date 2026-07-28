@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 
-進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + `processEvent` + SupabaseStore）、Plan 4（`POST /api/ingest` HMAC 全鏈 + wire 契約）、Plan 5（服務輪詢器：`GET /api/poll/services` cron + health 偵測 + error 補漏）已完成——**spec 兩條資料入口全部就位**。後續：Plan 6 Discord 通知器 → Plan 7 dashboard。**寫 Plan 6 前必讀**：`docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md`（severity 降級策略前置決策）與 `docs/superpowers/plans/2026-07-28-plan5-service-poller.md` 的「Plan 6/7 交接事項」。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + `processEvent` + SupabaseStore）、Plan 4（`POST /api/ingest` HMAC）、Plan 5（服務輪詢器 cron）、Plan 6（Discord 通知器：ratchet + 冷卻/升級 + `processAndNotify` 唯一入口）已完成——**三大功能的後端全部就位**。剩：Plan 7 dashboard（Auth + Realtime + 讀取 policy）。**寫 Plan 7 前必讀** `docs/superpowers/plans/2026-07-28-plan6-discord-notifier.md` 的「Plan 7+ 交接事項」（reopen 復發語意、ratchet 對 UI 的含意、services 敏感欄位 column grant）。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 
