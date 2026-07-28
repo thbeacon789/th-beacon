@@ -133,6 +133,22 @@ describe('handleHeartbeat', () => {
     expect(await store.resolveIssueByFingerprint('s-1', missedFp)).toBe(false)
   })
 
+  it('enabled=false 的心跳回報 fail 時，last_run_at 有更新但不建立 issue、不通知', async () => {
+    store.seedHeartbeat('s-1', { ...hb, id: 'hb-2', name: 'disabled-test', enabled: false })
+    const body = '{"name":"disabled-test","status":"fail","summary":"3 of 210 failed"}'
+    const res = await handleHeartbeat(store, noopDeps, request(body), now)
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({
+      name: 'disabled-test',
+      status: 'fail',
+      lastRunAt: now.toISOString(),
+      notified: false,
+    })
+    expect(res.body.suppressed).toBeDefined()
+    expect(res.body.issueId).toBeUndefined()
+    expect(await store.listOpenIssues('s-1')).toHaveLength(0)
+  })
+
   it('pass 額外 resolve 先前的 test_failure issue', async () => {
     await handleHeartbeat(store, noopDeps, request('{"name":"daily-test","status":"fail"}'), now)
     expect(await store.listOpenIssues('s-1')).toHaveLength(1)

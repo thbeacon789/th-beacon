@@ -52,6 +52,22 @@ describe('getServicesOverview', () => {
     const overview = await getServicesOverview(client, now)
     expect(overview[0].openCounts).toEqual({ P0: 0, P1: 0, P2: 1 })
   })
+
+  it('健康度視窗過期但心跳逾期時，燈號取最差降級為 degraded（回歸測試：spec §7）', async () => {
+    // svc-b 的 health_status 目前是 healthy（沒有任何近期 issue）
+    await client.from('heartbeats').insert({
+      service_id: svcB,
+      name: 'daily-test',
+      interval_seconds: 86_400,
+      grace_seconds: 3_600,
+      // 3 天前跑過一次，早已超過 interval + grace，判定逾期
+      last_run_at: '2026-07-25T00:00:00.000Z',
+    })
+    const overview = await getServicesOverview(client, now)
+    const svcBOverview = overview.find((s) => s.id === svcB)
+    expect(svcBOverview?.healthStatus).toBe('degraded')
+    expect(svcBOverview?.heartbeats[0]?.overdue).toBe(true)
+  })
 })
 
 describe('listIssues', () => {

@@ -62,20 +62,28 @@ export async function handleHeartbeat(
     status: report.status,
     lastRunAt: heartbeat.lastRunAt,
     lastSuccessAt: heartbeat.lastSuccessAt,
+    ...(parsed.warnings.length > 0 ? { warnings: parsed.warnings } : {}),
   }
 
   if (report.status === 'fail') {
-    const event = normalizeHeartbeatFailure(
-      serviceId,
-      heartbeat,
-      { ...(report.runUrl !== undefined ? { runUrl: report.runUrl } : {}),
-        ...(report.summary !== undefined ? { summary: report.summary } : {}) },
-      now,
-    )
-    const result = await processAndNotify(store, deps, event, now)
-    body.issueId = result.issue.id
-    body.severity = result.issue.severity
-    body.notified = result.notified
+    // enabled=false 的心跳已在 dashboard 上被隱藏：仍記錄這次 run（上面已做），
+    // 但不建 issue、不發通知——否則會出現「收到告警卻查無此物」的落差。
+    if (heartbeat.enabled === false) {
+      body.notified = false
+      body.suppressed = 'heartbeat disabled: run recorded but no issue was created'
+    } else {
+      const event = normalizeHeartbeatFailure(
+        serviceId,
+        heartbeat,
+        { ...(report.runUrl !== undefined ? { runUrl: report.runUrl } : {}),
+          ...(report.summary !== undefined ? { summary: report.summary } : {}) },
+        now,
+      )
+      const result = await processAndNotify(store, deps, event, now)
+      body.issueId = result.issue.id
+      body.severity = result.issue.severity
+      body.notified = result.notified
+    }
   } else {
     // 測試修好了，關掉先前的失敗 issue
     await store.resolveIssueByFingerprint(

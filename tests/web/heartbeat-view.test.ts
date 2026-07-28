@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractRunUrl } from '@/web/queries'
+import { extractRunUrl, applyHeartbeatOverdue } from '@/web/queries'
 
 describe('extractRunUrl', () => {
   it('取出 metadata 中的 http(s) runUrl', () => {
@@ -13,5 +13,29 @@ describe('extractRunUrl', () => {
     expect(extractRunUrl({})).toBeNull()
     expect(extractRunUrl(null)).toBeNull()
     expect(extractRunUrl('nope')).toBeNull()
+  })
+})
+
+describe('applyHeartbeatOverdue', () => {
+  it('有逾期心跳時，healthy 被降級為 degraded', () => {
+    expect(applyHeartbeatOverdue('healthy', [{ overdue: true }])).toBe('degraded')
+  })
+
+  it('有逾期心跳時，degraded 維持 degraded（取最差不會降回去）', () => {
+    expect(applyHeartbeatOverdue('degraded', [{ overdue: true }])).toBe('degraded')
+  })
+
+  it('有逾期心跳時，down 維持 down（degraded 比 down 輕，不會蓋掉）', () => {
+    expect(applyHeartbeatOverdue('down', [{ overdue: true }])).toBe('down')
+  })
+
+  it('無逾期心跳（含空陣列）時維持原值', () => {
+    expect(applyHeartbeatOverdue('healthy', [])).toBe('healthy')
+    expect(applyHeartbeatOverdue('healthy', [{ overdue: false }])).toBe('healthy')
+    expect(applyHeartbeatOverdue('down', [{ overdue: false }])).toBe('down')
+  })
+
+  it('混合多筆心跳，只要有一筆逾期就降級', () => {
+    expect(applyHeartbeatOverdue('healthy', [{ overdue: false }, { overdue: true }])).toBe('degraded')
   })
 })

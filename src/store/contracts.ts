@@ -95,7 +95,6 @@ export interface Store {
   getLatestSentNotification(serviceId: string, fingerprint: string): Promise<LatestNotification | null>
   recordNotification(record: NotificationRecord): Promise<void>
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
-  listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
   resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean>
 }

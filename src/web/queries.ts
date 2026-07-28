@@ -11,6 +11,7 @@ import {
   rowToHeartbeat,
 } from '@/store/mapping'
 import { isHeartbeatOverdue, isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
+import { worst } from '@/core/health'
 
 type Client = SupabaseClient<Database>
 
@@ -35,6 +36,16 @@ export interface ServiceOverview {
   healthStatus: HealthStatus
   openCounts: Record<Severity, number>
   heartbeats: HeartbeatSummary[]
+}
+
+// 純函式：15 分鐘健康度視窗一過，services.health_status 會轉回 healthy，
+// 但心跳逾期本身就是「服務可能出事」的訊號（spec §7）。有逾期時燈號不能低於 degraded。
+export function applyHeartbeatOverdue(
+  healthStatus: HealthStatus,
+  heartbeats: Array<Pick<HeartbeatSummary, 'overdue'>>,
+): HealthStatus {
+  const hasOverdue = heartbeats.some((hb) => hb.overdue)
+  return hasOverdue ? worst(healthStatus, 'degraded') : healthStatus
 }
 
 export async function getServicesOverview(client: Client, now: Date): Promise<ServiceOverview[]> {
@@ -62,26 +73,28 @@ export async function getServicesOverview(client: Client, now: Date): Promise<Se
     for (const issue of openIssues.filter((i) => i.service_id === service.id)) {
       openCounts[narrowSeverity(issue.severity)] += 1
     }
+    // 逾期狀態即時推導：Hobby cron 一天一次，health_status 欄位不足以反映心跳狀態
+    const heartbeats = heartbeatRows
+      .filter((row) => row.service_id === service.id)
+      .map((row) => {
+        const hb = rowToHeartbeat(row)
+        return {
+          name: hb.name,
+          overdue: isHeartbeatOverdue(hb, now),
+          lastRunAt: hb.lastRunAt,
+          lastSuccessAt: hb.lastSuccessAt,
+          lastRunStatus: hb.lastRunStatus,
+          // 讀取端也要擋：DB 可能存有修正前寫入、或繞過 API 直接改 DB 的髒資料
+          lastRunUrl: isSafeRunUrl(hb.lastRunUrl) ? hb.lastRunUrl : null,
+        }
+      })
     return {
       id: service.id,
       name: service.name,
-      healthStatus: narrowHealthStatus(service.health_status),
+      // 有逾期心跳就把顯示燈號取最差（spec §7），別讓過期 health_status 蓋掉真相
+      healthStatus: applyHeartbeatOverdue(narrowHealthStatus(service.health_status), heartbeats),
       openCounts,
-      // 逾期狀態即時推導：Hobby cron 一天一次，health_status 欄位不足以反映心跳狀態
-      heartbeats: heartbeatRows
-        .filter((row) => row.service_id === service.id)
-        .map((row) => {
-          const hb = rowToHeartbeat(row)
-          return {
-            name: hb.name,
-            overdue: isHeartbeatOverdue(hb, now),
-            lastRunAt: hb.lastRunAt,
-            lastSuccessAt: hb.lastSuccessAt,
-            lastRunStatus: hb.lastRunStatus,
-            // 讀取端也要擋：DB 可能存有修正前寫入、或繞過 API 直接改 DB 的髒資料
-            lastRunUrl: isSafeRunUrl(hb.lastRunUrl) ? hb.lastRunUrl : null,
-          }
-        }),
+      heartbeats,
     }
   })
 }

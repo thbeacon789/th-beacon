@@ -161,24 +161,25 @@ describe('POST /api/heartbeat (route-level, real DB)', () => {
     expect(res.status).toBe(401)
   })
 
-  it('非法 runUrl（非 http(s) scheme）回 422 且不寫入任何心跳更新', async () => {
+  it('非法 runUrl（非 http(s) scheme）回 200 並照常記錄 run，但 last_run_url 為 null 且回應帶 warning', async () => {
     const body = JSON.stringify({
       name: 'daily-test',
       status: 'pass',
       runUrl: 'javascript:alert(1)',
     })
     const res = await POST(signedRequest(body))
-    expect(res.status).toBe(422)
+    expect(res.status).toBe(200)
     const payload = await res.json()
-    expect(payload.details).toBeDefined()
+    expect(payload.warnings).toContain('runUrl was rejected: must be an http(s) URL')
 
     const { data: hb } = await client
       .from('heartbeats')
       .select('last_run_at,last_run_url')
       .eq('service_id', serviceId)
       .single()
-    // 沒有被 422 的請求更動，仍停在 beforeEach seed 的狀態
-    expect(new Date(hb!.last_run_at as string).toISOString()).toBe('2026-07-27T03:00:00.000Z')
+    // 存活訊號本身要被記到——不能因為裝飾性欄位格式錯誤就整包被拒
+    expect(new Date(hb!.last_run_at as string).toISOString()).not.toBe('2026-07-27T03:00:00.000Z')
+    // 但非法 runUrl 絕不能被寫進 DB
     expect(hb?.last_run_url).toBeNull()
   })
 })

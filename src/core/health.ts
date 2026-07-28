@@ -23,7 +23,7 @@ const SEVERITY_TO_HEALTH: Record<Severity, HealthStatus> = {
   P2: 'healthy',
 }
 
-function worst(a: HealthStatus, b: HealthStatus): HealthStatus {
+export function worst(a: HealthStatus, b: HealthStatus): HealthStatus {
   return RANK[a] >= RANK[b] ? a : b
 }
 

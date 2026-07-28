@@ -4,7 +4,7 @@ import { parseHeartbeatPayload } from '@/heartbeat/payload'
 describe('parseHeartbeatPayload', () => {
   it('接受最小合法 payload', () => {
     const result = parseHeartbeatPayload({ name: 'daily-test', status: 'pass' })
-    expect(result).toEqual({ ok: true, value: { name: 'daily-test', status: 'pass' } })
+    expect(result).toEqual({ ok: true, value: { name: 'daily-test', status: 'pass' }, warnings: [] })
   })
 
   it('保留選填欄位', () => {
@@ -17,6 +17,7 @@ describe('parseHeartbeatPayload', () => {
     expect(result).toEqual({
       ok: true,
       value: { name: 'daily-test', status: 'fail', runUrl: 'https://ci/run/1', summary: '3 failed' },
+      warnings: [],
     })
   })
 
@@ -43,9 +44,13 @@ describe('parseHeartbeatPayload', () => {
     expect(result.ok).toBe(false)
   })
 
-  it('runUrl 非 http(s) scheme 時拒絕', () => {
+  it('runUrl 非 http(s) scheme 時濾掉並回 warning，但不拒收整包（避免存活訊號送不出去）', () => {
     const result = parseHeartbeatPayload({ name: 'x', status: 'pass', runUrl: 'javascript:alert(1)' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.errors.join()).toContain('runUrl')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value).toEqual({ name: 'x', status: 'pass' })
+      expect(result.value.runUrl).toBeUndefined()
+      expect(result.warnings.join()).toContain('runUrl')
+    }
   })
 })

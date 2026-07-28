@@ -227,10 +227,6 @@ export class InMemoryStore implements Store {
     return this.heartbeats.filter((h) => h.enabled).map((h) => ({ ...h }))
   }
 
-  async listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]> {
-    return this.heartbeats.filter((h) => h.serviceId === serviceId).map((h) => ({ ...h }))
-  }
-
   async recordHeartbeatRun(
     serviceId: string,
     name: string,

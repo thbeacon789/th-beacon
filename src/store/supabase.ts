@@ -205,16 +205,6 @@ export class SupabaseStore implements Store {
     return data.map(rowToHeartbeat)
   }
 
-  async listHeartbeatsByService(serviceId: string): Promise<StoredHeartbeat[]> {
-    const { data, error } = await this.client
-      .from('heartbeats')
-      .select('*')
-      .eq('service_id', serviceId)
-      .order('name')
-    if (error) throw new Error(`listHeartbeatsByService failed: ${error.message}`)
-    return data.map(rowToHeartbeat)
-  }
-
   async recordHeartbeatRun(
     serviceId: string,
     name: string,
