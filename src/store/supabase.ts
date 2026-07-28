@@ -126,22 +126,17 @@ export class SupabaseStore implements Store {
   }
 
   async updatePollState(serviceId: string, state: PollStateUpdate): Promise<void> {
-    let query = this.client
-      .from('services')
-      .update({
-        last_poll_at: state.lastPollAt,
-        last_poll_healthy: state.healthy,
-        poll_consecutive_failures: state.consecutiveFailures,
-      })
-    if (state.cursor !== undefined) {
-      query = this.client.from('services').update({
-        last_poll_at: state.lastPollAt,
-        last_poll_healthy: state.healthy,
-        poll_consecutive_failures: state.consecutiveFailures,
-        poll_cursor: state.cursor,
-      })
+    const patch: Record<string, unknown> = {
+      last_poll_at: state.lastPollAt,
+      last_poll_healthy: state.healthy,
+      poll_consecutive_failures: state.consecutiveFailures,
     }
-    const { data, error } = await query.eq('id', serviceId).select('id')
+    if (state.cursor !== undefined) patch.poll_cursor = state.cursor
+    const { data, error } = await this.client
+      .from('services')
+      .update(patch as any)
+      .eq('id', serviceId)
+      .select('id')
     if (error) throw new Error(`updatePollState failed: ${error.message}`)
     if (data.length === 0) throw new Error(`unknown service: ${serviceId}`)
   }
