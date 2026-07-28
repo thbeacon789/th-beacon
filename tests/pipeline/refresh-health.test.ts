@@ -12,6 +12,7 @@ const svc: ServiceRecord = {
   healthFailureThreshold: 2,
   healthStatus: 'down', // 故意設一個過期狀態
   poll: null,
+  discordWebhookUrl: null,
 }
 
 describe('refreshServiceHealth', () => {

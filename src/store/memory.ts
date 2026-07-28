@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -16,6 +16,7 @@ export class InMemoryStore implements Store {
   private secrets = new Map<string, string | null>() // serviceId → webhookSecret
   private pollConfigs = new Map<string, PollConfig>()
   private lastPollAts = new Map<string, string>()
+  private notifications: NotificationRecord[] = []
   private nextId = 1
 
   seedService(service: ServiceRecord, webhookSecret: string | null = null): void {
@@ -190,6 +191,20 @@ export class InMemoryStore implements Store {
       }
     }
     return changed
+  }
+
+  async getLatestSentNotification(
+    serviceId: string,
+    fingerprint: string,
+  ): Promise<LatestNotification | null> {
+    const sent = this.notifications
+      .filter((n) => n.serviceId === serviceId && n.fingerprint === fingerprint && n.status === 'sent')
+      .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
+    return sent.length === 0 ? null : { severity: sent[0].severity, sentAt: sent[0].sentAt }
+  }
+
+  async recordNotification(record: NotificationRecord): Promise<void> {
+    this.notifications.push({ ...record })
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {

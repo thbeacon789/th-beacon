@@ -240,3 +240,17 @@ describe('SupabaseStore poll extensions', () => {
     expect(byType.TypeError).toBe('open')
   })
 })
+
+describe('SupabaseStore notifications', () => {
+  it('records and reads back latest sent notification (failed excluded)', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    const base = { issueId: issue.id, serviceId, fingerprint: issue.fingerprint, countAtSend: 1 }
+    await store.recordNotification({ ...base, severity: 'P1', status: 'sent', sentAt: '2026-07-28T10:00:00.000Z' })
+    await store.recordNotification({ ...base, severity: 'P0', status: 'failed', sentAt: '2026-07-28T10:05:00.000Z' })
+    const latest = await store.getLatestSentNotification(serviceId, issue.fingerprint)
+    expect(latest?.severity).toBe('P1')
+    const { data } = await client.from('notifications').select('status,severity,count_at_send').order('sent_at')
+    expect(data).toHaveLength(2)
+    expect(data![1]).toMatchObject({ status: 'failed', severity: 'P0', count_at_send: 1 })
+  })
+})

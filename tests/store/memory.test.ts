@@ -10,6 +10,7 @@ const svc: ServiceRecord = {
   healthFailureThreshold: 2,
   healthStatus: 'healthy',
   poll: null,
+  discordWebhookUrl: null,
 }
 
 const pollConfig = (over: Partial<import('@/store/contracts').PollConfig> = {}) => ({
@@ -230,5 +231,27 @@ describe('InMemoryStore', () => {
     expect(open).toHaveLength(1) // 只剩 other
     void health
     void other
+  })
+
+  it('records notifications and returns latest sent only', async () => {
+    const base = {
+      issueId: 'i-1',
+      serviceId: 's-1',
+      fingerprint: 'fp-n',
+      countAtSend: 1,
+    }
+    await store.recordNotification({ ...base, severity: 'P1', status: 'sent', sentAt: '2026-07-28T10:00:00.000Z' })
+    await store.recordNotification({ ...base, severity: 'P0', status: 'failed', sentAt: '2026-07-28T10:05:00.000Z' })
+    // failed 不計入冷卻判斷
+    expect(await store.getLatestSentNotification('s-1', 'fp-n')).toEqual({
+      severity: 'P1',
+      sentAt: '2026-07-28T10:00:00.000Z',
+    })
+    await store.recordNotification({ ...base, severity: 'P0', status: 'sent', sentAt: '2026-07-28T10:06:00.000Z' })
+    expect(await store.getLatestSentNotification('s-1', 'fp-n')).toEqual({
+      severity: 'P0',
+      sentAt: '2026-07-28T10:06:00.000Z',
+    })
+    expect(await store.getLatestSentNotification('s-1', 'nope')).toBeNull()
   })
 })

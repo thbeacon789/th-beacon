@@ -13,6 +13,7 @@ export interface ServiceRecord {
   healthFailureThreshold: number
   healthStatus: HealthStatus
   poll: PollState | null
+  discordWebhookUrl: string | null
 }
 
 export interface ServiceAuth {
@@ -48,6 +49,21 @@ export interface PollStateUpdate {
   cursor?: string
 }
 
+export interface LatestNotification {
+  severity: Severity
+  sentAt: string
+}
+
+export interface NotificationRecord {
+  issueId: string
+  serviceId: string
+  fingerprint: string
+  severity: Severity
+  status: 'sent' | 'failed'
+  countAtSend: number
+  sentAt: string
+}
+
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
   getServiceByName(name: string): Promise<ServiceAuth | null>
@@ -59,4 +75,6 @@ export interface Store {
   listPollableServices(): Promise<PollableService[]>
   updatePollState(serviceId: string, state: PollStateUpdate): Promise<void>
   resolveHealthCheckIssue(serviceId: string): Promise<boolean>
+  getLatestSentNotification(serviceId: string, fingerprint: string): Promise<LatestNotification | null>
+  recordNotification(record: NotificationRecord): Promise<void>
 }

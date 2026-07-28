@@ -107,6 +107,7 @@ describe('rowToService', () => {
       healthWindowMinutes: 15,
       healthFailureThreshold: 2,
       healthStatus: 'degraded',
+      discordWebhookUrl: null,
       poll: { lastPollAt: '2026-07-27T10:04:00+00:00', healthy: false, consecutiveFailures: 1 },
     })
   })

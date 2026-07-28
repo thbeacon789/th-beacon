@@ -15,6 +15,7 @@ const svc: ServiceRecord = {
   healthFailureThreshold: 2,
   healthStatus: 'healthy',
   poll: null,
+  discordWebhookUrl: null,
 }
 
 function sign(sec: string, ts: string, raw: string): string {

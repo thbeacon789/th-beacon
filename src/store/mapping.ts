@@ -46,6 +46,7 @@ export function rowToService(row: ServiceRow): ServiceRecord {
     healthWindowMinutes: row.health_window_minutes,
     healthFailureThreshold: row.health_failure_threshold,
     healthStatus: narrowHealthStatus(row.health_status),
+    discordWebhookUrl: row.discord_webhook_url,
     poll:
       row.poll_health_url === null
         ? null

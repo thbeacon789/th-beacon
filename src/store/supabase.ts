@@ -3,7 +3,7 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -151,5 +151,35 @@ export class SupabaseStore implements Store {
       .select('id')
     if (error) throw new Error(`resolveHealthCheckIssue failed: ${error.message}`)
     return data.length > 0
+  }
+
+  async getLatestSentNotification(
+    serviceId: string,
+    fingerprint: string,
+  ): Promise<LatestNotification | null> {
+    const { data, error } = await this.client
+      .from('notifications')
+      .select('severity,sent_at')
+      .eq('service_id', serviceId)
+      .eq('fingerprint', fingerprint)
+      .eq('status', 'sent')
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(`getLatestSentNotification failed: ${error.message}`)
+    return data === null ? null : { severity: narrowSeverity(data.severity), sentAt: data.sent_at }
+  }
+
+  async recordNotification(record: NotificationRecord): Promise<void> {
+    const { error } = await this.client.from('notifications').insert({
+      issue_id: record.issueId,
+      service_id: record.serviceId,
+      fingerprint: record.fingerprint,
+      severity: record.severity,
+      status: record.status,
+      count_at_send: record.countAtSend,
+      sent_at: record.sentAt,
+    })
+    if (error) throw new Error(`recordNotification failed: ${error.message}`)
   }
 }
