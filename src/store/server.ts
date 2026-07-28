@@ -10,3 +10,11 @@ export function createServerStore(): SupabaseStore {
   }
   return new SupabaseStore(createClient<Database>(url, key, { auth: { persistSession: false } }))
 }
+
+export function getCronSecret(): string {
+  const secret = process.env.CRON_SECRET
+  if (secret === undefined || secret === '') {
+    throw new Error('CRON_SECRET must be set')
+  }
+  return secret
+}
