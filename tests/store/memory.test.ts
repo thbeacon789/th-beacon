@@ -254,4 +254,13 @@ describe('InMemoryStore', () => {
     })
     expect(await store.getLatestSentNotification('s-1', 'nope')).toBeNull()
   })
+
+  it('updateIssueStatus returns updated copy and rejects unknown id', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    const updated = await store.updateIssueStatus(issue.id, 'acknowledged')
+    expect(updated.status).toBe('acknowledged')
+    updated.tags.push('mutate') // 呼叫端改動不得污染 store
+    expect((await store.listOpenIssues('s-1'))[0].status).toBe('acknowledged')
+    await expect(store.updateIssueStatus('nope', 'resolved')).rejects.toThrow(/unknown issue/)
+  })
 })

@@ -128,6 +128,17 @@ export class InMemoryStore implements Store {
     throw new Error(`unknown issue: ${issueId}`)
   }
 
+  async updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue> {
+    for (const [key, issue] of this.issues) {
+      if (issue.id === issueId) {
+        const updated = { ...issue, status }
+        this.issues.set(key, updated)
+        return { ...updated, tags: [...updated.tags] }
+      }
+    }
+    throw new Error(`unknown issue: ${issueId}`)
+  }
+
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
     return [...this.issues.values()]
       .filter(

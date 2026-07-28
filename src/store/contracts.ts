@@ -1,4 +1,4 @@
-import type { CanonicalEvent, HealthStatus, Issue, Severity } from '@/core/types'
+import type { CanonicalEvent, HealthStatus, Issue, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
 
@@ -70,6 +70,7 @@ export interface Store {
   upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome>
   loadRules(serviceId: string): Promise<TriageRule[]>
   updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void>
+  updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue>
   listOpenIssues(serviceId: string): Promise<OpenIssue[]>
   updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void>
   listPollableServices(): Promise<PollableService[]>

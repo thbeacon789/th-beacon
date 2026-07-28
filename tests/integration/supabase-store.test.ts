@@ -254,3 +254,17 @@ describe('SupabaseStore notifications', () => {
     expect(data![1]).toMatchObject({ status: 'failed', severity: 'P0', count_at_send: 1 })
   })
 })
+
+describe('SupabaseStore.updateIssueStatus', () => {
+  it('updates status, returns mapped issue, rejects unknown id', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    const updated = await store.updateIssueStatus(issue.id, 'resolved')
+    expect(updated.status).toBe('resolved')
+    expect(updated.id).toBe(issue.id)
+    const { data } = await client.from('issues').select('status').eq('id', issue.id).single()
+    expect(data?.status).toBe('resolved')
+    await expect(
+      store.updateIssueStatus('00000000-0000-0000-0000-000000000001', 'resolved'),
+    ).rejects.toThrow(/unknown issue/)
+  })
+})

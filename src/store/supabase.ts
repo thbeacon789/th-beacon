@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/db/database.types'
-import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
+import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord } from '@/store/contracts'
@@ -86,6 +86,17 @@ export class SupabaseStore implements Store {
       .select('id')
     if (error) throw new Error(`updateIssueTriage failed: ${error.message}`)
     if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
+  }
+
+  async updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue> {
+    const { data, error } = await this.client
+      .from('issues')
+      .update({ status })
+      .eq('id', issueId)
+      .select('*')
+    if (error) throw new Error(`updateIssueStatus failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
+    return rowToIssue(data[0])
   }
 
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
