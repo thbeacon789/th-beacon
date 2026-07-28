@@ -1,5 +1,6 @@
 import { synthesizeHealthCheckFailedEvent, normalizePolledError } from '@/core/normalize'
-import { processEvent } from '@/pipeline/process-event'
+import { processAndNotify } from '@/pipeline/process-and-notify'
+import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
 import { isPollDue } from '@/poll/due'
 import { parsePolledErrors } from '@/poll/parse'
@@ -25,6 +26,7 @@ export interface PollOutcome {
 export async function pollService(
   store: Store,
   http: HttpGet,
+  deps: NotifyDeps,
   pollable: PollableService,
   now: Date,
 ): Promise<PollOutcome> {
@@ -72,7 +74,7 @@ export async function pollService(
         },
         now,
       )
-      await processEvent(store, event, now)
+      await processAndNotify(store, deps, event, now)
     }
   } else {
     // error-only 服務也記錄輪詢時刻，並重算健康度（覆蓋過期窗口）
@@ -103,7 +105,7 @@ export async function pollService(
         outcome.errorFetchFailed = true
       } else {
         for (const raw of parsed.value) {
-          await processEvent(store, normalizePolledError(service.id, raw, now), now)
+          await processAndNotify(store, deps, normalizePolledError(service.id, raw, now), now)
         }
         outcome.errorsProcessed = parsed.value.length
         outcome.errorsTruncated = parsed.truncated
@@ -120,13 +122,18 @@ export async function pollService(
   return outcome
 }
 
-export async function runPoll(store: Store, http: HttpGet, now: Date): Promise<PollOutcome[]> {
+export async function runPoll(
+  store: Store,
+  http: HttpGet,
+  deps: NotifyDeps,
+  now: Date,
+): Promise<PollOutcome[]> {
   const pollables = await store.listPollableServices()
   const due = pollables.filter((p) => isPollDue(p.lastPollAt, p.config.intervalSeconds, now))
   const outcomes: PollOutcome[] = []
   for (const pollable of due) {
     try {
-      outcomes.push(await pollService(store, http, pollable, now))
+      outcomes.push(await pollService(store, http, deps, pollable, now))
     } catch (error) {
       // 單一服務失敗不得中斷整輪：記為 outcome，繼續下一個
       outcomes.push({

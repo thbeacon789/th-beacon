@@ -1,10 +1,11 @@
 import { handleIngest } from '@/ingest/handle-ingest'
-import { createServerStore } from '@/store/server'
+import { createServerStore, createServerNotifyDeps } from '@/store/server'
 
 export async function POST(request: Request): Promise<Response> {
   const rawBody = await request.text()
   const result = await handleIngest(
     createServerStore(),
+    createServerNotifyDeps(),
     {
       rawBody,
       serviceName: request.headers.get('x-beacon-service'),

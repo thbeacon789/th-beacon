@@ -1,7 +1,8 @@
 import { verifyIngestSignature } from '@/ingest/hmac'
 import { parsePushPayload } from '@/ingest/payload'
 import { normalizePushEvent } from '@/core/normalize'
-import { processEvent } from '@/pipeline/process-event'
+import { processAndNotify } from '@/pipeline/process-and-notify'
+import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import type { Store } from '@/store/contracts'
 
 export interface IngestRequest {
@@ -20,6 +21,7 @@ const UNAUTHORIZED: IngestResponse = { status: 401, body: { error: 'unauthorized
 
 export async function handleIngest(
   store: Store,
+  deps: NotifyDeps,
   request: IngestRequest,
   now: Date,
 ): Promise<IngestResponse> {
@@ -50,7 +52,7 @@ export async function handleIngest(
   if (!parsed.ok) return { status: 422, body: { error: 'invalid payload', details: parsed.errors } }
 
   const event = normalizePushEvent(auth.service.id, parsed.value, now)
-  const result = await processEvent(store, event, now)
+  const result = await processAndNotify(store, deps, event, now)
   return {
     status: 201,
     body: {
@@ -58,6 +60,7 @@ export async function handleIngest(
       severity: result.issue.severity,
       health: result.health,
       duplicate: result.duplicate,
+      notified: result.notified,
     },
   }
 }

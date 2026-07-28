@@ -1,0 +1,63 @@
+import { processEvent, type ProcessResult } from '@/pipeline/process-event'
+import { shouldNotify } from '@/notify/decision'
+import { buildDiscordMessage } from '@/notify/message'
+import type { DiscordSender } from '@/notify/discord'
+import type { CanonicalEvent } from '@/core/types'
+import type { Store } from '@/store/contracts'
+
+export interface NotifyDeps {
+  sender: DiscordSender
+  fallbackWebhookUrl: string | null
+  dashboardUrl?: string
+}
+
+export interface ProcessAndNotifyResult extends ProcessResult {
+  notified: boolean
+  notifyReason: string | null
+}
+
+export async function processAndNotify(
+  store: Store,
+  deps: NotifyDeps,
+  event: CanonicalEvent,
+  now: Date,
+): Promise<ProcessAndNotifyResult> {
+  const result = await processEvent(store, event, now)
+
+  const lastSent = await store.getLatestSentNotification(event.serviceId, result.issue.fingerprint)
+  const decision = shouldNotify({
+    severity: result.issue.severity,
+    duplicate: result.duplicate,
+    lastSent,
+    now,
+  })
+  if (!decision.notify) return { ...result, notified: false, notifyReason: decision.reason }
+
+  const service = await store.getService(event.serviceId)
+  const webhookUrl = service?.discordWebhookUrl ?? deps.fallbackWebhookUrl
+  if (service === null || webhookUrl === null) {
+    return { ...result, notified: false, notifyReason: 'no_webhook' }
+  }
+
+  const message = buildDiscordMessage({
+    serviceName: service.name,
+    severity: result.issue.severity,
+    errorType: result.issue.errorType,
+    message: result.issue.message,
+    count: result.issue.count,
+    firstSeen: result.issue.firstSeen,
+    lastSeen: result.issue.lastSeen,
+    ...(deps.dashboardUrl !== undefined ? { dashboardUrl: deps.dashboardUrl } : {}),
+  })
+  const sendResult = await deps.sender(webhookUrl, message)
+  await store.recordNotification({
+    issueId: result.issue.id,
+    serviceId: event.serviceId,
+    fingerprint: result.issue.fingerprint,
+    severity: result.issue.severity,
+    status: sendResult.ok ? 'sent' : 'failed',
+    countAtSend: result.issue.count,
+    sentAt: now.toISOString(),
+  })
+  return { ...result, notified: sendResult.ok, notifyReason: decision.reason }
+}
