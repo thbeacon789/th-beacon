@@ -16,6 +16,10 @@ import {
 export class SupabaseStore implements Store {
   constructor(private readonly client: SupabaseClient<Database>) {}
 
+  rawClient(): SupabaseClient<Database> {
+    return this.client
+  }
+
   async getService(serviceId: string): Promise<ServiceRecord | null> {
     const { data, error } = await this.client
       .from('services')

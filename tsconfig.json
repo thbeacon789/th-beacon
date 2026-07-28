@@ -32,6 +32,7 @@
     ]
   },
   "include": [
+    "app",
     "src",
     "tests",
     "vitest.config.ts",

@@ -1,0 +1,197 @@
+:root {
+  --bg: #312e81;
+  --fg: #ffffff;
+  --gold: #f5dca6;
+  --pink: #ff7db2;
+  --yellow: #ffd561;
+  --green: #82ff9a;
+  --lilac: #e2c7ff;
+  --line: rgba(226, 199, 255, 0.25);
+  --panel: rgba(255, 255, 255, 0.05);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Arial, Helvetica, sans-serif;
+}
+a {
+  color: inherit;
+}
+h1,
+h2 {
+  color: var(--gold);
+  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+}
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.brand {
+  color: var(--gold);
+  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-size: 1.15rem;
+}
+.nav a {
+  color: var(--lilac);
+  text-decoration: none;
+}
+.nav a:hover {
+  color: var(--gold);
+}
+.nav form {
+  margin-left: auto;
+}
+.nav button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--lilac);
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+}
+.card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+.health {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.5rem;
+}
+.health-healthy {
+  background: var(--green);
+}
+.health-degraded {
+  background: var(--yellow);
+}
+.health-down {
+  background: var(--pink);
+}
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  color: var(--bg);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-size: 0.85rem;
+}
+.badge-P0 {
+  background: var(--pink);
+}
+.badge-P1 {
+  background: var(--yellow);
+}
+.badge-P2 {
+  background: var(--lilac);
+}
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+thead th {
+  color: var(--gold);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-weight: 400;
+  font-size: 1.05rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.55rem 1rem;
+}
+tbody td {
+  border-bottom: 1px solid var(--line);
+}
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.filters select,
+.filters button {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.6rem;
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.actions button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--lilac);
+  background: transparent;
+  color: var(--lilac);
+  cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.actions button:hover {
+  background: var(--lilac);
+  color: var(--bg);
+}
+.error {
+  color: var(--pink);
+}
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+.login-card {
+  width: 340px;
+  display: grid;
+  gap: 0.75rem;
+}
+.login-card h1 {
+  text-align: center;
+}
+.login-card input {
+  width: 100%;
+  padding: 0.45rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+.login-card button {
+  padding: 0.5rem;
+  background: var(--gold);
+  color: var(--bg);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+pre {
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.5rem;
+  overflow-x: auto;
+  color: var(--lilac);
+}
