@@ -1486,7 +1486,10 @@ Plan 7 交付 MVP dashboard——至此 **spec 的 MVP 範圍全部完成**（�
    - Auth Provider 啟用 Google（正式 OAuth client；Google Cloud Console 的 redirect URI 填 `https://<project-ref>.supabase.co/auth/v1/callback`）。
    - Authentication > Hooks 啟用 Before User Created hook，指向 `public.before_user_created_hook`（Postgres function）。
    - URL Configuration：site URL 設為正式 `APP_URL`，redirect allow-list 加 `https://<APP_URL>/auth/callback`。
-   - signup 保持開啟（准入由白名單 hook 把關；hook 未生效前勿開放）。
+   - signup 保持開啟（准入由白名單 hook 把關：僅 google provider + 白名單 email；hook 未生效前勿開放）。
+   - **核對 nonce check 未被關閉**（本地 config.toml 的 `skip_nonce_check = true` 僅為本地需要，嚴禁帶到 hosted）。
+   - email confirmations 保持開啟（縱深防禦；password signup 已被 hook 的 provider 閘門封死）。
+   - **撤權 runbook**：移出白名單 = 刪 `allowed_emails` 該列（頁面立即失效，`requireUser` 複查）＋ 在 Auth 刪除該使用者（收回 session/Realtime）。
 2. **Vercel env**：`NEXT_PUBLIC_SUPABASE_URL`／`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`（sb_publishable_...）／`SUPABASE_URL`／`SUPABASE_SECRET_KEY`（sb_secret_...）／`CRON_SECRET`／`DISCORD_WEBHOOK_URL`（選）／`APP_URL`（選）。金鑰用 hosted 專案的新制 API keys（非 legacy anon/service_role JWT）。
 3. **Vercel Cron**：實地驗證 `CRON_SECRET` 的 Bearer 注入行為；方案的 cron 頻率限制；評估 poll route `maxDuration` vs 服務數×timeout 上界。
 4. **Next 16**：middleware→proxy 改名警告，升版前處理。

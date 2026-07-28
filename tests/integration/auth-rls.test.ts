@@ -84,30 +84,41 @@ describe('dashboard RLS boundary', () => {
     expect((await anonClient.from('services').select('id')).data).toEqual([])
   })
 
-  it('login whitelist (allowed_emails) is invisible to authenticated and anon', async () => {
-    expect((await userClient.from('allowed_emails').select('email')).data).toEqual([])
+  it('authenticated user sees only own allowed_emails row; anon sees none', async () => {
+    await admin.from('allowed_emails').insert([{ email }, { email: 'someone-else@example.com' }])
+    const { data } = await userClient.from('allowed_emails').select('email')
+    expect(data).toEqual([{ email }]) // RLS：只有自己那列
     expect((await anonClient.from('allowed_emails').select('email')).data).toEqual([])
+    await admin.from('allowed_emails').delete().in('email', [email, 'someone-else@example.com'])
   })
 
-  it('signup is rejected for emails outside the whitelist (before_user_created hook)', async () => {
-    const { error } = await anonClient.auth.signUp({
-      email: 'not-on-whitelist@example.com',
-      password: 'test-password-123',
-    })
-    expect(error?.status).toBe(403)
-    expect(error?.message).toContain('Email not allowed')
-  })
-
-  it('signup passes for whitelisted emails', async () => {
+  it('email/password signup is rejected outright (google-only gate)', async () => {
+    // 即使 email 在白名單，非 google provider 一律拒絕——封死免信箱驗證的冒名搶佔
     const allowed = 'hook-pass-test@example.com'
     await admin.from('allowed_emails').insert({ email: allowed })
-    const { data, error } = await anonClient.auth.signUp({
+    const { error } = await anonClient.auth.signUp({
       email: allowed,
       password: 'test-password-123',
     })
-    expect(error).toBeNull()
-    expect(data.user).not.toBeNull()
-    await admin.auth.admin.deleteUser(data.user!.id)
+    expect(error?.status).toBe(403)
+    expect(error?.message).toContain('僅支援 Google 登入')
+    await admin.from('allowed_emails').delete().eq('email', allowed)
+  })
+
+  it('hook logic: google provider + whitelist decides admission', async () => {
+    const allowed = 'hook-logic-test@example.com'
+    await admin.from('allowed_emails').insert({ email: allowed })
+    const call = (provider: string, mail: string) =>
+      admin.rpc('before_user_created_hook', {
+        event: { user: { email: mail, app_metadata: { provider } } },
+      })
+    const pass = await call('google', allowed)
+    expect(pass.error).toBeNull()
+    expect(pass.data).toEqual({})
+    const wrongEmail = await call('google', 'not-on-whitelist@example.com')
+    expect(JSON.stringify(wrongEmail.data)).toContain('Email not allowed')
+    const wrongProvider = await call('email', allowed)
+    expect(JSON.stringify(wrongProvider.data)).toContain('僅支援 Google 登入')
     await admin.from('allowed_emails').delete().eq('email', allowed)
   })
 
