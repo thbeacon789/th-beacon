@@ -23,7 +23,22 @@ export async function processAndNotify(
   now: Date,
 ): Promise<ProcessAndNotifyResult> {
   const result = await processEvent(store, event, now)
+  try {
+    return { ...result, ...(await notifyStage(store, deps, event, result, now)) }
+  } catch (error) {
+    // 事件已成功入庫/判級/更新健康度——通知層故障不得把它變成 5xx（會誘發重試重複計數）
+    console.error('notify stage failed:', error)
+    return { ...result, notified: false, notifyReason: 'notify_error' }
+  }
+}
 
+async function notifyStage(
+  store: Store,
+  deps: NotifyDeps,
+  event: CanonicalEvent,
+  result: ProcessResult,
+  now: Date,
+): Promise<{ notified: boolean; notifyReason: string | null }> {
   const lastSent = await store.getLatestSentNotification(event.serviceId, result.issue.fingerprint)
   const decision = shouldNotify({
     severity: result.issue.severity,
@@ -31,12 +46,12 @@ export async function processAndNotify(
     lastSent,
     now,
   })
-  if (!decision.notify) return { ...result, notified: false, notifyReason: decision.reason }
+  if (!decision.notify) return { notified: false, notifyReason: decision.reason }
 
   const service = await store.getService(event.serviceId)
   const webhookUrl = service?.discordWebhookUrl ?? deps.fallbackWebhookUrl
   if (service === null || webhookUrl === null) {
-    return { ...result, notified: false, notifyReason: 'no_webhook' }
+    return { notified: false, notifyReason: 'no_webhook' }
   }
 
   const message = buildDiscordMessage({
@@ -59,5 +74,5 @@ export async function processAndNotify(
     countAtSend: result.issue.count,
     sentAt: now.toISOString(),
   })
-  return { ...result, notified: sendResult.ok, notifyReason: decision.reason }
+  return { notified: sendResult.ok, notifyReason: decision.reason }
 }

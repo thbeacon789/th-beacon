@@ -134,4 +134,21 @@ describe('processAndNotify', () => {
     expect(dup.notifyReason).toBe('duplicate')
     expect(sent).toHaveLength(1)
   })
+
+  it('notify-stage store failure never breaks the pipeline result', async () => {
+    class ThrowingNotifyStore extends InMemoryStore {
+      async getLatestSentNotification(): Promise<never> {
+        throw new Error('db blip')
+      }
+    }
+    const store2 = new ThrowingNotifyStore()
+    store2.seedService(svc)
+    store2.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { deps, sent } = fakeSender()
+    const result = await processAndNotify(store2, deps, event(), now)
+    expect(result.issue.severity).toBe('P1') // 管線結果完整
+    expect(result.notified).toBe(false)
+    expect(result.notifyReason).toBe('notify_error')
+    expect(sent).toHaveLength(0)
+  })
 })
