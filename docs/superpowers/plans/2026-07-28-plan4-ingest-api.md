@@ -1002,3 +1002,11 @@ git commit -m "feat(ingest): CI report script, test_failure seed rule, wire cont
 ## 完成後
 
 Plan 4 交付可驗簽的 `POST /api/ingest` 全鏈（HMAC → 驗 payload → processEvent → DB 落地）、CI 回報 script 與 seed 規則、定案的 wire 契約。**各專案 CI 從此可以開始接入**。下一份 **Plan 5｜服務輪詢器** 實作 `GET /api/poll/services`（Cron 觸發、內部 token）：health 存活偵測、PollState 寫回、連續成功清 health issue、error 端點補漏，並處理 Plan 3 review 移交的兩件事（poller 覆蓋健康度過期窗口、Store port「0 rows affected」語意統一）。
+
+### Plan 5+ 交接事項（來自 Plan 4 最終 whole-branch review）
+
+**Plan 5（poller）**：落地 `vercel.json`（cron）時確認 Vercel 上 `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` 與 Supabase 官方 Vercel 整合注入的變數名相容（未實跑查證，以 Vercel 專案設定為準）。
+
+**後續硬化（defer，皆 fail-closed 或影響極小）**：timestamp 字串長度上限、skew 浮點秒 floor 對齊、「有 secret vs 未知服務」低訊號 timing 差（可補 no-op HMAC）、route 未捕捉例外走 Next 預設 500、body/message 大小上限、`processEvent` 重複查 service 的多一趟 roundtrip（可選傳快取）。
+
+**Dev 摩擦（知悉即可）**：整合測試 `cleanDatabase` 會清掉本地 seed 規則，跑完想復原 seed 就 `supabase db reset`；`next.config.ts` 的 `experimental.useTypeScriptCli` 為 TS7 相容所需，Next 升版時留意。

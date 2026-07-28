@@ -7,11 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 
-進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + InMemoryStore + `processEvent` orchestrator + SupabaseStore 原子 upsert rpc）已完成。後續：Plan 4 ingest/poller → Plan 5 Discord → Plan 6 dashboard。**寫 Plan 4/5 前必讀** `docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md` 的「Plan 4/5 必要事項」章節（含 Plan 5 的 severity 降級策略前置決策）。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + `processEvent` orchestrator + SupabaseStore）、Plan 4（Next.js scaffold + `POST /api/ingest` HMAC 全鏈 + CI 回報 script + wire 契約定案於 spec §4.1）已完成。後續：Plan 5 服務輪詢器 → Plan 6 Discord → Plan 7 dashboard。**寫 Plan 5/6 前必讀**：`docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md` 的「Plan 4/5 必要事項」（poller 過期窗口、0-rows 語意；severity 降級策略前置決策歸 Discord 計畫）與 `docs/superpowers/plans/2026-07-28-plan4-ingest-api.md` 的「Plan 5+ 交接事項」。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 
-- `pnpm test`（Vitest）／`pnpm test:watch`／`pnpm typecheck`（tsc --noEmit，strict）
+- `pnpm test`（Vitest 單元，零 DB 依賴）／`pnpm test:integration`（需本地 stack）／`pnpm typecheck`／`pnpm build`（next build；**勿跑 `pnpm dev`**）
 - 單檔測試：`pnpm vitest run tests/core/<name>.test.ts`
 - 本地 Supabase（OrbStack Docker 需先開）：`supabase start`／`supabase status`／`supabase db reset`（重建並套用全部 migrations）
 - Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db reset` → `supabase db advisors --local --type security` → `pnpm db:types`（重生 `src/db/database.types.ts`，自動產物勿手改）
