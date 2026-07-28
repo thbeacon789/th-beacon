@@ -24,7 +24,7 @@ export function createServiceRoleClient(): SupabaseClient<Database> {
 
 export async function cleanDatabase(client: SupabaseClient<Database>): Promise<void> {
   // FK 順序：子表先刪
-  for (const table of ['events', 'notifications', 'issues', 'triage_rules', 'services'] as const) {
+  for (const table of ['events', 'notifications', 'issues', 'heartbeats', 'triage_rules', 'services'] as const) {
     const { error } = await client.from(table).delete().neq('id', NIL_UUID)
     if (error) throw new Error(`clean ${table} failed: ${error.message}`)
   }
