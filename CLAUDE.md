@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 
-進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + `processEvent` orchestrator + SupabaseStore）、Plan 4（Next.js scaffold + `POST /api/ingest` HMAC 全鏈 + CI 回報 script + wire 契約定案於 spec §4.1）已完成。後續：Plan 5 服務輪詢器 → Plan 6 Discord → Plan 7 dashboard。**寫 Plan 5/6 前必讀**：`docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md` 的「Plan 4/5 必要事項」（poller 過期窗口、0-rows 語意；severity 降級策略前置決策歸 Discord 計畫）與 `docs/superpowers/plans/2026-07-28-plan4-ingest-api.md` 的「Plan 5+ 交接事項」。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+進度：Plan 1（`src/core/` 純邏輯）、Plan 2（本地 Supabase + schema/RLS/型別）、Plan 3（Store port + `processEvent` + SupabaseStore）、Plan 4（`POST /api/ingest` HMAC 全鏈 + wire 契約）、Plan 5（服務輪詢器：`GET /api/poll/services` cron + health 偵測 + error 補漏）已完成——**spec 兩條資料入口全部就位**。後續：Plan 6 Discord 通知器 → Plan 7 dashboard。**寫 Plan 6 前必讀**：`docs/superpowers/plans/2026-07-27-plan3-persistence-pipeline.md`（severity 降級策略前置決策）與 `docs/superpowers/plans/2026-07-28-plan5-service-poller.md` 的「Plan 6/7 交接事項」。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 

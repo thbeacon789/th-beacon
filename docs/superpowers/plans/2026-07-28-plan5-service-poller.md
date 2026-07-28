@@ -1298,3 +1298,10 @@ git commit -m "test(poll): cron route integration with stub service and real DB"
 ## 完成後
 
 Plan 5 交付完整輪詢器：Cron 週期性 health 偵測（失敗走管線判級告警、恢復自動 resolve）、error 端點補漏（externalId 去重、cursor 推進）、每輪重算健康度（覆蓋 Plan 3 記錄的過期窗口）、0-rows 語意統一。加上 Plan 4 的 ingest，**spec 的兩條資料入口全部就位**。下一份 **Plan 6｜Discord 通知器**（開工前先拍板 severity 降級策略：ratchet vs 通知端淨升級——見 Plan 3 文件）。部署面待辦：Vercel 上驗證 Cron 的 `CRON_SECRET` Bearer 行為與 env 命名、方案的 cron 頻率限制。
+
+### Plan 6/7 交接事項（來自 Plan 5 最終 whole-branch review 與 fix wave）
+
+- **已修**（fix wave `b98c73a`）：health seed 規則改頻率條件（`minCountInWindow: 2` 對齊 threshold，第一輪失敗不 Down——整合測試中繼斷言鎖住）；runPoll 單服務失敗隔離（outcome 帶 `error` 欄位）；route 500 JSON；timing-safe Bearer；`as any` 消除。
+- **Plan 6 前置決策（擴充）**：severity 降級策略現在多一個交互面——頻率規則超窗回落 P2 時，health 的 Down 仍由 poll-first 維持（燈號正確），但 severity 標籤會 P0↔P2 震盪，通知端判「升級追發」時必須把這個納入（見 Plan 3 文件的 ratchet vs 淨升級選項）。
+- **error 補漏硬化（Plan 6/7 帶走）**：單筆壞 item 會讓整批 fail 且 cursor 不推進——服務端持續回傳壞資料時 backfill 永久卡死；建議改「略過壞 item、outcome 計數回報」。truncated 批次 cursor 跳到 now 會丟失尾端（>100 筆）且 truncated 旗標目前無人消費——隨 Plan 7 觀測面處理。
+- **部署註記**：cursor 用我方時鐘，被監控服務時鐘落後時有遺漏窗口（建議服務端 `since` 語意用回報時間）；序列輪詢上界＝服務數×(timeout×2)，需評估 `maxDuration` 與 Vercel 方案時限。
