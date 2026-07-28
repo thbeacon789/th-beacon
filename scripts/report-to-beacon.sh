@@ -16,7 +16,7 @@ BODY="$(jq -cn --arg m "$MESSAGE" --arg u "$RUN_URL" \
   '{message:$m, errorType:"test_failure", level:"error", metadata:(if $u == "" then {} else {runUrl:$u} end)}')"
 SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
 
-curl -sS -X POST "$BEACON_URL" \
+curl -sS --fail-with-body -X POST "$BEACON_URL" \
   -H "Content-Type: application/json" \
   -H "X-Beacon-Service: $BEACON_SERVICE" \
   -H "X-Beacon-Timestamp: $TS" \

@@ -6,6 +6,8 @@ coverage/
 .env.*
 !.env.example
 
+tsconfig.tsbuildinfo
+
 # Supabase local
 supabase/.branches
 supabase/.temp

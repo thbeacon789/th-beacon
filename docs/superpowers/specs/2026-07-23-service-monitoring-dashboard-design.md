@@ -55,6 +55,8 @@
   - 防重放：時戳偏差 > 300 秒即拒。驗證失敗一律 `401 {"error":"unauthorized"}`（不洩漏服務名是否存在）。
   - Payload：`{"message"(必填), "errorType"?, "level"?, "occurredAt"?, "metadata"?}` 單筆事件；`400` JSON 解析失敗、`422` schema 不符（附 details）、`201` 成功（回 issueId/severity/health/duplicate）。
   - 回報 script 範例：`scripts/report-to-beacon.sh`（jq + openssl + curl）；`test_failure → P1` 種子規則見 `supabase/seed.sql`。
+  - 簽章 hex 為**小寫**（openssl/node 預設輸出；大寫 hex 會被判格式不符而 401）。
+  - `metadata.externalId`（若提供）具**冪等語意**：同服務同 externalId 的重複提交會被去重（不累計 count，回 `duplicate: true`）——與 poll 來源共用同一機制。
 
 ### 4.2 服務輪詢器
 - 路由：`GET /api/poll/services`（由 Vercel Cron 定時觸發）
