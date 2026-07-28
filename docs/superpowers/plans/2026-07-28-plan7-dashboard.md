@@ -20,6 +20,12 @@
 - 狀態變更（open/acknowledged/resolved/ignored）必須：驗 session → 更新 → `refreshServiceHealth`。UI 上 resolve/ignore 按鈕須直接可見（Plan 6 交接：ratchet 下人工降級是唯一出口）。
 - Realtime：訂閱 `postgres_changes`（`public.issues`，event `*`）→ `router.refresh()`；migration 需把 `issues` 加入 `supabase_realtime` publication（若已在，以 `supabase db reset` 結果為準）。
 - 整合測試需本地 stack；auth 整合測試以 `auth.admin.createUser` 建測試使用者。
+- **視覺設計（使用者指定：參考 `~/Code/trading-stream` 的像素電子看板風格；tokens 不得偏離）**：
+  - 主背景 `#312e81`（深靛紫）、主文字 `#fff`；標題/表頭金黃 `#F5DCA6`；裝飾/連結淡紫 `#E2C7FF`；邊框 `rgba(226,199,255,0.25)`；面板底 `rgba(255,255,255,0.05)`。
+  - 狀態色沿用其情緒色階：healthy `#82FF9A`（綠）、degraded `#FFD561`（黃）、down `#FF7DB2`（粉紅）；severity badge：P0 `#FF7DB2`、P1 `#FFD561`、P2 `#E2C7FF`（badge 文字用深靛紫 `#312e81`）。
+  - 字型：複製 trading-stream 的三款像素字型（`Aurora-BC.ttf`/`New-Gen.ttf`/`Pixel-12x10.ttf`，來源 `/Users/navibluer/Code/trading-stream/src/fonts/`，授權由使用者確認）→ `src/fonts/`，以 `next/font/local` 載入。**用途分工**：Aurora-BC＝大標題與 nav brand；New-Gen＝表頭/badge/按鈕/nav 連結；**內文（錯誤訊息、時間戳、表身）用系統 sans**（Arial/Helvetica）保可讀性。
+  - 質感慣例：**無圓角、無陰影**（pixel 感）；表格無豎線、列間以細橫線分隔、寬鬆 padding；金黃 thead 不加粗（`font-weight: 400`）。
+  - Discord embed 配色維持 Plan 6 定案值不變（那是 Discord 側慣例，非 dashboard 視覺）。
 
 ## 本計畫涵蓋 vs. 後續
 
@@ -874,6 +880,7 @@ git commit -m "feat(web): dashboard read-model queries"
 ### Task 5: UI 頁面（總覽/列表/詳情 + server actions + Realtime）
 
 **Files:**
+- Create: `src/fonts/Aurora-BC.ttf`、`src/fonts/New-Gen.ttf`、`src/fonts/Pixel-12x10.ttf`（自 trading-stream 複製）、`src/web/fonts.ts`
 - Create: `app/globals.css`；Modify: `app/layout.tsx`
 - Replace: `app/page.tsx`（服務總覽）
 - Create: `app/issues/page.tsx`、`app/issues/[id]/page.tsx`、`app/issues/actions.ts`
@@ -884,35 +891,95 @@ git commit -m "feat(web): dashboard read-model queries"
 - server action：`changeIssueStatusAction(issueId: string, status: string): Promise<void>`——`requireUser()` → `narrowIssueStatus` → `changeIssueStatus(createServerStore(), ...)` → `revalidatePath`。
 - `RealtimeRefresh`（client component）：訂閱 issues 變更 → `router.refresh()`；掛在 layout。
 
-- [ ] **Step 1: `app/globals.css`**
+- [ ] **Step 1: 複製像素字型並建立字型模組**
+
+Run: `mkdir -p src/fonts && cp /Users/navibluer/Code/trading-stream/src/fonts/Aurora-BC.ttf /Users/navibluer/Code/trading-stream/src/fonts/New-Gen.ttf /Users/navibluer/Code/trading-stream/src/fonts/Pixel-12x10.ttf src/fonts/`
+Expected: 三個 ttf 就位（`ls src/fonts`）。
+
+`src/web/fonts.ts`：
+
+```typescript
+import localFont from 'next/font/local'
+
+export const auroraBC = localFont({
+  variable: '--font-aurora-bc',
+  src: '../fonts/Aurora-BC.ttf',
+})
+
+export const newGen = localFont({
+  variable: '--font-new-gen',
+  src: '../fonts/New-Gen.ttf',
+})
+
+export const pixel12x10 = localFont({
+  variable: '--font-pixel-12x10',
+  src: '../fonts/Pixel-12x10.ttf',
+})
+```
+
+- [ ] **Step 2: `app/globals.css`（trading-stream 像素電子看板 tokens）**
 
 ```css
+:root {
+  --bg: #312e81;
+  --fg: #ffffff;
+  --gold: #f5dca6;
+  --pink: #ff7db2;
+  --yellow: #ffd561;
+  --green: #82ff9a;
+  --lilac: #e2c7ff;
+  --line: rgba(226, 199, 255, 0.25);
+  --panel: rgba(255, 255, 255, 0.05);
+}
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, 'Noto Sans TC', sans-serif;
-  background: #f6f7f9;
-  color: #1a202c;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Arial, Helvetica, sans-serif;
 }
 a {
   color: inherit;
+}
+h1,
+h2 {
+  color: var(--gold);
+  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.03em;
 }
 .nav {
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  background: #1a202c;
-  color: #fff;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.brand {
+  color: var(--gold);
+  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-size: 1.15rem;
 }
 .nav a {
-  color: #fff;
+  color: var(--lilac);
   text-decoration: none;
+}
+.nav a:hover {
+  color: var(--gold);
 }
 .nav form {
   margin-left: auto;
+}
+.nav button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--lilac);
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
 }
 .container {
   max-width: 1100px;
@@ -925,58 +992,76 @@ a {
   gap: 1rem;
 }
 .card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+}
+.card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
 }
 .health {
   display: inline-block;
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
   margin-right: 0.5rem;
 }
 .health-healthy {
-  background: #2f855a;
+  background: var(--green);
 }
 .health-degraded {
-  background: #dd6b20;
+  background: var(--yellow);
 }
 .health-down {
-  background: #c53030;
+  background: var(--pink);
 }
 .badge {
   display: inline-block;
   padding: 0.1rem 0.5rem;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 0.8rem;
+  color: var(--bg);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-size: 0.85rem;
 }
 .badge-P0 {
-  background: #c53030;
+  background: var(--pink);
 }
 .badge-P1 {
-  background: #dd6b20;
+  background: var(--yellow);
 }
 .badge-P2 {
-  background: #718096;
+  background: var(--lilac);
 }
 table {
   width: 100%;
-  border-collapse: collapse;
-  background: #fff;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+thead th {
+  color: var(--gold);
+  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-weight: 400;
+  font-size: 1.05rem;
 }
 th,
 td {
   text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0.55rem 1rem;
+}
+tbody td {
+  border-bottom: 1px solid var(--line);
 }
 .filters {
   display: flex;
   gap: 0.5rem;
   margin: 1rem 0;
+}
+.filters select,
+.filters button {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.6rem;
+  font-family: var(--font-new-gen), Arial, sans-serif;
 }
 .actions {
   display: flex;
@@ -985,13 +1070,18 @@ td {
 }
 .actions button {
   padding: 0.4rem 0.9rem;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid var(--lilac);
+  background: transparent;
+  color: var(--lilac);
   cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
+}
+.actions button:hover {
+  background: var(--lilac);
+  color: var(--bg);
 }
 .error {
-  color: #c53030;
+  color: var(--pink);
 }
 .login {
   display: grid;
@@ -999,27 +1089,45 @@ td {
   min-height: 100vh;
 }
 .login-card {
-  width: 320px;
+  width: 340px;
   display: grid;
   gap: 0.75rem;
 }
+.login-card h1 {
+  text-align: center;
+}
 .login-card input {
   width: 100%;
-  padding: 0.4rem;
+  padding: 0.45rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+.login-card button {
+  padding: 0.5rem;
+  background: var(--gold);
+  color: var(--bg);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-new-gen), Arial, sans-serif;
 }
 pre {
-  background: #f1f5f9;
+  background: rgba(0, 0, 0, 0.25);
   padding: 0.5rem;
   overflow-x: auto;
+  color: var(--lilac);
 }
 ```
 
-- [ ] **Step 2: `app/layout.tsx` 改為**
+（設計原則：全站**無 border-radius、無 box-shadow**——pixel 電子看板質感；表格無豎線、僅細橫線。）
+
+- [ ] **Step 3: `app/layout.tsx` 改為（字型變數 + brand）**
 
 ```tsx
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import './globals.css'
+import { auroraBC, newGen, pixel12x10 } from '@/web/fonts'
 import { RealtimeRefresh } from '@/web/realtime-refresh'
 
 export const metadata = { title: 'th-beacon' }
@@ -1027,8 +1135,9 @@ export const metadata = { title: 'th-beacon' }
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-Hant">
-      <body>
+      <body className={`${auroraBC.variable} ${newGen.variable} ${pixel12x10.variable}`}>
         <nav className="nav">
+          <span className="brand">th-beacon</span>
           <Link href="/">服務總覽</Link>
           <Link href="/issues">檢傷列表</Link>
           <form action="/auth/signout" method="post">
@@ -1043,7 +1152,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 }
 ```
 
-- [ ] **Step 3: `src/web/realtime-refresh.tsx`**
+- [ ] **Step 4: `src/web/realtime-refresh.tsx`**
 
 ```tsx
 'use client'
@@ -1074,7 +1183,7 @@ export function RealtimeRefresh() {
 }
 ```
 
-- [ ] **Step 4: `app/page.tsx`（服務總覽）**
+- [ ] **Step 5: `app/page.tsx`（服務總覽）**
 
 ```tsx
 import Link from 'next/link'
@@ -1121,7 +1230,7 @@ export default async function OverviewPage() {
   }
 ```
 
-- [ ] **Step 5: `app/issues/page.tsx`（檢傷列表）**
+- [ ] **Step 6: `app/issues/page.tsx`（檢傷列表）**
 
 ```tsx
 import Link from 'next/link'
@@ -1220,7 +1329,7 @@ export default async function IssuesPage({
 }
 ```
 
-- [ ] **Step 6: `app/issues/actions.ts` 與 `app/issues/[id]/page.tsx`**
+- [ ] **Step 7: `app/issues/actions.ts` 與 `app/issues/[id]/page.tsx`**
 
 `app/issues/actions.ts`：
 
@@ -1319,16 +1428,16 @@ export default async function IssueDetailPage({
 
 （import 路徑 `@/issues-actions` 為示意——實際請用相對路徑 `../actions` 或 `@/../app/issues/actions`，以 typecheck 可過為準，報告註明。）
 
-- [ ] **Step 7: build + 回歸**
+- [ ] **Step 8: build + 回歸**
 
 Run: `pnpm build && pnpm test && pnpm typecheck && pnpm test:integration`
 Expected: 全綠；build 列出 `/`、`/issues`、`/issues/[id]`、`/login` 等路由。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add app/globals.css app/layout.tsx app/page.tsx app/issues src/web/realtime-refresh.tsx src/store/supabase.ts
-git commit -m "feat(web): dashboard pages — overview, triage list, issue detail with status actions"
+git add src/fonts src/web/fonts.ts app/globals.css app/layout.tsx app/page.tsx app/issues src/web/realtime-refresh.tsx src/store/supabase.ts
+git commit -m "feat(web): dashboard pages in trading-stream pixel style"
 ```
 
 ---
