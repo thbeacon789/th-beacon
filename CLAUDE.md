@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 目前狀態：Plan 1–8 全部完成，尚未部署
+## 目前狀態：Plan 1–8 程式碼全部完成；遠端已有 Plan 1–7 schema，Plan 8 migration 與所有資料尚未上線
 
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
@@ -20,7 +20,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 單檔測試：`pnpm vitest run tests/core/<name>.test.ts`
 - 本地 Supabase（OrbStack Docker 需先開）：`supabase start`／`supabase status`／`supabase db reset`（重建並套用全部 migrations）
 - Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db reset` → `supabase db advisors --local --type security` → `pnpm db:types`（重生 `src/db/database.types.ts`，自動產物勿手改）
-- 涉及 Supabase 的任務先載入 `supabase:supabase` skill；本專案為**本地優先**開發（勿用遠端 MCP apply_migration 迭代）
+- 涉及 Supabase 的任務先載入 Supabase agent skill（全域安裝，非 plugin）；本專案為**本地優先**開發（勿用遠端 MCP apply_migration 迭代）
+- MCP 由專案級 `.mcp.json` 鎖定 `project_ref=zyehvumbpciiqbuivnfw`（帳號下另有其他專案，鎖定是為了防手滑對錯的專案下指令）
 
 ## 程式碼架構要點
 
