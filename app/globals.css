@@ -337,7 +337,7 @@ button:disabled,
   align-items: center;
   gap: var(--space-2) var(--space-6);
   margin: 0 0 var(--space-6);
-  padding: var(--space-5);
+  padding: var(--space-5) var(--space-7);
   background: var(--panel);
   border: 1px solid var(--line);
 }
@@ -641,8 +641,8 @@ button:disabled,
 /* 最後一次執行的摘要：整行獨佔，比 hint 再弱一階——它是佐證細節，不是主要訊息 */
 .heartbeat-summary {
   flex-basis: 100%;
-  font-size: 0.78rem;
-  color: var(--muted);
+  font-size: 0.85rem;
+  color: var(--fg-muted);
   overflow-wrap: anywhere;
 }
 /* 逾期沿用 P1 警示黃，不另引入色相 */
@@ -888,6 +888,7 @@ tbody tr:last-child td {
   .gauge-block {
     grid-template-columns: 1fr;
     gap: var(--space-4);
+    padding: var(--space-5) var(--space-4);
   }
   .gauge-figure {
     display: flex;
