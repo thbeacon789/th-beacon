@@ -15,9 +15,12 @@ export default async function IssueDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireUser()
   const { id } = await params
-  const detail = await getIssueDetail(createServerStore().rawClient(), id)
+  // 與 requireUser 並行（理由同 app/page.tsx）
+  const [, detail] = await Promise.all([
+    requireUser(),
+    getIssueDetail(createServerStore().rawClient(), id),
+  ])
   if (detail === null) notFound()
   const { issue, serviceName, events } = detail
 

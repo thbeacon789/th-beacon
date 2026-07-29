@@ -82,24 +82,21 @@ export function summarizeHealth(
 }
 
 export async function getServicesOverview(client: Client, now: Date): Promise<ServiceOverview[]> {
-  const { data: services, error } = await client
-    .from('services')
-    .select('id,name,health_status')
-    .order('name')
-  if (error) throw new Error(`getServicesOverview failed: ${error.message}`)
-
-  const { data: openIssues, error: issueError } = await client
-    .from('issues')
-    .select('service_id,severity')
-    .in('status', ['open', 'acknowledged'])
-  if (issueError) throw new Error(`getServicesOverview issues failed: ${issueError.message}`)
-
-  const { data: heartbeatRows, error: hbError } = await client
-    .from('heartbeats')
-    .select('*')
-    .eq('enabled', true)
-    .order('name')
-  if (hbError) throw new Error(`getServicesOverview heartbeats failed: ${hbError.message}`)
+  // 三個查詢彼此無資料依賴。序列發送時每一筆都要付一次完整的 Function↔Supabase 往返，
+  // 疊起來就是首頁延遲的主因（SQL 本身只有 0.2ms 級）——一律並行發出。
+  const [servicesRes, issuesRes, heartbeatsRes] = await Promise.all([
+    client.from('services').select('id,name,health_status').order('name'),
+    client.from('issues').select('service_id,severity').in('status', ['open', 'acknowledged']),
+    client.from('heartbeats').select('*').eq('enabled', true).order('name'),
+  ])
+  if (servicesRes.error) throw new Error(`getServicesOverview failed: ${servicesRes.error.message}`)
+  if (issuesRes.error)
+    throw new Error(`getServicesOverview issues failed: ${issuesRes.error.message}`)
+  if (heartbeatsRes.error)
+    throw new Error(`getServicesOverview heartbeats failed: ${heartbeatsRes.error.message}`)
+  const services = servicesRes.data
+  const openIssues = issuesRes.data
+  const heartbeatRows = heartbeatsRes.data
 
   return services.map((service) => {
     const openCounts: Record<Severity, number> = { P0: 0, P1: 0, P2: 0 }
@@ -214,23 +211,23 @@ export interface IssueDetail {
 
 export async function getIssueDetail(client: Client, issueId: string): Promise<IssueDetail | null> {
   if (!isUuid(issueId)) return null
-  const { data: issueRow, error } = await client
-    .from('issues')
-    .select('*,services(name)')
-    .eq('id', issueId)
-    .maybeSingle()
-  if (error) throw new Error(`getIssueDetail failed: ${error.message}`)
-  if (issueRow === null) return null
+  // events 只以 issueId 過濾，不需要等 issue 那筆回來——並行省一次跨區往返。
+  // issue 不存在時多查一次 events（結果為空）即丟棄，代價遠低於一次序列往返。
+  const [issueRes, eventsRes] = await Promise.all([
+    client.from('issues').select('*,services(name)').eq('id', issueId).maybeSingle(),
+    client
+      .from('events')
+      .select('id,source,level,message,occurred_at,metadata')
+      .eq('issue_id', issueId)
+      .order('occurred_at', { ascending: false })
+      .limit(50),
+  ])
+  if (issueRes.error) throw new Error(`getIssueDetail failed: ${issueRes.error.message}`)
+  if (issueRes.data === null) return null
+  if (eventsRes.error) throw new Error(`getIssueDetail events failed: ${eventsRes.error.message}`)
+  const events = eventsRes.data
 
-  const { data: events, error: eventsError } = await client
-    .from('events')
-    .select('id,source,level,message,occurred_at,metadata')
-    .eq('issue_id', issueId)
-    .order('occurred_at', { ascending: false })
-    .limit(50)
-  if (eventsError) throw new Error(`getIssueDetail events failed: ${eventsError.message}`)
-
-  const { services, ...bareIssue } = issueRow
+  const { services, ...bareIssue } = issueRes.data
   return {
     issue: rowToIssue(bareIssue),
     serviceName: services?.name ?? '(unknown)',

@@ -27,8 +27,12 @@ function formatTime(iso: string): string {
 }
 
 export default async function OverviewPage() {
-  await requireUser()
-  const overview = await getServicesOverview(createServerStore().rawClient(), new Date())
+  // 與 requireUser 並行：middleware 已擋掉未登入者，這裡的白名單複查若不過會 redirect（throw），
+  // 查到的資料不會被渲染。用一次多餘查詢換掉一次跨區往返。
+  const [, overview] = await Promise.all([
+    requireUser(),
+    getServicesOverview(createServerStore().rawClient(), new Date()),
+  ])
 
   return (
     <main>

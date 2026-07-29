@@ -13,11 +13,14 @@ export default async function IssuesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireUser()
   const params = await searchParams
   const filters = parseIssueFilters(params)
 
-  const issues = await listIssues(createServerStore().rawClient(), filters)
+  // 與 requireUser 並行（理由同 app/page.tsx）
+  const [, issues] = await Promise.all([
+    requireUser(),
+    listIssues(createServerStore().rawClient(), filters),
+  ])
 
   return (
     <main>
