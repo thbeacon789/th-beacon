@@ -25,7 +25,7 @@ export default async function OverviewPage() {
   return (
     <main>
       <div className="page-head">
-        <h1>服務總覽</h1>
+        <h1>Service Overview</h1>
         <p className="hint">共 {overview.length} 項服務｜燈號取輪詢與未解 issue 的最差值</p>
       </div>
       <div className="cards">
@@ -38,17 +38,11 @@ export default async function OverviewPage() {
               </span>
             </div>
             <p className="badge-row">
-              {SEVERITIES.map((severity) => {
-                const count = service.openCounts[severity]
-                return (
-                  <span
-                    key={severity}
-                    className={count === 0 ? 'badge badge-zero' : `badge badge-${severity}`}
-                  >
-                    {severity} {count}
-                  </span>
-                )
-              })}
+              {SEVERITIES.map((severity) => (
+                <span key={severity} className={`badge badge-${severity}`}>
+                  {severity} {service.openCounts[severity]}
+                </span>
+              ))}
             </p>
             {service.heartbeats.length > 0 && (
               <ul className="heartbeats">

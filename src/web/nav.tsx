@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const LINKS = [
-  { href: '/', label: '服務總覽' },
-  { href: '/issues', label: '檢傷列表' },
+  { href: '/', label: 'Overview' },
+  { href: '/issues', label: 'Triage' },
 ] as const
 
 export function NavBar() {
@@ -22,7 +22,7 @@ export function NavBar() {
         </Link>
       ))}
       <form action="/auth/signout" method="post">
-        <button type="submit">登出</button>
+        <button type="submit">Logout</button>
       </form>
     </nav>
   )

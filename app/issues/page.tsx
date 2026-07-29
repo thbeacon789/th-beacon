@@ -22,7 +22,7 @@ export default async function IssuesPage({
   return (
     <main>
       <div className="page-head">
-        <h1>檢傷列表</h1>
+        <h1>Issue Triage</h1>
         <p className="hint">符合條件 {issues.length} 筆</p>
       </div>
       <form className="filters" method="get">

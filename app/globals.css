@@ -323,13 +323,6 @@ button:disabled,
   padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
-}
-.card:hover {
-  background: var(--panel-hover);
-  border-color: var(--line-strong);
 }
 
 .card-head {
@@ -422,12 +415,6 @@ button:disabled,
 }
 .badge-P2 {
   background: var(--lilac);
-}
-/* 計數為 0 時降低視覺權重，讓真正有問題的數字跳出來 */
-.badge-zero {
-  background: transparent;
-  color: var(--fg-muted);
-  border: 1px solid var(--line);
 }
 
 .badge-row {
