@@ -16,11 +16,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用指令
 
-- `pnpm test`（Vitest 單元，零 DB 依賴）／`pnpm test:integration`（需本地 stack）／`pnpm typecheck`／`pnpm build`（next build；**勿跑 `pnpm dev`**）
+- `pnpm test`（Vitest 單元，零 DB 依賴）／`pnpm test:integration`（**只跑本地 stack**——它的 `cleanDatabase` 會清空六張表，指向線上等於清空 production）／`pnpm typecheck`／`pnpm build`（next build；**勿跑 `pnpm dev`**）
 - 單檔測試：`pnpm vitest run tests/core/<name>.test.ts`
-- 本地 Supabase（OrbStack Docker 需先開）：`supabase start`／`supabase status`／`supabase db reset`（重建並套用全部 migrations）
-- Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db reset` → `supabase db advisors --local --type security` → `pnpm db:types`（重生 `src/db/database.types.ts`，自動產物勿手改）
-- 涉及 Supabase 的任務先載入 Supabase agent skill（全域安裝，非 plugin）；本專案為**本地優先**開發（勿用遠端 MCP apply_migration 迭代）
+- **開發資料庫＝線上專案**（`zyehvumbpciiqbuivnfw`）。本地 stack **只為整合測試存在**，不是開發環境。
+- Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db push`（套上線上）→ `supabase db advisors --type security`（或 MCP `get_advisors`）→ `pnpm db:types`（從線上重生 `src/db/database.types.ts`，自動產物勿手改）
+- **勿用 MCP `apply_migration`**：本專案的 migration 以檔案版控，一律走 `db push`；`apply_migration` 會自行寫入 migration history，與檔案脫節。查資料／驗證用 MCP `execute_sql`（唯讀查詢）沒問題。
+- **`seed.sql` 不會隨 `db push` 上線上**（只在本地 `db reset` 載入）。新增 seed 資料（如 triage 規則）必須另外對線上執行一次 INSERT，否則規則在線上不存在，會靜默失效。
+- 跑整合測試前才需要本地 stack（OrbStack Docker 需先開）：`supabase start` → `supabase db reset`（重建並套用全部 migrations，與線上 schema 對齊）→ `pnpm test:integration`
+- 涉及 Supabase 的任務先載入 Supabase agent skill（全域安裝，非 plugin）
 - MCP 由專案級 `.mcp.json` 鎖定 `project_ref=zyehvumbpciiqbuivnfw`（帳號下另有其他專案，鎖定是為了防手滑對錯的專案下指令）
 
 ## 程式碼架構要點

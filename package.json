@@ -12,7 +12,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:types": "supabase gen types --lang typescript --local > src/db/database.types.ts"
+    "db:types": "supabase gen types --lang typescript --linked > src/db/database.types.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
