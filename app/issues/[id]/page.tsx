@@ -3,6 +3,7 @@ import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { getIssueDetail, extractRunUrl } from '@/web/queries'
 import { SubmitButton } from '@/web/submit-button'
+import { ExternalLinkIcon } from '@/web/icons'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -84,11 +85,14 @@ export default async function IssueDetailPage({
                     <>
                       {' '}
                       <a
+                        className="link-external"
                         href={extractRunUrl(event.metadata) as string}
                         target="_blank"
                         rel="noreferrer noopener"
                       >
                         查看 CI run
+                        <ExternalLinkIcon />
+                        <span className="sr-only">（在新分頁開啟）</span>
                       </a>
                     </>
                   )}

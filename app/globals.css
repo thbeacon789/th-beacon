@@ -120,6 +120,23 @@ a:hover {
   color: var(--gold);
 }
 
+/* ============================================================
+   Icon 系統（元件在 src/web/icons.tsx）
+   線條式、currentColor、直角收邊，跟像素風硬邊一致
+   ============================================================ */
+.icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+
+/* 外部連結：文字與 icon 一組，icon 不被底線切斷 */
+.link-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
 .hint {
   color: var(--lilac);
   font-size: 0.85rem;
@@ -344,14 +361,26 @@ button:disabled,
 
 /* 卡片底部的動作連結固定貼底，卡片高度不齊時視覺仍成列 */
 .card-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   margin-top: auto;
-  padding-top: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line);
   font-family: var(--font-ui);
+  letter-spacing: 0.04em;
   text-decoration: none;
 }
 .card-link:hover {
   text-decoration: underline;
+}
+/* 箭頭在 hover 時前推，強化「往下一頁」的方向感 */
+.card-link .icon {
+  transition: transform var(--dur) var(--ease);
+}
+.card-link:hover .icon {
+  transform: translateX(3px);
 }
 
 /* ============================================================
@@ -363,36 +392,19 @@ button:disabled,
   gap: var(--space-2);
   flex: none;
   font-family: var(--font-ui);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.status::before {
-  content: '';
-  width: 0.7rem;
-  height: 0.7rem;
-  flex: none;
-}
+/* 顏色、icon 外形、文字三重編碼：三個 icon 的外輪廓（圓／三角／八角）本身即可區分 */
 .status-healthy {
   color: var(--green);
 }
-.status-healthy::before {
-  background: var(--green);
-}
-/* degraded：切角方塊，色盲情境下仍可與其他狀態區分 */
 .status-degraded {
   color: var(--yellow);
 }
-.status-degraded::before {
-  background: var(--yellow);
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-}
 .status-down {
   color: var(--pink);
-}
-.status-down::before {
-  background: var(--pink);
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 
 /* ============================================================
@@ -467,6 +479,11 @@ button:disabled,
 }
 .sev-P2 .sev-count {
   color: var(--lilac);
+}
+/* 0 筆時降成淡色，讓真正有值的欄位跳出來（標籤色塊維持原色不動） */
+.sev .sev-count.is-zero {
+  color: var(--fg-muted);
+  opacity: 0.55;
 }
 
 /* ============================================================

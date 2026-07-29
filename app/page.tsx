@@ -3,13 +3,20 @@ import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { getServicesOverview } from '@/web/queries'
 import type { HealthStatus } from '@/core/types'
+import {
+  ArrowRightIcon,
+  DegradedIcon,
+  DownIcon,
+  ExternalLinkIcon,
+  HealthyIcon,
+} from '@/web/icons'
 
 export const dynamic = 'force-dynamic'
 
-const HEALTH_LABEL: Record<HealthStatus, string> = {
-  healthy: '正常',
-  degraded: '降級',
-  down: '中斷',
+const HEALTH: Record<HealthStatus, { label: string; Icon: typeof HealthyIcon }> = {
+  healthy: { label: 'Healthy', Icon: HealthyIcon },
+  degraded: { label: 'Degraded', Icon: DegradedIcon },
+  down: { label: 'Down', Icon: DownIcon },
 }
 
 const SEVERITIES = ['P0', 'P1', 'P2'] as const
@@ -29,21 +36,27 @@ export default async function OverviewPage() {
         <p className="hint">共 {overview.length} 項服務｜燈號取輪詢與未解 issue 的最差值</p>
       </div>
       <div className="cards">
-        {overview.map((service) => (
+        {overview.map((service) => {
+          const health = HEALTH[service.healthStatus]
+          return (
           <div key={service.id} className="card">
             <div className="card-head">
               <h2>{service.name}</h2>
               <span className={`status status-${service.healthStatus}`}>
-                {HEALTH_LABEL[service.healthStatus]}
+                <health.Icon />
+                {health.label}
               </span>
             </div>
             <ul className="sev-counts" aria-label="未解決 issue 數">
-              {SEVERITIES.map((severity) => (
-                <li key={severity} className={`sev sev-${severity}`}>
-                  <span className={`badge badge-${severity}`}>{severity}</span>
-                  <span className="sev-count">{service.openCounts[severity]}</span>
-                </li>
-              ))}
+              {SEVERITIES.map((severity) => {
+                const count = service.openCounts[severity]
+                return (
+                  <li key={severity} className={`sev sev-${severity}`}>
+                    <span className={`badge badge-${severity}`}>{severity}</span>
+                    <span className={count === 0 ? 'sev-count is-zero' : 'sev-count'}>{count}</span>
+                  </li>
+                )
+              })}
             </ul>
             {service.heartbeats.length > 0 && (
               <ul className="heartbeats">
@@ -59,8 +72,15 @@ export default async function OverviewPage() {
                           }`}
                     </span>
                     {hb.lastRunUrl !== null && (
-                      <a href={hb.lastRunUrl} target="_blank" rel="noreferrer noopener">
+                      <a
+                        className="link-external"
+                        href={hb.lastRunUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
                         查看 run
+                        <ExternalLinkIcon />
+                        <span className="sr-only">（在新分頁開啟）</span>
                       </a>
                     )}
                     {hb.lastSuccessAt !== null && (
@@ -71,10 +91,12 @@ export default async function OverviewPage() {
               </ul>
             )}
             <Link className="card-link" href={`/issues?serviceId=${service.id}`}>
-              看 issues →
+              Issues
+              <ArrowRightIcon size={22} />
             </Link>
           </div>
-        ))}
+          )
+        })}
       </div>
       {overview.length === 0 && (
         <div className="card empty">
