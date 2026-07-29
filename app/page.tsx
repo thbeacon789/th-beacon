@@ -3,6 +3,7 @@ import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { getServicesOverview, summarizeHealth } from '@/web/queries'
 import { HealthGauge } from '@/web/health-gauge'
+import { formatDateTime } from '@/web/format'
 import type { HealthStatus } from '@/core/types'
 import {
   ArrowRightIcon,
@@ -21,10 +22,6 @@ const HEALTH: Record<HealthStatus, { label: string; Icon: typeof HealthyIcon }> 
 }
 
 const SEVERITIES = ['P0', 'P1', 'P2'] as const
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString('zh-TW')
-}
 
 export default async function OverviewPage() {
   // 與 requireUser 並行：middleware 已擋掉未登入者，這裡的白名單複查若不過會 redirect（throw），
@@ -73,7 +70,7 @@ export default async function OverviewPage() {
                     <span className="heartbeat-run">
                       {hb.lastRunAt === null
                         ? '從未回報'
-                        : `最後執行 ${formatTime(hb.lastRunAt)} ${
+                        : `最後執行 ${formatDateTime(hb.lastRunAt)} ${
                             hb.lastRunStatus === 'fail' ? '失敗' : '成功'
                           }`}
                     </span>
@@ -92,7 +89,7 @@ export default async function OverviewPage() {
                     {/* 上次執行成功時 last_success_at === last_run_at，兩行會完全重複；
                         只在失敗（兩者不同）時才顯示——那時「上次成功是什麼時候」才有資訊量 */}
                     {hb.lastSuccessAt !== null && hb.lastSuccessAt !== hb.lastRunAt && (
-                      <span className="hint">最後成功 {formatTime(hb.lastSuccessAt)}</span>
+                      <span className="hint">最後成功 {formatDateTime(hb.lastSuccessAt)}</span>
                     )}
                     {hb.lastRunSummary !== null && (
                       <span className="heartbeat-summary">{hb.lastRunSummary}</span>

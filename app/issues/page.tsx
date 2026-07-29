@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { listIssues, parseIssueFilters } from '@/web/queries'
+import { formatDateTime } from '@/web/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,7 +91,7 @@ export default async function IssuesPage({
                 </td>
                 <td className="num">{issue.count}</td>
                 <td>{issue.status}</td>
-                <td className="cell-time">{new Date(issue.lastSeen).toLocaleString('zh-TW')}</td>
+                <td className="cell-time">{formatDateTime(issue.lastSeen)}</td>
               </tr>
             ))}
             {issues.length === 0 && (

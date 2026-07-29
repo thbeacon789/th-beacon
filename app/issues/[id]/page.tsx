@@ -4,6 +4,7 @@ import { createServerStore } from '@/store/server'
 import { getIssueDetail, extractRunUrl } from '@/web/queries'
 import { SubmitButton } from '@/web/submit-button'
 import { ExternalLinkIcon } from '@/web/icons'
+import { formatDateTime, formatDateTimeSeconds } from '@/web/format'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -44,11 +45,11 @@ export default async function IssueDetailPage({
         </li>
         <li>
           <span className="meta-key">first seen</span>
-          <span className="meta-val">{new Date(issue.firstSeen).toLocaleString('zh-TW')}</span>
+          <span className="meta-val">{formatDateTime(issue.firstSeen)}</span>
         </li>
         <li>
           <span className="meta-key">last seen</span>
-          <span className="meta-val">{new Date(issue.lastSeen).toLocaleString('zh-TW')}</span>
+          <span className="meta-val">{formatDateTime(issue.lastSeen)}</span>
         </li>
         {issue.tags.length > 0 && (
           <li>
@@ -79,7 +80,7 @@ export default async function IssueDetailPage({
           <tbody>
             {events.map((event) => (
               <tr key={event.id}>
-                <td className="cell-time">{new Date(event.occurredAt).toLocaleString('zh-TW')}</td>
+                <td className="cell-time">{formatDateTimeSeconds(event.occurredAt)}</td>
                 <td>{event.source}</td>
                 <td>{event.level}</td>
                 <td>
