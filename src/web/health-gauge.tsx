@@ -19,39 +19,52 @@ export function HealthGauge({ summary }: { summary: HealthSummary }) {
 
   return (
     <section className="gauge-block" aria-labelledby="gauge-title">
-      <div className="gauge">
-        <svg
-          className="gauge-arc"
-          viewBox="0 0 189 92"
-          role="img"
-          aria-label={`總體健康度 ${summary.score} 分，狀態 ${LABEL[summary.worst]}`}
-        >
-          <defs>
-            <linearGradient id="gauge-scale" x1="0" y1="45.82" x2="189" y2="45.82"
-              gradientUnits="userSpaceOnUse">
-              <stop stopColor="#ff7db2" />
-              <stop offset="0.5" stopColor="#ffd561" />
-              <stop offset="1" stopColor="#82ff9a" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M94.5 17.18C136.91 17.18 171.28 50.51 171.28 91.63H189C189 41.03 146.69 0 94.5 0C42.31 0 0 41.03 0 91.64H17.72C17.72 50.52 52.09 17.18 94.5 17.18Z"
-            fill="url(#gauge-scale)"
-          />
-        </svg>
+      <div className="gauge-figure">
+        <div className="gauge">
+          <svg
+            className="gauge-arc"
+            viewBox="0 0 189 92"
+            role="img"
+            aria-label={`總體健康度 ${summary.score} 分，狀態 ${LABEL[summary.worst]}`}
+          >
+            <defs>
+              <linearGradient
+                id="gauge-scale"
+                x1="0"
+                y1="45.82"
+                x2="189"
+                y2="45.82"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop stopColor="#ff7db2" />
+                <stop offset="0.5" stopColor="#ffd561" />
+                <stop offset="1" stopColor="#82ff9a" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M94.5 17.18C136.91 17.18 171.28 50.51 171.28 91.63H189C189 41.03 146.69 0 94.5 0C42.31 0 0 41.03 0 91.64H17.72C17.72 50.52 52.09 17.18 94.5 17.18Z"
+              fill="url(#gauge-scale)"
+            />
+          </svg>
 
-        {/* 指針：以半圓底部中心為軸旋轉 */}
-        <div className="gauge-needle" style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}>
-          <span className="gauge-needle-head" />
+          {/* 指針：以半圓底部中心為軸旋轉 */}
+          <div
+            className="gauge-needle"
+            style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
+          >
+            <span className="gauge-needle-head" />
+          </div>
+
+          <div className={`gauge-score status-${summary.worst}`}>{summary.score}</div>
         </div>
 
-        <div className={`gauge-score status-${summary.worst}`}>{summary.score}</div>
-      </div>
-
-      <div className="gauge-readout">
+        {/* 狀態文字貼在半圓正下方，與原始 mood meter 的排版一致 */}
         <h2 id="gauge-title" className={`gauge-label status-${summary.worst}`}>
           {LABEL[summary.worst]}
         </h2>
+      </div>
+
+      <div className="gauge-readout">
         <dl className="gauge-counts">
           <div>
             <dt>Healthy</dt>
