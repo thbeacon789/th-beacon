@@ -37,13 +37,14 @@ export default async function OverviewPage() {
                 {HEALTH_LABEL[service.healthStatus]}
               </span>
             </div>
-            <p className="badge-row">
+            <ul className="sev-counts" aria-label="未解決 issue 數">
               {SEVERITIES.map((severity) => (
-                <span key={severity} className={`badge badge-${severity}`}>
-                  {severity} {service.openCounts[severity]}
-                </span>
+                <li key={severity} className={`sev sev-${severity}`}>
+                  <span className={`badge badge-${severity}`}>{severity}</span>
+                  <span className="sev-count">{service.openCounts[severity]}</span>
+                </li>
               ))}
-            </p>
+            </ul>
             {service.heartbeats.length > 0 && (
               <ul className="heartbeats">
                 {service.heartbeats.map((hb) => (

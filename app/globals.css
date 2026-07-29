@@ -429,6 +429,47 @@ button:disabled,
 }
 
 /* ============================================================
+   服務卡片的未解決計數：標籤與數字分離，數字才是要掃視的主體
+   ============================================================ */
+.sev-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+}
+
+.sev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+}
+.sev + .sev {
+  border-left: 1px solid var(--line);
+}
+
+/* 大字級落在 WCAG large text 門檻（≥18.66px bold / ≥24px）之上，
+   因此可以直接用各 severity 的品牌色而不失對比 */
+.sev-count {
+  font-family: var(--font-ui);
+  font-size: 1.75rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.sev-P0 .sev-count {
+  color: var(--pink);
+}
+.sev-P1 .sev-count {
+  color: var(--yellow);
+}
+.sev-P2 .sev-count {
+  color: var(--lilac);
+}
+
+/* ============================================================
    心跳清單
    ============================================================ */
 .heartbeats {
