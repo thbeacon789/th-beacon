@@ -2,10 +2,7 @@
   "mcpServers": {
     "supabase-thbeacon": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=zyehvumbpciiqbuivnfw&features=database,debugging,development,docs",
-      "headers": {
-        "Authorization": "Bearer ${SUPABASE_TOKEN_THBEACON}"
-      }
+      "url": "https://mcp.supabase.com/mcp?project_ref=zyehvumbpciiqbuivnfw&features=database,debugging,development,docs"
     }
   }
 }
