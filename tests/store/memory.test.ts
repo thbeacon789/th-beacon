@@ -285,6 +285,7 @@ describe('InMemoryStore 心跳', () => {
     lastSuccessAt: null,
     lastRunStatus: null,
     lastRunUrl: null,
+    lastRunSummary: null,
     createdAt: '2026-07-01T00:00:00.000Z',
   }
 
@@ -299,6 +300,7 @@ describe('InMemoryStore 心跳', () => {
     const updated = await store.recordHeartbeatRun('s-1', 'daily-test', {
       status: 'pass',
       runUrl: 'https://ci/run/1',
+      summary: null,
       at: '2026-07-29T03:00:00.000Z',
     })
     expect(updated?.lastRunAt).toBe('2026-07-29T03:00:00.000Z')
@@ -311,11 +313,13 @@ describe('InMemoryStore 心跳', () => {
     await store.recordHeartbeatRun('s-1', 'daily-test', {
       status: 'pass',
       runUrl: null,
+      summary: null,
       at: '2026-07-28T03:00:00.000Z',
     })
     const updated = await store.recordHeartbeatRun('s-1', 'daily-test', {
       status: 'fail',
       runUrl: null,
+      summary: null,
       at: '2026-07-29T03:00:00.000Z',
     })
     expect(updated?.lastRunAt).toBe('2026-07-29T03:00:00.000Z')
@@ -323,10 +327,29 @@ describe('InMemoryStore 心跳', () => {
     expect(updated?.lastRunStatus).toBe('fail')
   })
 
+  it('summary 在 pass 與 fail 都被存入', async () => {
+    const passed = await store.recordHeartbeatRun('s-1', 'daily-test', {
+      status: 'pass',
+      runUrl: null,
+      summary: '解析成功：某商品（1234ms）',
+      at: '2026-07-29T03:00:00.000Z',
+    })
+    expect(passed?.lastRunSummary).toBe('解析成功：某商品（1234ms）')
+
+    const failed = await store.recordHeartbeatRun('s-1', 'daily-test', {
+      status: 'fail',
+      runUrl: null,
+      summary: 'http_status｜HTTP 502',
+      at: '2026-07-30T03:00:00.000Z',
+    })
+    expect(failed?.lastRunSummary).toBe('http_status｜HTTP 502')
+  })
+
   it('未登記的心跳回傳 null', async () => {
     const result = await store.recordHeartbeatRun('s-1', 'nope', {
       status: 'pass',
       runUrl: null,
+      summary: null,
       at: '2026-07-29T03:00:00.000Z',
     })
     expect(result).toBeNull()

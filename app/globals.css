@@ -617,6 +617,13 @@ button:disabled,
   flex-basis: 100%;
   font-size: 0.78rem;
 }
+/* 最後一次執行的摘要：整行獨佔，比 hint 再弱一階——它是佐證細節，不是主要訊息 */
+.heartbeat-summary {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 /* 逾期沿用 P1 警示黃，不另引入色相 */
 .heartbeat.overdue {
   border-left-color: var(--yellow);

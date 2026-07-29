@@ -72,11 +72,14 @@ export interface StoredHeartbeat extends HeartbeatDefinition {
   lastSuccessAt: string | null
   lastRunStatus: HeartbeatRunStatus | null
   lastRunUrl: string | null
+  lastRunSummary: string | null
 }
 
 export interface HeartbeatRun {
   status: HeartbeatRunStatus
   runUrl: string | null
+  // pass 與 fail 都存——成功摘要（含耗時）是效能退化的早期信號
+  summary: string | null
   at: string // ISO 8601
 }
 

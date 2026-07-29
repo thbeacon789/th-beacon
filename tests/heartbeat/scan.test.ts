@@ -29,6 +29,7 @@ const hb: Omit<StoredHeartbeat, 'serviceId'> = {
   lastSuccessAt: '2026-07-27T03:00:00.000Z',
   lastRunStatus: 'pass',
   lastRunUrl: null,
+  lastRunSummary: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 }
 

@@ -88,6 +88,9 @@ export default async function OverviewPage() {
                     {hb.lastSuccessAt !== null && (
                       <span className="hint">最後成功 {formatTime(hb.lastSuccessAt)}</span>
                     )}
+                    {hb.lastRunSummary !== null && (
+                      <span className="heartbeat-summary">{hb.lastRunSummary}</span>
+                    )}
                   </li>
                 ))}
               </ul>

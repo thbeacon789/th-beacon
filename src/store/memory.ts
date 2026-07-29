@@ -240,6 +240,7 @@ export class InMemoryStore implements Store {
       lastRunAt: run.at,
       lastRunStatus: run.status,
       lastRunUrl: run.runUrl,
+      lastRunSummary: run.summary,
       // pass 才推進 last_success_at；fail 保留舊值
       lastSuccessAt: run.status === 'pass' ? run.at : current.lastSuccessAt,
     }

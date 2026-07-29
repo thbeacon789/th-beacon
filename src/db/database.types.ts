@@ -123,6 +123,7 @@ export type Database = {
           interval_seconds: number
           last_run_at: string | null
           last_run_status: string | null
+          last_run_summary: string | null
           last_run_url: string | null
           last_success_at: string | null
           name: string
@@ -137,6 +138,7 @@ export type Database = {
           interval_seconds: number
           last_run_at?: string | null
           last_run_status?: string | null
+          last_run_summary?: string | null
           last_run_url?: string | null
           last_success_at?: string | null
           name: string
@@ -151,6 +153,7 @@ export type Database = {
           interval_seconds?: number
           last_run_at?: string | null
           last_run_status?: string | null
+          last_run_summary?: string | null
           last_run_url?: string | null
           last_success_at?: string | null
           name?: string

@@ -1,7 +1,7 @@
 import { verifyIngestSignature } from '@/ingest/hmac'
 import type { IngestRequest, IngestResponse } from '@/ingest/handle-ingest'
 import { parseHeartbeatPayload } from '@/heartbeat/payload'
-import { heartbeatFingerprint, normalizeHeartbeatFailure } from '@/core/heartbeat'
+import { heartbeatFingerprint, normalizeHeartbeatFailure, truncateRunSummary } from '@/core/heartbeat'
 import { processAndNotify } from '@/pipeline/process-and-notify'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
@@ -46,6 +46,7 @@ export async function handleHeartbeat(
   const heartbeat = await store.recordHeartbeatRun(serviceId, report.name, {
     status: report.status,
     runUrl: report.runUrl ?? null,
+    summary: truncateRunSummary(report.summary),
     at: now.toISOString(),
   })
   // 登記制：未登記的名稱要立刻炸給 CI 看，而不是靜靜長出幽靈心跳。

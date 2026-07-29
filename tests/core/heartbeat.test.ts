@@ -6,6 +6,8 @@ import {
   isSafeRunUrl,
   synthesizeHeartbeatMissedEvent,
   normalizeHeartbeatFailure,
+  truncateRunSummary,
+  RUN_SUMMARY_LIMIT,
   type HeartbeatDefinition,
 } from '@/core/heartbeat'
 
@@ -160,5 +162,23 @@ describe('normalizeHeartbeatFailure', () => {
     const a = normalizeHeartbeatFailure('s-1', base, { summary: 'x' }, now)
     const b = normalizeHeartbeatFailure('s-1', base, { summary: 'y' }, now)
     expect(a.fingerprint).toBe(b.fingerprint)
+  })
+})
+
+describe('truncateRunSummary', () => {
+  it('未提供或空字串回 null', () => {
+    expect(truncateRunSummary(undefined)).toBeNull()
+    expect(truncateRunSummary('')).toBeNull()
+  })
+
+  it('長度在上限內原樣保留', () => {
+    expect(truncateRunSummary('解析成功：某商品（1234ms）')).toBe('解析成功：某商品（1234ms）')
+    expect(truncateRunSummary('x'.repeat(RUN_SUMMARY_LIMIT))).toHaveLength(RUN_SUMMARY_LIMIT)
+  })
+
+  it('超過上限截斷並補省略號，總長不超過上限', () => {
+    const result = truncateRunSummary('x'.repeat(RUN_SUMMARY_LIMIT + 500))
+    expect(result).toHaveLength(RUN_SUMMARY_LIMIT)
+    expect(result?.endsWith('…')).toBe(true)
   })
 })

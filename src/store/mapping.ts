@@ -123,6 +123,7 @@ export function rowToHeartbeat(row: HeartbeatRow): StoredHeartbeat {
         ? null
         : narrow(row.last_run_status, RUN_STATUSES, 'heartbeat run status'),
     lastRunUrl: row.last_run_url,
+    lastRunSummary: row.last_run_summary,
     createdAt: row.created_at,
   }
 }

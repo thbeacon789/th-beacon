@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { handleHeartbeat } from '@/heartbeat/handle-heartbeat'
 import { InMemoryStore } from '@/store/memory'
-import { heartbeatFingerprint, synthesizeHeartbeatMissedEvent } from '@/core/heartbeat'
+import {
+  heartbeatFingerprint,
+  synthesizeHeartbeatMissedEvent,
+  RUN_SUMMARY_LIMIT,
+} from '@/core/heartbeat'
 import type { ServiceRecord, StoredHeartbeat } from '@/store/contracts'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 
@@ -35,6 +39,7 @@ const hb: Omit<StoredHeartbeat, 'serviceId'> = {
   lastSuccessAt: '2026-07-27T03:00:00.000Z',
   lastRunStatus: 'pass',
   lastRunUrl: null,
+  lastRunSummary: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 }
 
@@ -86,6 +91,20 @@ describe('handleHeartbeat', () => {
     expect(bad.status).toBe(400)
     const invalid = await handleHeartbeat(store, noopDeps, request('{"name":"x"}'), now)
     expect(invalid.status).toBe(422)
+  })
+
+  it('summary 存進心跳，超過上限截斷', async () => {
+    const long = 'x'.repeat(RUN_SUMMARY_LIMIT + 100)
+    const res = await handleHeartbeat(
+      store,
+      noopDeps,
+      request(JSON.stringify({ name: 'daily-test', status: 'pass', summary: long })),
+      now,
+    )
+    expect(res.status).toBe(200)
+    const [stored] = await store.listEnabledHeartbeats()
+    expect(stored.lastRunSummary).toHaveLength(RUN_SUMMARY_LIMIT)
+    expect(stored.lastRunSummary?.endsWith('…')).toBe(true)
   })
 
   it('未登記的心跳名稱回 404', async () => {

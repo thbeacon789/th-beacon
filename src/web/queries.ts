@@ -28,6 +28,7 @@ export interface HeartbeatSummary {
   lastSuccessAt: string | null
   lastRunStatus: HeartbeatRunStatus | null
   lastRunUrl: string | null
+  lastRunSummary: string | null
 }
 
 export interface ServiceOverview {
@@ -118,6 +119,7 @@ export async function getServicesOverview(client: Client, now: Date): Promise<Se
           lastRunStatus: hb.lastRunStatus,
           // 讀取端也要擋：DB 可能存有修正前寫入、或繞過 API 直接改 DB 的髒資料
           lastRunUrl: isSafeRunUrl(hb.lastRunUrl) ? hb.lastRunUrl : null,
+          lastRunSummary: hb.lastRunSummary,
         }
       })
     return {

@@ -214,6 +214,7 @@ export class SupabaseStore implements Store {
       last_run_at: run.at,
       last_run_status: run.status,
       last_run_url: run.runUrl,
+      last_run_summary: run.summary,
       // pass 才推進 last_success_at；fail 不帶這個鍵，保留舊值
       ...(run.status === 'pass' ? { last_success_at: run.at } : {}),
     }
