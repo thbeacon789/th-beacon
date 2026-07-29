@@ -647,8 +647,9 @@ button:disabled,
 }
 .heartbeat-summary {
   flex-basis: 100%;
-  font-size: 0.85rem;
-  color: var(--fg-muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--fg);
   overflow-wrap: anywhere;
 }
 .heartbeat-run {

@@ -85,7 +85,9 @@ export default async function OverviewPage() {
                         <span className="sr-only">（在新分頁開啟）</span>
                       </a>
                     )}
-                    {hb.lastSuccessAt !== null && (
+                    {/* 上次執行成功時 last_success_at === last_run_at，兩行會完全重複；
+                        只在失敗（兩者不同）時才顯示——那時「上次成功是什麼時候」才有資訊量 */}
+                    {hb.lastSuccessAt !== null && hb.lastSuccessAt !== hb.lastRunAt && (
                       <span className="hint">最後成功 {formatTime(hb.lastSuccessAt)}</span>
                     )}
                     {hb.lastRunSummary !== null && (
