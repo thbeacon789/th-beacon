@@ -390,6 +390,7 @@ button:disabled,
 .gauge-readout {
   display: flex;
   flex-direction: column;
+  flex-grow: 1;
   gap: var(--space-3);
   min-width: 12rem;
 }
@@ -862,6 +863,13 @@ tbody tr:last-child td {
 @media (max-width: 40rem) {
   .container {
     padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+  /* 手機版半圓儀表獨佔一列，置中 */
+  .gauge-block {
+    justify-content: center;
+  }
+  .gauge {
+    margin-inline: auto;
   }
   .nav {
     padding: var(--space-3) var(--space-4);
