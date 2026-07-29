@@ -1,4 +1,9 @@
+/* ============================================================
+   Design tokens
+   配色維持原有 7 色，其餘皆由同色系推導的透明度層級。
+   ============================================================ */
 :root {
+  /* --- 品牌色（不新增色相） --- */
   --bg: #312e81;
   --fg: #ffffff;
   --gold: #f5dca6;
@@ -6,99 +11,408 @@
   --yellow: #ffd561;
   --green: #82ff9a;
   --lilac: #e2c7ff;
+
+  /* --- 由上述色推導的表面／線條層級 --- */
   --line: rgba(226, 199, 255, 0.25);
+  --line-strong: rgba(226, 199, 255, 0.45);
   --panel: rgba(255, 255, 255, 0.05);
+  --panel-hover: rgba(255, 255, 255, 0.09);
+  --sunken: rgba(49, 46, 129, 0.55);
+  --fg-muted: rgba(255, 255, 255, 0.72);
+
+  /* --- 間距（dashboard 密度） --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* --- 動態 --- */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 160ms;
+
+  /* --- 字體 --- */
+  --font-ui: var(--font-new-gen), 'Helvetica Neue', Arial, 'PingFang TC',
+    'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  --font-display: var(--font-aurora-bc), 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --font-body: 'Helvetica Neue', Arial, 'PingFang TC', 'Noto Sans TC',
+    'Microsoft JhengHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
-* {
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.5;
 }
-a {
-  color: inherit;
+
+/* 全站統一 focus 樣式：像素風硬邊，不依賴瀏覽器預設 */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   排版
+   ============================================================ */
 h1,
-h2 {
+h2,
+h3 {
   color: var(--gold);
-  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
   letter-spacing: 0.03em;
+  text-wrap: balance;
 }
+h1 {
+  margin: 0 0 var(--space-5);
+  font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2rem);
+  line-height: 1.25;
+}
+h2 {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+p {
+  margin: 0 0 var(--space-3);
+}
+
+/* 內文連結必須自帶可視 affordance，不能只靠顏色或滑鼠停留 */
+a {
+  color: var(--lilac);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+  transition: color var(--dur) var(--ease);
+}
+a:hover {
+  color: var(--gold);
+}
+
+.hint {
+  color: var(--lilac);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.muted {
+  color: var(--fg-muted);
+}
+.error {
+  color: var(--pink);
+}
+
+/* 數字對齊：等寬數字，避免刷新時欄寬跳動 */
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.mono,
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+pre {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  max-height: 18rem;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  color: var(--lilac);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* ============================================================
+   共用控制元件
+   ============================================================ */
+button,
+select,
+input {
+  font: inherit;
+  font-family: var(--font-ui);
+  color: inherit;
+}
+
+.btn,
+.nav button,
+.filters button,
+.filters select,
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  color: var(--lilac);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.btn:hover:not(:disabled),
+.nav button:hover:not(:disabled),
+.filters button:hover:not(:disabled),
+.actions button:hover:not(:disabled) {
+  background: var(--lilac);
+  border-color: var(--lilac);
+  color: var(--bg);
+}
+
+.btn:active:not(:disabled),
+.nav button:active:not(:disabled),
+.filters button:active:not(:disabled),
+.actions button:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+button:disabled,
+[aria-busy='true'] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* 觸控裝置放大命中區到 44px */
+@media (pointer: coarse) {
+  .btn,
+  .nav button,
+  .nav a,
+  .filters button,
+  .filters select,
+  .actions button {
+    min-height: 2.75rem;
+  }
+}
+
+/* ============================================================
+   導覽列
+   ============================================================ */
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: -3rem;
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  background: var(--gold);
+  color: var(--bg);
+  text-decoration: none;
+  transition: top var(--dur) var(--ease);
+}
+.skip-link:focus-visible {
+  top: var(--space-3);
+  color: var(--bg);
+}
+
 .nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.9rem 1.5rem;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
-  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-family: var(--font-ui);
 }
+
 .brand {
   color: var(--gold);
-  font-family: var(--font-aurora-bc), Arial, sans-serif;
+  font-family: var(--font-display);
   font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  margin-right: var(--space-2);
 }
+
 .nav a {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) 0;
   color: var(--lilac);
   text-decoration: none;
+  border-bottom: 2px solid transparent;
 }
 .nav a:hover {
   color: var(--gold);
+  border-bottom-color: var(--line-strong);
 }
+/* 目前頁面：底線＋色彩雙重標示，不單靠顏色 */
+.nav a[aria-current='page'] {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
 .nav form {
   margin-left: auto;
 }
-.nav button {
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--lilac);
-  padding: 0.25rem 0.75rem;
-  cursor: pointer;
-  font-family: var(--font-new-gen), Arial, sans-serif;
-}
+
+/* ============================================================
+   版面
+   ============================================================ */
 .container {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: var(--space-6) var(--space-5) var(--space-7);
 }
+
+.page-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.page-head h1 {
+  margin: 0;
+}
+.page-head .hint {
+  margin: 0;
+}
+
+/* ============================================================
+   服務卡片
+   ============================================================ */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(15rem, 100%, 20rem), 1fr));
+  gap: var(--space-4);
 }
+
 .card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  padding: 1rem 1.25rem;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.card:hover {
+  background: var(--panel-hover);
+  border-color: var(--line-strong);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 .card h2 {
-  margin-top: 0;
+  margin: 0;
   font-size: 1.15rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
-.health {
-  display: inline-block;
+
+/* 卡片底部的動作連結固定貼底，卡片高度不齊時視覺仍成列 */
+.card-link {
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-family: var(--font-ui);
+  text-decoration: none;
+}
+.card-link:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
+   健康度燈號：色塊＋形狀＋文字，三重編碼
+   ============================================================ */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.status::before {
+  content: '';
   width: 0.7rem;
   height: 0.7rem;
-  margin-right: 0.5rem;
+  flex: none;
 }
-.health-healthy {
+.status-healthy {
+  color: var(--green);
+}
+.status-healthy::before {
   background: var(--green);
 }
-.health-degraded {
+/* degraded：切角方塊，色盲情境下仍可與其他狀態區分 */
+.status-degraded {
+  color: var(--yellow);
+}
+.status-degraded::before {
   background: var(--yellow);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
-.health-down {
+.status-down {
+  color: var(--pink);
+}
+.status-down::before {
   background: var(--pink);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
+
+/* ============================================================
+   Severity badge
+   ============================================================ */
 .badge {
-  display: inline-block;
-  padding: 0.1rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  padding: 0.15rem 0.5rem;
   color: var(--bg);
-  font-family: var(--font-new-gen), Arial, sans-serif;
-  font-size: 0.85rem;
+  background: var(--lilac);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 .badge-P0 {
   background: var(--pink);
@@ -109,82 +423,248 @@ h2 {
 .badge-P2 {
   background: var(--lilac);
 }
+/* 計數為 0 時降低視覺權重，讓真正有問題的數字跳出來 */
+.badge-zero {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--line);
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* ============================================================
+   心跳清單
+   ============================================================ */
+.heartbeats {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.heartbeat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+.heartbeat strong {
+  font-family: var(--font-ui);
+  font-weight: 400;
+}
+.heartbeat .hint {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
+/* 逾期沿用 P1 警示黃，不另引入色相 */
+.heartbeat.overdue {
+  border-left-color: var(--yellow);
+}
+.heartbeat.overdue strong {
+  color: var(--yellow);
+}
+
+/* ============================================================
+   篩選列
+   ============================================================ */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.filters label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--lilac);
+  letter-spacing: 0.04em;
+}
+.filters select {
+  color: var(--fg);
+  background: var(--sunken);
+}
+.filters select:hover {
+  border-color: var(--lilac);
+}
+/* 原生下拉選單在部分瀏覽器會沿用作業系統配色，明確指定避免白字白底 */
+.filters option {
+  background: var(--bg);
+  color: var(--fg);
+}
+.filters button {
+  align-self: flex-end;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-6);
+}
+.actions form {
+  margin: 0;
+}
+
+/* ============================================================
+   表格
+   ============================================================ */
+/* 橫向捲動限制在容器內，頁面本身永不橫向捲動 */
+.table-wrap {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
 table {
   width: 100%;
+  min-width: 40rem;
   border-collapse: separate;
   border-spacing: 0;
+  font-size: 0.9rem;
 }
+
 thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg); /* 不透明，sticky 時才能遮住下方捲動的列 */
   color: var(--gold);
-  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-family: var(--font-ui);
   font-weight: 400;
-  font-size: 1.05rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line-strong);
 }
+
 th,
 td {
   text-align: left;
-  padding: 0.55rem 1rem;
+  padding: var(--space-3) var(--space-4);
+  vertical-align: top;
+}
+
+tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+tbody tr:hover {
+  background: var(--panel-hover);
 }
 tbody td {
   border-bottom: 1px solid var(--line);
 }
-.filters {
-  display: flex;
-  gap: 0.5rem;
-  margin: 1rem 0;
+tbody tr:last-child td {
+  border-bottom: 0;
 }
-.filters select,
-.filters button {
-  background: var(--panel);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  padding: 0.35rem 0.6rem;
-  font-family: var(--font-new-gen), Arial, sans-serif;
+
+/* 時間欄位不換行，避免一列被撐成三行 */
+.cell-time {
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: 0.85em;
 }
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin: 1rem 0;
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--fg-muted);
 }
-.actions button {
-  padding: 0.4rem 0.9rem;
-  border: 1px solid var(--lilac);
-  background: transparent;
+.empty strong {
+  display: block;
+  margin-bottom: var(--space-1);
   color: var(--lilac);
-  cursor: pointer;
-  font-family: var(--font-new-gen), Arial, sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 400;
 }
-.actions button:hover {
-  background: var(--lilac);
-  color: var(--bg);
+
+/* ============================================================
+   Issue 詳情
+   ============================================================ */
+.detail-message {
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border-left: 2px solid var(--line-strong);
+  overflow-wrap: anywhere;
 }
-.error {
-  color: var(--pink);
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
 }
+.meta > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.meta dt,
+.meta .meta-key {
+  color: var(--lilac);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.meta .meta-val {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   登入
+   ============================================================ */
 .login {
   display: grid;
   place-items: center;
-  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--space-5);
 }
 .login-card {
-  width: 340px;
+  width: min(21.25rem, 100%);
   display: grid;
-  gap: 0.75rem;
-}
-.login-card h1 {
+  gap: var(--space-4);
   text-align: center;
 }
+.login-card h1 {
+  margin: 0;
+}
 .login-card .google-login {
-  padding: 1rem 1.25rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: var(--space-4);
   background: var(--gold);
   color: var(--bg);
   border: 4px solid var(--bg);
   outline: 2px solid var(--gold);
   cursor: pointer;
-  font-family: var(--font-aurora-bc), Arial, sans-serif;
-  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  transition:
+    background var(--dur) var(--ease),
+    outline-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
 .login-card .google-login:hover:not(:disabled) {
   background: var(--lilac);
@@ -193,35 +673,57 @@ tbody td {
 .login-card .google-login:active:not(:disabled) {
   transform: translate(2px, 2px);
 }
+.login-card .google-login:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+}
 .login-card .google-login:disabled {
   opacity: 0.6;
-  cursor: default;
+  cursor: progress;
 }
-pre {
-  background: rgba(0, 0, 0, 0.25);
-  padding: 0.5rem;
-  overflow-x: auto;
-  color: var(--lilac);
-}
-.hint {
-  color: var(--lilac);
-  font-size: 0.85rem;
-}
-.heartbeats {
-  list-style: none;
+
+/* ============================================================
+   視覺隱藏但可供螢幕閱讀器讀取
+   ============================================================ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   padding: 0;
-  margin: 0.5rem 0;
-  font-size: 0.85em;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
-.heartbeat {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-  padding: 0.2rem 0;
-}
-
-.heartbeat.overdue strong {
-  color: #e67e22;
+/* ============================================================
+   窄螢幕
+   ============================================================ */
+@media (max-width: 40rem) {
+  .container {
+    padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+  .nav {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2) var(--space-3);
+  }
+  .brand {
+    flex-basis: 100%;
+  }
+  .nav form {
+    margin-left: auto;
+  }
+  .filters {
+    align-items: stretch;
+  }
+  .filters label,
+  .filters select,
+  .filters button {
+    width: 100%;
+  }
+  th,
+  td {
+    padding: var(--space-2) var(--space-3);
+  }
 }

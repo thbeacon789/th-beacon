@@ -33,10 +33,20 @@ export function GoogleLoginButton() {
 
   return (
     <>
-      <button type="button" className="google-login" onClick={onClick} disabled={busy}>
+      <button
+        type="button"
+        className="google-login"
+        onClick={onClick}
+        disabled={busy}
+        aria-busy={busy}
+      >
         {busy ? 'Loading…' : 'Google Login'}
       </button>
-      {error !== null && <p className="error">{error}</p>}
+      {error !== null && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
     </>
   )
 }

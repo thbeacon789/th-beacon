@@ -21,64 +21,86 @@ export default async function IssuesPage({
 
   return (
     <main>
-      <h1>檢傷列表</h1>
+      <div className="page-head">
+        <h1>檢傷列表</h1>
+        <p className="hint">符合條件 {issues.length} 筆</p>
+      </div>
       <form className="filters" method="get">
         {typeof params.serviceId === 'string' && params.serviceId !== '' && (
           <input type="hidden" name="serviceId" value={params.serviceId} />
         )}
-        <select name="severity" defaultValue={typeof params.severity === 'string' ? params.severity : ''}>
-          <option value="">全部 severity</option>
-          {SEVERITIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select name="status" defaultValue={typeof params.status === 'string' ? params.status : ''}>
-          <option value="">全部狀態</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <label>
+          Severity
+          <select
+            name="severity"
+            defaultValue={typeof params.severity === 'string' ? params.severity : ''}
+          >
+            <option value="">全部 severity</option>
+            {SEVERITIES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          狀態
+          <select
+            name="status"
+            defaultValue={typeof params.status === 'string' ? params.status : ''}
+          >
+            <option value="">全部狀態</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="submit">篩選</button>
       </form>
-      <table>
-        <thead>
-          <tr>
-            <th>severity</th>
-            <th>服務</th>
-            <th>錯誤</th>
-            <th>次數</th>
-            <th>狀態</th>
-            <th>最後發生</th>
-          </tr>
-        </thead>
-        <tbody>
-          {issues.map((issue) => (
-            <tr key={issue.id}>
-              <td>
-                <span className={`badge badge-${issue.severity}`}>{issue.severity}</span>
-              </td>
-              <td>{issue.serviceName}</td>
-              <td>
-                <Link href={`/issues/${issue.id}`}>
-                  {issue.errorType}: {issue.message.slice(0, 80)}
-                </Link>
-              </td>
-              <td>{issue.count}</td>
-              <td>{issue.status}</td>
-              <td>{new Date(issue.lastSeen).toLocaleString('zh-TW')}</td>
-            </tr>
-          ))}
-          {issues.length === 0 && (
+      <div className="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td colSpan={6}>沒有符合條件的 issue。</td>
+              <th scope="col">severity</th>
+              <th scope="col">服務</th>
+              <th scope="col">錯誤</th>
+              <th scope="col" className="num">
+                次數
+              </th>
+              <th scope="col">狀態</th>
+              <th scope="col">最後發生</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {issues.map((issue) => (
+              <tr key={issue.id}>
+                <td>
+                  <span className={`badge badge-${issue.severity}`}>{issue.severity}</span>
+                </td>
+                <td>{issue.serviceName}</td>
+                <td>
+                  <Link href={`/issues/${issue.id}`}>
+                    {issue.errorType}: {issue.message.slice(0, 80)}
+                  </Link>
+                </td>
+                <td className="num">{issue.count}</td>
+                <td>{issue.status}</td>
+                <td className="cell-time">{new Date(issue.lastSeen).toLocaleString('zh-TW')}</td>
+              </tr>
+            ))}
+            {issues.length === 0 && (
+              <tr>
+                <td colSpan={6} className="empty">
+                  <strong>沒有符合條件的 issue</strong>
+                  <span>放寬 severity 或狀態篩選，或回到服務總覽挑一個服務。</span>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </main>
   )
 }

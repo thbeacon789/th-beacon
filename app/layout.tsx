@@ -11,8 +11,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-Hant" suppressHydrationWarning>
       <body className={`${auroraBC.variable} ${newGen.variable}`}>
+        <a className="skip-link" href="#main">
+          跳到主要內容
+        </a>
         <NavBar />
-        <div className="container">{children}</div>
+        <div className="container" id="main">
+          {children}
+        </div>
         <RealtimeRefresh />
       </body>
     </html>

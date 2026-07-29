@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { getIssueDetail, extractRunUrl } from '@/web/queries'
+import { SubmitButton } from '@/web/submit-button'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -21,63 +22,93 @@ export default async function IssueDetailPage({
 
   return (
     <main>
-      <h1>
-        <span className={`badge badge-${issue.severity}`}>{issue.severity}</span> {serviceName} —{' '}
-        {issue.errorType}
-      </h1>
-      <p>{issue.message}</p>
-      <p>
-        狀態：<strong>{issue.status}</strong>｜次數：{issue.count}｜first seen:{' '}
-        {new Date(issue.firstSeen).toLocaleString('zh-TW')}｜last seen:{' '}
-        {new Date(issue.lastSeen).toLocaleString('zh-TW')}
-        {issue.tags.length > 0 && <>｜tags: {issue.tags.join(', ')}</>}
-      </p>
+      <div className="page-head">
+        <h1>
+          <span className={`badge badge-${issue.severity}`}>{issue.severity}</span> {serviceName} —{' '}
+          {issue.errorType}
+        </h1>
+      </div>
+      <p className="detail-message">{issue.message}</p>
+      <ul className="meta">
+        <li>
+          <span className="meta-key">狀態</span>
+          <strong className="meta-val">{issue.status}</strong>
+        </li>
+        <li>
+          <span className="meta-key">次數</span>
+          <span className="meta-val">{issue.count}</span>
+        </li>
+        <li>
+          <span className="meta-key">first seen</span>
+          <span className="meta-val">{new Date(issue.firstSeen).toLocaleString('zh-TW')}</span>
+        </li>
+        <li>
+          <span className="meta-key">last seen</span>
+          <span className="meta-val">{new Date(issue.lastSeen).toLocaleString('zh-TW')}</span>
+        </li>
+        {issue.tags.length > 0 && (
+          <li>
+            <span className="meta-key">tags</span>
+            <span className="meta-val">{issue.tags.join(', ')}</span>
+          </li>
+        )}
+      </ul>
       <p className="hint">severity 為歷史最高判級（只升不降）；降級請改操作狀態（resolve / ignore）。</p>
       <div className="actions">
         {NEXT_STATUSES.filter((s) => s !== issue.status).map((status) => (
           <form key={status} action={changeIssueStatusAction.bind(null, issue.id, status)}>
-            <button type="submit">標記為 {status}</button>
+            <SubmitButton pendingLabel={`更新中…`}>{`標記為 ${status}`}</SubmitButton>
           </form>
         ))}
       </div>
       <h2>事件（最近 {events.length} 筆）</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>時間</th>
-            <th>來源</th>
-            <th>level</th>
-            <th>訊息</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((event) => (
-            <tr key={event.id}>
-              <td>{new Date(event.occurredAt).toLocaleString('zh-TW')}</td>
-              <td>{event.source}</td>
-              <td>{event.level}</td>
-              <td>
-                {event.message}
-                {extractRunUrl(event.metadata) !== null && (
-                  <>
-                    {' '}
-                    <a
-                      href={extractRunUrl(event.metadata) as string}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      查看 CI run
-                    </a>
-                  </>
-                )}
-                {event.metadata !== null && Object.keys(event.metadata as object).length > 0 && (
-                  <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
-                )}
-              </td>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">時間</th>
+              <th scope="col">來源</th>
+              <th scope="col">level</th>
+              <th scope="col">訊息</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {events.map((event) => (
+              <tr key={event.id}>
+                <td className="cell-time">{new Date(event.occurredAt).toLocaleString('zh-TW')}</td>
+                <td>{event.source}</td>
+                <td>{event.level}</td>
+                <td>
+                  {event.message}
+                  {extractRunUrl(event.metadata) !== null && (
+                    <>
+                      {' '}
+                      <a
+                        href={extractRunUrl(event.metadata) as string}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        查看 CI run
+                      </a>
+                    </>
+                  )}
+                  {event.metadata !== null && Object.keys(event.metadata as object).length > 0 && (
+                    <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {events.length === 0 && (
+              <tr>
+                <td colSpan={4} className="empty">
+                  <strong>尚無事件紀錄</strong>
+                  <span>這筆 issue 的原始事件已超出保留範圍或尚未寫入。</span>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </main>
   )
 }
