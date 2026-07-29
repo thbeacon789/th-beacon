@@ -13,11 +13,18 @@ export function createServerStore(): SupabaseStore {
   return new SupabaseStore(createClient<Database>(url, key, { auth: { persistSession: false } }))
 }
 
+/** 空字串視同未設定——.env.example 與 Vercel 都可能留下空值，若不擋會拿 '' 去 POST 並記一筆假的 failed 通知 */
+function envOrNull(name: string): string | null {
+  const value = process.env[name]
+  return value === undefined || value === '' ? null : value
+}
+
 export function createServerNotifyDeps(): NotifyDeps {
+  const dashboardUrl = envOrNull('APP_URL')
   return {
     sender: sendDiscordWebhook,
-    fallbackWebhookUrl: process.env.DISCORD_WEBHOOK_URL ?? null,
-    ...(process.env.APP_URL !== undefined ? { dashboardUrl: process.env.APP_URL } : {}),
+    fallbackWebhookUrl: envOrNull('DISCORD_WEBHOOK_URL'),
+    ...(dashboardUrl !== null ? { dashboardUrl } : {}),
   }
 }
 
