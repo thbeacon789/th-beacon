@@ -329,6 +329,109 @@ button:disabled,
 }
 
 /* ============================================================
+   總體健康度儀表（移植自 trading-stream mood meter）
+   ============================================================ */
+.gauge-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-6);
+  padding: var(--space-5);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+/* 半圓＋指針＋分數的共同定位框；aspect-ratio 沿用原始 189:92 */
+.gauge {
+  position: relative;
+  flex: none;
+  width: min(13.5rem, 100%);
+  aspect-ratio: 189 / 92;
+}
+.gauge-arc {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 指針：高度等同半圓框，以底部中心為軸；Realtime 刷新時角度會平滑轉過去 */
+.gauge-needle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  padding-top: 19.5%; /* 18/92：讓指針尖端落在漸層帶的內緣，與原始 mood meter 一致 */
+  transform-origin: bottom center;
+  transition: transform 900ms var(--ease);
+}
+.gauge-needle-head {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 7px 14px 7px;
+  border-color: transparent transparent var(--lilac) transparent;
+}
+
+.gauge-score {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-family: var(--font-pixel), var(--font-ui);
+  font-size: 2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: color 900ms var(--ease);
+}
+
+.gauge-readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 12rem;
+}
+.gauge-label {
+  margin: 0;
+  font-family: var(--font-pixel), var(--font-display);
+  font-size: 1.5rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.gauge-readout .hint {
+  margin: 0;
+  max-width: 34rem;
+}
+
+.gauge-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+}
+.gauge-counts > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.gauge-counts dt {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lilac);
+}
+.gauge-counts dd {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
    服務卡片
    ============================================================ */
 .cards {

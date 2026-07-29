@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { getServicesOverview } from '@/web/queries'
+import { getServicesOverview, summarizeHealth } from '@/web/queries'
+import { HealthGauge } from '@/web/health-gauge'
 import type { HealthStatus } from '@/core/types'
 import {
   ArrowRightIcon,
@@ -35,6 +36,7 @@ export default async function OverviewPage() {
         <h1>Service Overview</h1>
         <p className="hint">共 {overview.length} 項服務｜燈號取輪詢與未解 issue 的最差值</p>
       </div>
+      <HealthGauge summary={summarizeHealth(overview)} />
       <div className="cards">
         {overview.map((service) => {
           const health = HEALTH[service.healthStatus]

@@ -48,6 +48,38 @@ export function applyHeartbeatOverdue(
   return hasOverdue ? worst(healthStatus, 'degraded') : healthStatus
 }
 
+export interface HealthSummary {
+  /** 0–100，healthy=100 / degraded=50 / down=0 的平均；無服務時視為 100 */
+  score: number
+  /** 燈號沿用「取最差」語意：一個 down 就是 down，不因其他服務正常而被平均掉 */
+  worst: HealthStatus
+  counts: Record<HealthStatus, number>
+  total: number
+}
+
+const HEALTH_POINTS: Record<HealthStatus, number> = { healthy: 100, degraded: 50, down: 0 }
+
+// 純函式：總體健康度。score 供指針位置用（看得出「多少比例出事」），
+// worst 供文字與顏色用（監控情境不能讓一台掛掉被平均成綠燈）。
+export function summarizeHealth(
+  services: Array<Pick<ServiceOverview, 'healthStatus'>>,
+): HealthSummary {
+  const counts: Record<HealthStatus, number> = { healthy: 0, degraded: 0, down: 0 }
+  for (const service of services) counts[service.healthStatus] += 1
+
+  const total = services.length
+  const score =
+    total === 0
+      ? 100
+      : Math.round(
+          services.reduce((sum, s) => sum + HEALTH_POINTS[s.healthStatus], 0) / total,
+        )
+  const worst: HealthStatus =
+    counts.down > 0 ? 'down' : counts.degraded > 0 ? 'degraded' : 'healthy'
+
+  return { score, worst, counts, total }
+}
+
 export async function getServicesOverview(client: Client, now: Date): Promise<ServiceOverview[]> {
   const { data: services, error } = await client
     .from('services')
