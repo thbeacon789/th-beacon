@@ -33,10 +33,7 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --dur: 160ms;
 
-  /* --- 字體 --- */
-  --font-ui: var(--font-new-gen), 'Helvetica Neue', Arial, 'PingFang TC',
-    'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
-  --font-display: var(--font-aurora-bc), 'PingFang TC', 'Noto Sans TC', sans-serif;
+  /* --- 字體（不含 next/font 變數的部分） --- */
   --font-body: 'Helvetica Neue', Arial, 'PingFang TC', 'Noto Sans TC',
     'Microsoft JhengHei', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
@@ -53,6 +50,13 @@ html {
 }
 
 body {
+  /* next/font 的 --font-aurora-bc / --font-new-gen 由 layout 掛在 body 的 class 上；
+     這兩個 token 必須也宣告在 body，宣告在 :root 會因為取不到而整個 token 失效 */
+  --font-ui: var(--font-new-gen), 'Helvetica Neue', Arial, 'PingFang TC', 'Noto Sans TC',
+    'Microsoft JhengHei', sans-serif;
+  --font-display: var(--font-aurora-bc), 'Helvetica Neue', Arial, 'PingFang TC', 'Noto Sans TC',
+    sans-serif;
+
   margin: 0;
   background: var(--bg);
   color: var(--fg);
