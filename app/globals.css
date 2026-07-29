@@ -332,23 +332,35 @@ button:disabled,
    總體健康度儀表（移植自 trading-stream mood meter）
    ============================================================ */
 .gauge-block {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 1fr);
   align-items: center;
-  gap: var(--space-6);
-  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
   margin: 0 0 var(--space-6);
   padding: var(--space-5);
   background: var(--panel);
   border: 1px solid var(--line);
 }
 
-/* 半圓與其下方的狀態文字視為同一組 */
+/* 桌機：溶解包裝層，讓半圓與狀態文字各自成為 grid item，
+   狀態文字回到右欄計數上方（手機版才改成貼在半圓下方，見檔尾斷點） */
 .gauge-figure {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  flex: none;
+  display: contents;
+}
+.gauge-block > .gauge-figure > .gauge {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.gauge-block > .gauge-figure > .gauge-label {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  text-align: left;
+}
+.gauge-block > .gauge-readout {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
 }
 
 /* 半圓＋指針＋分數的共同定位框；aspect-ratio 沿用原始 189:92 */
@@ -409,7 +421,6 @@ button:disabled,
   font-size: 1.5rem;
   line-height: 1;
   letter-spacing: 0.04em;
-  text-align: center;
 }
 .gauge-readout .hint {
   margin: 0;
@@ -873,12 +884,25 @@ tbody tr:last-child td {
   .container {
     padding: var(--space-5) var(--space-4) var(--space-6);
   }
-  /* 手機版半圓儀表獨佔一列，置中 */
+  /* 手機版：單欄，狀態文字跟著半圓走並一起置中 */
   .gauge-block {
-    justify-content: center;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
   }
   .gauge-figure {
-    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    grid-row: 1;
+    justify-self: center;
+  }
+  .gauge-block > .gauge-figure > .gauge-label {
+    text-align: center;
+  }
+  .gauge-block > .gauge-readout {
+    grid-column: 1;
+    grid-row: 2;
   }
   .nav {
     padding: var(--space-3) var(--space-4);
