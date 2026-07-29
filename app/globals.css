@@ -630,20 +630,38 @@ button:disabled,
   padding-left: var(--space-3);
   border-left: 2px solid var(--line);
 }
+/* 心跳區塊的字級階梯：名稱 → 摘要 → 執行時間 → 連結 → 最後成功。
+   四個級距刻意拉開，否則五行擠在 0.78–0.85rem 之間會糊成同一片
+   （中文在同字級下視覺又比拉丁字母重，差距要更明顯才看得出來）。 */
 .heartbeat strong {
+  flex-basis: 100%;
   font-family: var(--font-ui);
   font-weight: 400;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  color: var(--fg);
 }
-.heartbeat .hint {
-  flex-basis: 100%;
-  font-size: 0.78rem;
+/* 逾期 badge 要跟在名稱同一行，把名稱換成自動寬度 */
+.heartbeat.overdue strong {
+  flex-basis: auto;
 }
-/* 最後一次執行的摘要：整行獨佔，比 hint 再弱一階——它是佐證細節，不是主要訊息 */
 .heartbeat-summary {
   flex-basis: 100%;
   font-size: 0.85rem;
   color: var(--fg-muted);
   overflow-wrap: anywhere;
+}
+.heartbeat-run {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+.heartbeat .link-external {
+  font-size: 0.78rem;
+}
+.heartbeat .hint {
+  flex-basis: 100%;
+  font-size: 0.72rem;
 }
 /* 逾期沿用 P1 警示黃，不另引入色相 */
 .heartbeat.overdue {

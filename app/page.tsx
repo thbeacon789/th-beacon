@@ -66,7 +66,7 @@ export default async function OverviewPage() {
                   <li key={hb.name} className={hb.overdue ? 'heartbeat overdue' : 'heartbeat'}>
                     <strong>{hb.name}</strong>
                     {hb.overdue && <span className="badge badge-P1">逾期</span>}
-                    <span>
+                    <span className="heartbeat-run">
                       {hb.lastRunAt === null
                         ? '從未回報'
                         : `最後執行 ${formatTime(hb.lastRunAt)} ${
