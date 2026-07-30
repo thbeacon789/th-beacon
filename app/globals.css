@@ -911,9 +911,11 @@ tbody tr:last-child td {
     padding: var(--space-5) var(--space-4) var(--space-6);
   }
   /* 手機版：單欄，狀態文字跟著半圓走並一起置中 */
+  /* 手機版三段（半圓／狀態文字／計數）等距：列間距與 figure 內的 gap 都用 --space-5，
+     狀態文字本身不加 margin，避免 margin 疊在 gap 上導致下方比上方多一截 */
   .gauge-block {
     grid-template-columns: 1fr;
-    gap: var(--space-4);
+    gap: var(--space-5);
     padding: var(--space-5) var(--space-4);
   }
   /* 撐滿整欄（不用 justify-self: center 的收縮寬度），狀態文字才是相對整張卡片置中 */
@@ -921,13 +923,13 @@ tbody tr:last-child td {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-5);
     grid-row: 1;
     justify-self: stretch;
   }
   .gauge-block > .gauge-figure > .gauge-label {
     width: 100%;
-    margin: var(--space-5) 0;
+    margin: 0;
     text-align: center;
   }
   .gauge-block > .gauge-readout {
