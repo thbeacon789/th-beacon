@@ -927,7 +927,7 @@ tbody tr:last-child td {
   }
   .gauge-block > .gauge-figure > .gauge-label {
     width: 100%;
-    margin: var(--space-3) 0;
+    margin: var(--space-5) 0;
     text-align: center;
   }
   .gauge-block > .gauge-readout {
