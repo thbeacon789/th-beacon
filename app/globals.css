@@ -260,8 +260,8 @@ button:disabled,
    改成同一支金往白提亮，只動明度不動色相，仍明顯但不打架。
    （沿用 tokens 註解的原則：不新增色相，由既有色推導。） */
 .btn-cta:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--gold) 76%, var(--fg));
-  outline-color: color-mix(in oklab, var(--gold) 76%, var(--fg));
+  background: color-mix(in oklab, var(--gold) 58%, var(--fg));
+  outline-color: color-mix(in oklab, var(--gold) 58%, var(--fg));
   /* 必要：全域 a:hover 會把顏色改成 --gold，特異度高過 .btn-cta 本身的
      color，<a> 版按鈕一 hover 就變成金字金底，整個看不見 */
   color: var(--bg);
