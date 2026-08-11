@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **唯一真實來源（讀它，別憑本檔想像細節）：**
 `docs/superpowers/specs/2026-07-23-service-monitoring-dashboard-design.md`
 心跳存活證明另有專屬 spec：`docs/superpowers/specs/2026-07-29-heartbeat-liveness-design.md`
+**對外 API 契約（headers／payload／回應碼／接入陷阱）：`docs/api.md`**——三個端點的實作級參考，別再從 plan 裡挖。
 
 進度：**MVP 全部完成**（Plan 1–7）：`src/core/` 純邏輯 → 本地 Supabase schema/RLS → Store port + `processEvent` → `POST /api/ingest`（HMAC）→ 服務輪詢器（cron）→ Discord 通知器（ratchet + 冷卻/升級，`processAndNotify` 唯一入口）→ dashboard（Google OAuth 登入 + `allowed_emails` 白名單經 before_user_created hook 把關、server-side service_role 讀取、Realtime、trading-stream 像素視覺）。
 
