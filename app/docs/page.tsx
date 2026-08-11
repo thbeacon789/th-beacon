@@ -22,7 +22,7 @@ export default async function DocsPage() {
           Content-Disposition 送出，瀏覽器自己存檔，不需 client component。
         */}
         <a className="btn-cta doc-download" href="/docs/download" download>
-          下載 Markdown
+          Markdown Download
         </a>
       </div>
 
