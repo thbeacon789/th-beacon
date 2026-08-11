@@ -904,11 +904,100 @@ tbody tr:last-child td {
 }
 
 /* ============================================================
+   API 文件頁（/docs）
+   內容是 docs/api.md 於建置期轉出的 HTML，標籤裸奔沒有 class，
+   因此這裡一律用後代選擇器補樣式，不動全域規則。
+   ============================================================ */
+.doc-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+.doc-body {
+  max-width: 60rem;
+  line-height: 1.65;
+}
+
+/* nav 是 sticky top:0，錨點若不留白會被它蓋掉標題 */
+.doc-body h2,
+.doc-body h3 {
+  scroll-margin-top: 5rem;
+}
+.doc-body h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: 1rem;
+}
+
+/* 全域 pre 有 max-height: 18rem（給 issue 詳情的長 stack trace 用），
+   文件裡的範例被截成捲動區反而難讀 */
+.doc-body pre {
+  max-height: none;
+  margin: 0 0 var(--space-4);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.doc-body :not(pre) > code {
+  padding: 0.1em 0.35em;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  color: var(--lilac);
+}
+
+.doc-body .table-wrap {
+  margin-bottom: var(--space-4);
+}
+/* 全域 table 的 min-width: 40rem 是為了資料表格，文件表格欄位少，
+   撐到 40rem 會在中等寬度就無謂地橫捲 */
+.doc-body table {
+  min-width: 0;
+}
+.doc-body td {
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-body ul,
+.doc-body ol {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+.doc-body li {
+  margin-bottom: var(--space-2);
+}
+
+.doc-body blockquote {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--line-strong);
+  color: var(--fg-muted);
+}
+
+.doc-body hr {
+  margin: var(--space-6) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ============================================================
    窄螢幕
    ============================================================ */
 @media (max-width: 40rem) {
   .container {
     padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+  /* 文件表格在手機上仍需能橫捲，故此處不解除 .table-wrap 的 overflow */
+  .doc-toc {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .doc-body pre {
+    font-size: 0.75rem;
   }
   /* 手機版：單欄，狀態文字跟著半圓走並一起置中 */
   /* 手機版三段（半圓／狀態文字／計數）等距：列間距與 figure 內的 gap 都用 --space-5，
