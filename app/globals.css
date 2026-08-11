@@ -255,9 +255,12 @@ button:disabled,
     outline-color var(--dur) var(--ease),
     transform var(--dur) var(--ease);
 }
+/* hover 原本跳到 --lilac：金→紫是暖冷跨色相，兩色亮度又接近，看起來像換了顆按鈕。
+   改成同一支金往白提亮，只動明度不動色相，仍明顯但不打架。
+   （沿用 tokens 註解的原則：不新增色相，由既有色推導。） */
 .btn-cta:hover:not(:disabled) {
-  background: var(--lilac);
-  outline-color: var(--lilac);
+  background: color-mix(in oklab, var(--gold) 76%, var(--fg));
+  outline-color: color-mix(in oklab, var(--gold) 76%, var(--fg));
 }
 .btn-cta:active:not(:disabled) {
   transform: translate(2px, 2px);
