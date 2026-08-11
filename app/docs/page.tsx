@@ -17,6 +17,13 @@ export default async function DocsPage() {
       <div className="page-head">
         <h1>{API_DOC_TITLE}</h1>
         <p className="hint">本頁建置於 {formatDateTime(API_DOC_BUILT_AT)}</p>
+        {/*
+          用 <a download> 而非 fetch：檔案由 /docs/download 這個 route handler 附
+          Content-Disposition 送出，瀏覽器自己存檔，不需 client component。
+        */}
+        <a className="btn doc-download" href="/docs/download" download>
+          下載 Markdown
+        </a>
       </div>
 
       <nav className="doc-toc" aria-label="章節目錄">

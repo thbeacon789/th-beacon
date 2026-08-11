@@ -908,6 +908,14 @@ tbody tr:last-child td {
    內容是 docs/api.md 於建置期轉出的 HTML，標籤裸奔沒有 class，
    因此這裡一律用後代選擇器補樣式，不動全域規則。
    ============================================================ */
+/* 下載鍵推到頁首右端；.page-head 是 baseline 對齊，按鈕有自己的高度，改為置中 */
+.doc-download {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
 .doc-toc {
   display: flex;
   flex-wrap: wrap;
@@ -990,6 +998,10 @@ tbody tr:last-child td {
 @media (max-width: 40rem) {
   .container {
     padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+  /* 換行後已自成一列，再靠右反而離標題遠 */
+  .doc-download {
+    margin-left: 0;
   }
   /* 文件表格在手機上仍需能橫捲，故此處不解除 .table-wrap 的 overflow */
   .doc-toc {

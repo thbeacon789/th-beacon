@@ -80,6 +80,9 @@ export const API_DOC_BUILT_AT = ${JSON.stringify(new Date().toISOString())}
 export const API_DOC_TOC: readonly { readonly id: string; readonly text: string }[] = ${JSON.stringify(toc, null, 2)}
 
 export const API_DOC_HTML = ${JSON.stringify(htmlWithTables)}
+
+/** 下載端點回傳的原始 markdown（未經 token 增刪，與 docs/api.md 逐字相同） */
+export const API_DOC_MARKDOWN = ${JSON.stringify(markdown)}
 `
 
 mkdirSync(dirname(OUTPUT), { recursive: true })
