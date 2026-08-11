@@ -35,7 +35,7 @@ export function GoogleLoginButton() {
     <>
       <button
         type="button"
-        className="google-login"
+        className="btn-cta google-login"
         onClick={onClick}
         disabled={busy}
         aria-busy={busy}

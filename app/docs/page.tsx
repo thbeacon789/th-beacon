@@ -21,7 +21,7 @@ export default async function DocsPage() {
           用 <a download> 而非 fetch：檔案由 /docs/download 這個 route handler 附
           Content-Disposition 送出，瀏覽器自己存檔，不需 client component。
         */}
-        <a className="btn doc-download" href="/docs/download" download>
+        <a className="btn-cta doc-download" href="/docs/download" download>
           下載 Markdown
         </a>
       </div>

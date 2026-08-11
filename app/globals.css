@@ -230,6 +230,43 @@ button:disabled,
   cursor: progress;
 }
 
+/* 主要行動鍵：金底大字，全站最醒目的一級。
+   登入頁的 Google Login 與 /docs 的下載鍵共用這組規則——要調就一起調，
+   別再各自複製一份。寬度交給使用端決定（登入頁撐滿卡片，頁首則自適應）。 */
+.btn-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 3.25rem;
+  padding: var(--space-4);
+  background: var(--gold);
+  color: var(--bg);
+  border: 4px solid var(--bg);
+  outline: 2px solid var(--gold);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition:
+    background var(--dur) var(--ease),
+    outline-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.btn-cta:hover:not(:disabled) {
+  background: var(--lilac);
+  outline-color: var(--lilac);
+}
+.btn-cta:active:not(:disabled) {
+  transform: translate(2px, 2px);
+}
+.btn-cta:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+}
+
 /* 觸控裝置放大命中區到 44px */
 @media (pointer: coarse) {
   .btn,
@@ -856,36 +893,6 @@ tbody tr:last-child td {
 }
 .login-card .google-login {
   width: 100%;
-  min-height: 3.25rem;
-  padding: var(--space-4);
-  background: var(--gold);
-  color: var(--bg);
-  border: 4px solid var(--bg);
-  outline: 2px solid var(--gold);
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition:
-    background var(--dur) var(--ease),
-    outline-color var(--dur) var(--ease),
-    transform var(--dur) var(--ease);
-}
-.login-card .google-login:hover:not(:disabled) {
-  background: var(--lilac);
-  outline-color: var(--lilac);
-}
-.login-card .google-login:active:not(:disabled) {
-  transform: translate(2px, 2px);
-}
-.login-card .google-login:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 4px;
-}
-.login-card .google-login:disabled {
-  opacity: 0.6;
-  cursor: progress;
 }
 
 /* ============================================================
@@ -908,12 +915,11 @@ tbody tr:last-child td {
    內容是 docs/api.md 於建置期轉出的 HTML，標籤裸奔沒有 class，
    因此這裡一律用後代選擇器補樣式，不動全域規則。
    ============================================================ */
-/* 下載鍵推到頁首右端；.page-head 是 baseline 對齊，按鈕有自己的高度，改為置中 */
+/* 視覺沿用 .btn-cta（與登入頁同一組規則），這裡只管在頁首的擺放：
+   推到右端，並因 .page-head 是 baseline 對齊而改成置中 */
 .doc-download {
   margin-left: auto;
   align-self: center;
-  font-size: 0.85rem;
-  text-decoration: none;
 }
 
 .doc-toc {
