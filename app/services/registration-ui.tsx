@@ -3,6 +3,13 @@
 import { useActionState, useState } from 'react'
 import { SubmitButton } from '@/web/submit-button'
 import {
+  INTERVAL_MIN,
+  INTERVAL_MAX,
+  GRACE_MIN,
+  GRACE_MAX,
+  NAME_PATTERN_SOURCE,
+} from '@/core/registration'
+import {
   registerServiceAction,
   registerHeartbeatAction,
   rotateSecretAction,
@@ -11,8 +18,56 @@ import {
 
 const IDLE: RegistrationState = { status: 'idle' }
 
+// 每日一次是最常見的 CI 排程；寬限 2 小時吸收排隊與重跑。
 const DEFAULT_INTERVAL = 86400
 const DEFAULT_GRACE = 7200
+
+const NAME_TITLE = '小寫英數與連字號，須以英數開頭結尾'
+
+/**
+ * 心跳的三個欄位。建立服務與補登記兩處共用——欄位定義只有一份，
+ * min/max 也直接引用 core 的門檻常數，不讓前端驗證與後端規則分岔。
+ */
+function HeartbeatFields({ required, showHints }: { required: boolean; showHints: boolean }) {
+  return (
+    <>
+      <label>
+        心跳名稱
+        <input
+          name="heartbeatName"
+          required={required}
+          placeholder="daily-test"
+          pattern={NAME_PATTERN_SOURCE}
+          title={NAME_TITLE}
+        />
+      </label>
+      <label>
+        回報間隔（秒）
+        <input
+          type="number"
+          name="intervalSeconds"
+          defaultValue={DEFAULT_INTERVAL}
+          min={INTERVAL_MIN}
+          max={INTERVAL_MAX}
+          required={required}
+        />
+        {showHints && <span className="hint">CI 實際排程頻率。每天一次 = 86400</span>}
+      </label>
+      <label>
+        寬限期（秒）
+        <input
+          type="number"
+          name="graceSeconds"
+          defaultValue={DEFAULT_GRACE}
+          min={GRACE_MIN}
+          max={GRACE_MAX}
+          required={required}
+        />
+        {showHints && <span className="hint">CI 排隊／重跑的緩衝。超過 間隔＋寬限 才算逾期</span>}
+      </label>
+    </>
+  )
+}
 
 function ErrorList({ state }: { state: RegistrationState }) {
   if (state.status !== 'error') return null
@@ -76,8 +131,8 @@ export function RegisterServiceForm() {
             name="serviceName"
             required
             placeholder="my-service"
-            pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?"
-            title="小寫英數與連字號，須以英數開頭結尾"
+            pattern={NAME_PATTERN_SOURCE}
+            title={NAME_TITLE}
           />
           <span className="hint">小寫英數與連字號。這個值就是 CI 要送的 X-Beacon-Service。</span>
         </label>
@@ -94,40 +149,7 @@ export function RegisterServiceForm() {
 
         {withHeartbeat && (
           <div className="reg-nested">
-            <label>
-              心跳名稱
-              <input
-                name="heartbeatName"
-                required={withHeartbeat}
-                placeholder="daily-test"
-                pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?"
-                title="小寫英數與連字號，須以英數開頭結尾"
-              />
-            </label>
-            <label>
-              回報間隔（秒）
-              <input
-                type="number"
-                name="intervalSeconds"
-                defaultValue={DEFAULT_INTERVAL}
-                min={60}
-                max={2592000}
-                required={withHeartbeat}
-              />
-              <span className="hint">CI 實際排程頻率。每天一次 = 86400</span>
-            </label>
-            <label>
-              寬限期（秒）
-              <input
-                type="number"
-                name="graceSeconds"
-                defaultValue={DEFAULT_GRACE}
-                min={0}
-                max={604800}
-                required={withHeartbeat}
-              />
-              <span className="hint">CI 排隊／重跑的緩衝。超過 間隔＋寬限 才算逾期</span>
-            </label>
+            <HeartbeatFields required={withHeartbeat} showHints />
           </div>
         )}
 
@@ -163,38 +185,7 @@ export function AddHeartbeatForm({
     <form action={action} className="reg-form reg-form-inline">
       <input type="hidden" name="serviceId" value={serviceId} />
       <input type="hidden" name="serviceName" value={serviceName} />
-      <label>
-        心跳名稱
-        <input
-          name="heartbeatName"
-          required
-          placeholder="daily-test"
-          pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?"
-          title="小寫英數與連字號，須以英數開頭結尾"
-        />
-      </label>
-      <label>
-        間隔（秒）
-        <input
-          type="number"
-          name="intervalSeconds"
-          defaultValue={DEFAULT_INTERVAL}
-          min={60}
-          max={2592000}
-          required
-        />
-      </label>
-      <label>
-        寬限（秒）
-        <input
-          type="number"
-          name="graceSeconds"
-          defaultValue={DEFAULT_GRACE}
-          min={0}
-          max={604800}
-          required
-        />
-      </label>
+      <HeartbeatFields required showHints={false} />
       <SubmitButton pendingLabel="新增中…">新增心跳</SubmitButton>
       <ErrorList state={state} />
       {state.status === 'heartbeat-added' && (

@@ -46,12 +46,21 @@ export async function registerServiceAction(
       })
     : null
 
-  const errors = [
-    ...(serviceInput.ok ? [] : serviceInput.errors),
-    ...(heartbeatInput === null || heartbeatInput.ok ? [] : heartbeatInput.errors),
-  ]
-  if (errors.length > 0) return { status: 'error', errors }
-  if (!serviceInput.ok) return { status: 'error', errors: serviceInput.errors }
+  // 先處理服務名稱失敗，順道把心跳的錯誤一起帶上——使用者一次看完所有問題，
+  // 不必修一個送一次。分兩個判斷（而非合併成一包）是為了讓型別窄化自然成立，
+  // 底下才不需要一個永遠不會執行到的分支。
+  if (!serviceInput.ok) {
+    return {
+      status: 'error',
+      errors: [
+        ...serviceInput.errors,
+        ...(heartbeatInput === null || heartbeatInput.ok ? [] : heartbeatInput.errors),
+      ],
+    }
+  }
+  if (heartbeatInput !== null && !heartbeatInput.ok) {
+    return { status: 'error', errors: heartbeatInput.errors }
+  }
 
   const store = createServerStore()
   const secret = newSecret()

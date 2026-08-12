@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   validateServiceRegistration,
   validateHeartbeatRegistration,
+  NAME_PATTERN_SOURCE,
+  INTERVAL_MIN,
+  INTERVAL_MAX,
+  GRACE_MIN,
+  GRACE_MAX,
 } from '@/core/registration'
 
 describe('validateServiceRegistration', () => {
@@ -75,5 +80,39 @@ describe('validateHeartbeatRegistration', () => {
     })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.errors).toHaveLength(3)
+  })
+})
+
+describe('NAME_PATTERN_SOURCE（表單 <input pattern> 與後端驗證同源）', () => {
+  // HTML 的 pattern 屬性隱含頭尾錨定，瀏覽器端等價於這個 RegExp
+  const browserEquivalent = new RegExp(`^(?:${NAME_PATTERN_SOURCE})$`)
+
+  it.each([
+    'my-service',
+    'a1',
+    'svc-2026-b',
+    'MyService',
+    'my_service',
+    'my service',
+    '-svc',
+    'svc-',
+    '我的服務',
+  ])('瀏覽器端與後端對 %s 的判定一致', (name) => {
+    const browserAccepts = browserEquivalent.test(name)
+    const serverAccepts = validateServiceRegistration({ name }).ok
+    // 長度規則另計，這裡只比對字元規則：兩者對同一個名稱不能一個放行一個擋下
+    expect(browserAccepts).toBe(serverAccepts)
+  })
+
+  it('門檻常數是後端實際採用的邊界', () => {
+    const at = (intervalSeconds: number, graceSeconds: number) =>
+      validateHeartbeatRegistration({ name: 'daily', intervalSeconds, graceSeconds }).ok
+
+    expect(at(INTERVAL_MIN, GRACE_MIN)).toBe(true)
+    expect(at(INTERVAL_MAX, GRACE_MAX)).toBe(true)
+    expect(at(INTERVAL_MIN - 1, GRACE_MIN)).toBe(false)
+    expect(at(INTERVAL_MAX + 1, GRACE_MIN)).toBe(false)
+    expect(at(INTERVAL_MIN, GRACE_MIN - 1)).toBe(false)
+    expect(at(INTERVAL_MIN, GRACE_MAX + 1)).toBe(false)
   })
 })
