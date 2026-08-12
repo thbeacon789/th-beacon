@@ -3,7 +3,7 @@
 
 export const API_DOC_TITLE = "th-beacon API 參考"
 
-export const API_DOC_BUILT_AT = "2026-08-12T08:34:58.005Z"
+export const API_DOC_BUILT_AT = "2026-08-12T09:12:21.960Z"
 
 export const API_DOC_TOC: readonly { readonly id: string; readonly text: string }[] = [
   {
