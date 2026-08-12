@@ -190,7 +190,11 @@ input {
 .nav button,
 .filters button,
 .filters select,
-.actions button {
+.actions button,
+.reg-form button,
+.reg-form-inline button,
+.reg-rotate > button,
+.secret-value button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,7 +215,11 @@ input {
 .btn:hover:not(:disabled),
 .nav button:hover:not(:disabled),
 .filters button:hover:not(:disabled),
-.actions button:hover:not(:disabled) {
+.actions button:hover:not(:disabled),
+.reg-form button:hover:not(:disabled),
+.reg-form-inline button:hover:not(:disabled),
+.reg-rotate > button:hover:not(:disabled),
+.secret-value button:hover:not(:disabled) {
   background: var(--lilac);
   border-color: var(--lilac);
   color: var(--bg);
@@ -220,7 +228,11 @@ input {
 .btn:active:not(:disabled),
 .nav button:active:not(:disabled),
 .filters button:active:not(:disabled),
-.actions button:active:not(:disabled) {
+.actions button:active:not(:disabled),
+.reg-form button:active:not(:disabled),
+.reg-form-inline button:active:not(:disabled),
+.reg-rotate > button:active:not(:disabled),
+.secret-value button:active:not(:disabled) {
   transform: translate(1px, 1px);
 }
 
@@ -1071,5 +1083,237 @@ tbody tr:last-child td {
   th,
   td {
     padding: var(--space-2) var(--space-3);
+  }
+}
+
+/* ============================================================
+   服務登記頁 /services
+   ============================================================ */
+
+.reg-guide h2,
+.reg-guide h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+.reg-guide h3 {
+  margin-top: var(--space-3);
+  font-size: 0.95rem;
+  color: var(--gold);
+}
+
+.reg-steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+.reg-steps li {
+  display: grid;
+  gap: var(--space-1);
+}
+.reg-steps strong {
+  color: var(--gold);
+}
+.reg-steps span {
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+.reg-steps em {
+  color: var(--yellow);
+  font-style: normal;
+}
+
+/* 說明區的程式碼片段比一般 <pre> 更常需要整段複製，故不設高度上限截斷 */
+.reg-code {
+  max-height: none;
+  white-space: pre;
+}
+
+.reg-tips {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+/* --- 表單 --- */
+
+.reg-block {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.reg-form {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+.reg-form-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.reg-form label,
+.reg-form-inline label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  color: var(--lilac);
+}
+
+.reg-form input[type='text'],
+.reg-form input[type='number'],
+.reg-form input:not([type]),
+.reg-form-inline input[type='text'],
+.reg-form-inline input[type='number'],
+.reg-form-inline input:not([type]) {
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  max-width: 26rem;
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  font-family: var(--font-mono);
+}
+.reg-form input:invalid:not(:placeholder-shown),
+.reg-form-inline input:invalid:not(:placeholder-shown) {
+  border-color: var(--pink);
+}
+
+.reg-check {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-muted) !important;
+}
+.reg-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--gold);
+}
+
+/* 巢狀區塊：視覺上從屬於上方的核取方塊 */
+.reg-nested {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
+  border-left: 2px solid var(--line-strong);
+}
+
+.reg-errors {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  background: rgba(255, 125, 178, 0.1);
+  border: 1px solid var(--pink);
+  color: var(--pink);
+  font-size: 0.9rem;
+}
+
+.reg-ok {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.9rem;
+}
+
+.reg-warn {
+  margin: 0;
+  color: var(--yellow);
+  font-size: 0.9rem;
+}
+
+/* --- 金鑰揭露 --- */
+
+.secret-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--sunken);
+  border: 2px solid var(--gold);
+}
+.secret-title {
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+.secret-warn {
+  margin: 0;
+  color: var(--yellow);
+  font-size: 0.9rem;
+}
+.secret-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+/* 金鑰是 64 字元 hex，一定要能換行，否則在窄視窗會撐破卡片 */
+.secret-value code {
+  flex: 1 1 20rem;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  color: var(--gold);
+  word-break: break-all;
+  user-select: all;
+}
+
+/* --- 服務列表 --- */
+
+.reg-service {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+.reg-service:first-of-type {
+  border-top: none;
+}
+.reg-service-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.reg-service-head h3 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 1.05rem;
+}
+.reg-rotate {
+  display: grid;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.btn-danger {
+  border-color: var(--pink) !important;
+  color: var(--pink) !important;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--pink) !important;
+  color: var(--bg) !important;
+}
+
+@media (max-width: 640px) {
+  .reg-form-inline {
+    align-items: stretch;
+  }
+  .reg-form-inline label,
+  .reg-form-inline button,
+  .reg-form input,
+  .reg-form-inline input {
+    width: 100%;
+    max-width: none;
+  }
+  .reg-rotate {
+    margin-left: 0;
   }
 }

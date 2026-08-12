@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -18,6 +18,7 @@ export class InMemoryStore implements Store {
   private lastPollAts = new Map<string, string>()
   private notifications: NotificationRecord[] = []
   private heartbeats: StoredHeartbeat[] = []
+  private createdAts = new Map<string, string>() // serviceId → created_at（僅登記頁需要）
   private nextId = 1
 
   seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
@@ -261,6 +262,73 @@ export class InMemoryStore implements Store {
       }
     }
     return changed
+  }
+
+  // ---- 後台登記 ----
+
+  async createService(name: string, webhookSecret: string): Promise<ServiceRecord | null> {
+    for (const existing of this.services.values()) {
+      if (existing.name === name) return null
+    }
+    const service: ServiceRecord = {
+      id: `service-${this.nextId++}`,
+      name,
+      healthWindowMinutes: 15,
+      healthFailureThreshold: 2,
+      healthStatus: 'healthy',
+      poll: null,
+      discordWebhookUrl: null,
+    }
+    this.services.set(service.id, service)
+    this.secrets.set(service.id, webhookSecret)
+    this.createdAts.set(service.id, new Date(0).toISOString())
+    return { ...service }
+  }
+
+  async createHeartbeat(
+    serviceId: string,
+    heartbeat: NewHeartbeat,
+  ): Promise<StoredHeartbeat | null> {
+    if (this.heartbeats.some((h) => h.serviceId === serviceId && h.name === heartbeat.name)) {
+      return null
+    }
+    const created: StoredHeartbeat = {
+      id: `heartbeat-${this.nextId++}`,
+      serviceId,
+      name: heartbeat.name,
+      intervalSeconds: heartbeat.intervalSeconds,
+      graceSeconds: heartbeat.graceSeconds,
+      enabled: true,
+      lastRunAt: null,
+      lastSuccessAt: null,
+      lastRunStatus: null,
+      lastRunUrl: null,
+      lastRunSummary: null,
+      createdAt: new Date(0).toISOString(),
+    }
+    this.heartbeats.push(created)
+    return { ...created }
+  }
+
+  async rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean> {
+    if (!this.services.has(serviceId)) return false
+    this.secrets.set(serviceId, webhookSecret)
+    return true
+  }
+
+  async listRegisteredServices(): Promise<RegisteredService[]> {
+    return [...this.services.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((service) => ({
+        id: service.id,
+        name: service.name,
+        hasWebhookSecret: (this.secrets.get(service.id) ?? null) !== null,
+        createdAt: this.createdAts.get(service.id) ?? new Date(0).toISOString(),
+        heartbeats: this.heartbeats
+          .filter((h) => h.serviceId === service.id)
+          .map((h) => ({ ...h }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {

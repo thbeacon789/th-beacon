@@ -83,6 +83,21 @@ export interface HeartbeatRun {
   at: string // ISO 8601
 }
 
+/** 後台登記頁的服務檢視。不含 webhook_secret 明文——金鑰只在產生的當下回傳一次。 */
+export interface RegisteredService {
+  id: string
+  name: string
+  hasWebhookSecret: boolean
+  createdAt: string
+  heartbeats: StoredHeartbeat[]
+}
+
+export interface NewHeartbeat {
+  name: string
+  intervalSeconds: number
+  graceSeconds: number
+}
+
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
   getServiceByName(name: string): Promise<ServiceAuth | null>
@@ -100,4 +115,13 @@ export interface Store {
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
   resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean>
+
+  // ---- 後台登記（Plan 9）：唯一寫入路徑是登入後的 server action ----
+  /** 名稱已存在時回 null（unique 違反由 DB 判定，不做 check-then-insert 競態） */
+  createService(name: string, webhookSecret: string): Promise<ServiceRecord | null>
+  /** 同服務下名稱已存在時回 null */
+  createHeartbeat(serviceId: string, heartbeat: NewHeartbeat): Promise<StoredHeartbeat | null>
+  /** 服務不存在時回 false */
+  rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean>
+  listRegisteredServices(): Promise<RegisteredService[]>
 }

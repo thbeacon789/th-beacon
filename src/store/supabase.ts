@@ -3,7 +3,7 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -13,6 +13,9 @@ import {
   rowToPollConfig,
   rowToHeartbeat,
 } from '@/store/mapping'
+
+/** Postgres unique_violation。名稱重複是預期輸入，不是例外。 */
+const UNIQUE_VIOLATION = '23505'
 
 export class SupabaseStore implements Store {
   constructor(private readonly client: SupabaseClient<Database>) {}
@@ -238,5 +241,77 @@ export class SupabaseStore implements Store {
       .select('id')
     if (error) throw new Error(`resolveIssueByFingerprint failed: ${error.message}`)
     return data.length > 0
+  }
+
+  // ---- 後台登記 ----
+
+  async createService(name: string, webhookSecret: string): Promise<ServiceRecord | null> {
+    const { data, error } = await this.client
+      .from('services')
+      .insert({ name, webhook_secret: webhookSecret })
+      .select('*')
+      .maybeSingle()
+    // 交給 DB 的 unique 約束判重複，而不是先 select 再 insert——後者在兩人同時送出時
+    // 會雙雙通過檢查，然後其中一個以未處理的 500 收場。
+    if (error !== null) {
+      if (error.code === UNIQUE_VIOLATION) return null
+      throw new Error(`createService failed: ${error.message}`)
+    }
+    return data === null ? null : rowToService(data)
+  }
+
+  async createHeartbeat(
+    serviceId: string,
+    heartbeat: NewHeartbeat,
+  ): Promise<StoredHeartbeat | null> {
+    const { data, error } = await this.client
+      .from('heartbeats')
+      .insert({
+        service_id: serviceId,
+        name: heartbeat.name,
+        interval_seconds: heartbeat.intervalSeconds,
+        grace_seconds: heartbeat.graceSeconds,
+      })
+      .select('*')
+      .maybeSingle()
+    if (error !== null) {
+      if (error.code === UNIQUE_VIOLATION) return null
+      throw new Error(`createHeartbeat failed: ${error.message}`)
+    }
+    return data === null ? null : rowToHeartbeat(data)
+  }
+
+  async rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('services')
+      .update({ webhook_secret: webhookSecret })
+      .eq('id', serviceId)
+      .select('id')
+    if (error) throw new Error(`rotateWebhookSecret failed: ${error.message}`)
+    return data.length > 0
+  }
+
+  async listRegisteredServices(): Promise<RegisteredService[]> {
+    const [services, heartbeats] = await Promise.all([
+      this.client.from('services').select('*').order('name'),
+      this.client.from('heartbeats').select('*').order('name'),
+    ])
+    if (services.error) throw new Error(`listRegisteredServices failed: ${services.error.message}`)
+    if (heartbeats.error) throw new Error(`listRegisteredServices failed: ${heartbeats.error.message}`)
+
+    const byService = new Map<string, StoredHeartbeat[]>()
+    for (const row of heartbeats.data) {
+      const hb = rowToHeartbeat(row)
+      const bucket = byService.get(hb.serviceId)
+      if (bucket === undefined) byService.set(hb.serviceId, [hb])
+      else bucket.push(hb)
+    }
+    return services.data.map((row) => ({
+      id: row.id,
+      name: row.name,
+      hasWebhookSecret: row.webhook_secret !== null,
+      createdAt: row.created_at,
+      heartbeats: byService.get(row.id) ?? [],
+    }))
   }
 }

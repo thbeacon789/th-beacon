@@ -389,3 +389,69 @@ describe('InMemoryStore 心跳', () => {
     expect(await store.resolveIssueByFingerprint('s-1', 'fp-a')).toBe(false)
   })
 })
+
+describe('InMemoryStore 登記', () => {
+  it('createService 拒絕重複名稱', async () => {
+    const store = new InMemoryStore()
+    const first = await store.createService('svc-new', 'secret-1')
+    expect(first?.name).toBe('svc-new')
+    expect(await store.createService('svc-new', 'secret-2')).toBeNull()
+  })
+
+  it('建立後可用 getServiceByName 取回金鑰', async () => {
+    const store = new InMemoryStore()
+    const created = await store.createService('svc-new', 'secret-1')
+    const auth = await store.getServiceByName('svc-new')
+    expect(auth?.service.id).toBe(created?.id)
+    expect(auth?.webhookSecret).toBe('secret-1')
+  })
+
+  it('createHeartbeat 同服務內拒絕重複名稱，跨服務則允許', async () => {
+    const store = new InMemoryStore()
+    const a = await store.createService('svc-a', 's')
+    const b = await store.createService('svc-b', 's')
+    const hb = { name: 'daily', intervalSeconds: 86_400, graceSeconds: 3_600 }
+
+    expect(await store.createHeartbeat(a!.id, hb)).not.toBeNull()
+    expect(await store.createHeartbeat(a!.id, hb)).toBeNull()
+    expect(await store.createHeartbeat(b!.id, hb)).not.toBeNull()
+  })
+
+  it('新建的心跳預設 enabled，且會出現在 listEnabledHeartbeats', async () => {
+    const store = new InMemoryStore()
+    const svcNew = await store.createService('svc-a', 's')
+    await store.createHeartbeat(svcNew!.id, {
+      name: 'daily',
+      intervalSeconds: 86_400,
+      graceSeconds: 0,
+    })
+    const enabled = await store.listEnabledHeartbeats()
+    expect(enabled.map((h) => h.name)).toEqual(['daily'])
+    expect(enabled[0].lastRunAt).toBeNull()
+  })
+
+  it('rotateWebhookSecret 換掉金鑰；服務不存在回 false', async () => {
+    const store = new InMemoryStore()
+    const created = await store.createService('svc-a', 'old')
+    expect(await store.rotateWebhookSecret(created!.id, 'new')).toBe(true)
+    expect((await store.getServiceByName('svc-a'))?.webhookSecret).toBe('new')
+    expect(await store.rotateWebhookSecret('does-not-exist', 'x')).toBe(false)
+  })
+
+  it('listRegisteredServices 依名稱排序並帶出各自的心跳', async () => {
+    const store = new InMemoryStore()
+    const b = await store.createService('svc-b', 's')
+    await store.createService('svc-a', 's')
+    await store.createHeartbeat(b!.id, {
+      name: 'nightly',
+      intervalSeconds: 86_400,
+      graceSeconds: 0,
+    })
+
+    const listed = await store.listRegisteredServices()
+    expect(listed.map((s) => s.name)).toEqual(['svc-a', 'svc-b'])
+    expect(listed[0].heartbeats).toEqual([])
+    expect(listed[1].heartbeats.map((h) => h.name)).toEqual(['nightly'])
+    expect(listed[1].hasWebhookSecret).toBe(true)
+  })
+})

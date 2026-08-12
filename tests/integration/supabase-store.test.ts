@@ -268,3 +268,71 @@ describe('SupabaseStore.updateIssueStatus', () => {
     ).rejects.toThrow(/unknown issue/)
   })
 })
+
+describe('SupabaseStore 登記（後台）', () => {
+  it('createService 建立服務並寫入金鑰', async () => {
+    const created = await store.createService('svc-registered', 'secret-abc')
+    expect(created?.name).toBe('svc-registered')
+
+    const auth = await store.getServiceByName('svc-registered')
+    expect(auth?.webhookSecret).toBe('secret-abc')
+    // 新服務的預設值來自 DB schema，不是應用層填的
+    expect(created?.healthStatus).toBe('healthy')
+    expect(created?.poll).toBeNull()
+  })
+
+  it('createService 名稱重複時回 null 而不是拋錯', async () => {
+    // beforeEach 已插入 svc-int
+    expect(await store.createService('svc-int', 'another-secret')).toBeNull()
+  })
+
+  it('createHeartbeat 同服務重複名稱回 null，跨服務允許同名', async () => {
+    const hb = { name: 'daily-test', intervalSeconds: 86_400, graceSeconds: 3_600 }
+    const first = await store.createHeartbeat(serviceId, hb)
+    expect(first?.name).toBe('daily-test')
+    expect(first?.enabled).toBe(true)
+    expect(first?.lastRunAt).toBeNull()
+
+    expect(await store.createHeartbeat(serviceId, hb)).toBeNull()
+
+    const other = await store.createService('svc-other', 's')
+    expect(await store.createHeartbeat(other!.id, hb)).not.toBeNull()
+  })
+
+  it('登記後心跳即可接受回報（登記→回報的完整路徑）', async () => {
+    await store.createHeartbeat(serviceId, {
+      name: 'daily-test',
+      intervalSeconds: 86_400,
+      graceSeconds: 0,
+    })
+    const recorded = await store.recordHeartbeatRun(serviceId, 'daily-test', {
+      status: 'pass',
+      runUrl: null,
+      summary: null,
+      at: '2026-08-01T00:00:00.000Z',
+    })
+    expect(recorded?.lastRunAt).not.toBeNull()
+    expect(recorded?.lastSuccessAt).not.toBeNull()
+  })
+
+  it('rotateWebhookSecret 換掉金鑰；未知 id 回 false', async () => {
+    expect(await store.rotateWebhookSecret(serviceId, 'rotated-secret')).toBe(true)
+    expect((await store.getServiceByName('svc-int'))?.webhookSecret).toBe('rotated-secret')
+    expect(
+      await store.rotateWebhookSecret('00000000-0000-0000-0000-000000000000', 'x'),
+    ).toBe(false)
+  })
+
+  it('listRegisteredServices 帶出心跳，且不外洩金鑰明文', async () => {
+    await store.createHeartbeat(serviceId, {
+      name: 'daily-test',
+      intervalSeconds: 86_400,
+      graceSeconds: 0,
+    })
+    const listed = await store.listRegisteredServices()
+    const target = listed.find((s) => s.name === 'svc-int')
+    expect(target?.heartbeats.map((h) => h.name)).toEqual(['daily-test'])
+    // 型別上就沒有 secret 欄位；這裡確認實際物件也沒有夾帶
+    expect(JSON.stringify(listed)).not.toContain('webhook_secret')
+  })
+})

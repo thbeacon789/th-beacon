@@ -118,9 +118,13 @@ curl -sS --fail-with-body -X POST "$BEACON_URL" \
 
 證明排程還活著。與 ingest 正交：ingest 回答「有沒有出錯」，心跳回答「**有沒有跑**」。CI 必須在 `if: always()` 下呼叫，pass 與 fail 都要送——沒送才是問題。
 
-### ⚠️ 接 CI 之前必須先在 DB 登記
+### ⚠️ 接 CI 之前必須先登記心跳名稱
 
 心跳採**登記制**：未登記的名稱回 `404`，不會自動建立（`src/heartbeat/handle-heartbeat.ts:53`）。順序反了 CI 只會一直收 404。
+
+**登記方式：dashboard 的 `/services` 頁面**（登入後即可自助操作，同時產生服務金鑰）。
+
+備援——直接對 DB 操作：
 
 ```sql
 insert into public.heartbeats (service_id, name, interval_seconds, grace_seconds)
@@ -252,11 +256,15 @@ Authorization: Bearer ${CRON_SECRET}
 
 ## 5. 接入檢查清單
 
-1. 在 `services` 表建立服務，設定 `name` 與 `webhook_secret`
+到 dashboard 的 **`/services`** 頁面（登入後）依序完成 1–3，不需要 DB 權限：
+
+1. 登記服務名稱 → 取得 `BEACON_SECRET`（**只顯示一次**，忘了就按「重新產生」換一把）
 2. 把 secret 放進該專案 CI 的 secrets（`BEACON_SECRET`）
-3. 要用心跳的話，**先** `insert into heartbeats` 登記名稱與 interval/grace
+3. 登記心跳名稱與 interval/grace（**必須早於** CI 接線，否則一律 404）
 4. CI 加上回報步驟：測試失敗 → `/api/ingest`；存活證明 → `/api/heartbeat`（`if: always()`）
 5. 先手動跑一次 curl 確認回 201/200，再交給排程
+
+CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分鐘。
 
 ### 常見接入失敗
 
