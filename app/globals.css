@@ -339,6 +339,13 @@ button:disabled,
   margin-right: var(--space-2);
 }
 
+.nav-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
 .nav a {
   display: inline-flex;
   align-items: center;
@@ -1066,11 +1073,19 @@ tbody tr:last-child td {
     padding: var(--space-3) var(--space-4);
     gap: var(--space-2) var(--space-3);
   }
+  /* 手機版：brand 與 Logout 同一排（brand 撐開把 Logout 推到最右），連結整組換到第二排 */
   .brand {
-    flex-basis: 100%;
+    flex: 1 1 auto;
+    margin-right: 0;
   }
   .nav form {
+    order: 0;
     margin-left: auto;
+  }
+  .nav-links {
+    order: 1;
+    flex-basis: 100%;
+    gap: var(--space-2) var(--space-3);
   }
   .filters {
     align-items: stretch;

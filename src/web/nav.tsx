@@ -7,7 +7,7 @@ const LINKS = [
   { href: '/', label: 'Overview' },
   { href: '/issues', label: 'Triage' },
   { href: '/services', label: 'Register' },
-  { href: '/docs', label: 'API' },
+  { href: '/docs', label: 'Docs' },
 ] as const
 
 export function NavBar() {
@@ -18,11 +18,14 @@ export function NavBar() {
   return (
     <nav className="nav" aria-label="主要導覽">
       <span className="brand">Transfer Helper Beacon</span>
-      {LINKS.map((link) => (
-        <Link key={link.href} href={link.href} aria-current={isActive(link.href) ? 'page' : undefined}>
-          {link.label}
-        </Link>
-      ))}
+      {/* 連結包一層：手機版才好把整組連結整批換到第二列，讓 Logout 留在 brand 同一排 */}
+      <div className="nav-links">
+        {LINKS.map((link) => (
+          <Link key={link.href} href={link.href} aria-current={isActive(link.href) ? 'page' : undefined}>
+            {link.label}
+          </Link>
+        ))}
+      </div>
       <form action="/auth/signout" method="post">
         <button type="submit">Logout</button>
       </form>
