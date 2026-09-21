@@ -99,7 +99,7 @@ export function normalizeHeartbeatFailure(
   }
 }
 
-// 回報端不保證截斷（bizapi 目前有做，但那是它的實作細節），DB 不該吃下無上限字串。
+// 回報端不保證截斷（chatxbuy-api 目前有做，但那是它的實作細節），DB 不該吃下無上限字串。
 export const RUN_SUMMARY_LIMIT = 500
 
 export function truncateRunSummary(summary: string | undefined): string | null {
