@@ -33,8 +33,10 @@ export async function processEvent(
   }
 
   const previousSeverity = created ? null : issue.severity
-  const rules = await store.loadRules(event.serviceId)
-  const { severity: evaluated, tags } = evaluateSeverity(issue, rules)
+  // event 自帶 severity（如 AI 診斷分流）時取代規則表，tags 沿用 issue 現有值
+  const { severity: evaluated, tags } = event.severity
+    ? { severity: event.severity, tags: issue.tags }
+    : evaluateSeverity(issue, await store.loadRules(event.serviceId))
 
   // Ratchet（已拍板）：severity 只升不降——頻率規則超窗回落時維持歷史最嚴重值，
   // 避免 P0↔P2 震盪讓「升級才追發」的通知洗版。未升級時 tags 一併凍結。

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { processEvent } from '@/pipeline/process-event'
 import { InMemoryStore } from '@/store/memory'
 import type { ServiceRecord } from '@/store/contracts'
@@ -119,6 +119,35 @@ describe('processEvent', () => {
     expect(third.previousSeverity).toBe('P0')
     const open = await store.listOpenIssues('s-1')
     expect(open[0].severity).toBe('P0') // 持久化也未降
+  })
+
+  it('event.severity 取代規則表', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const result = await processEvent(store, event({ severity: 'P0' }), now)
+    expect(result.issue.severity).toBe('P0')
+    const open = await store.listOpenIssues('s-1')
+    expect(open[0].severity).toBe('P0')
+  })
+
+  it('event.severity 較低時，新 issue 採用它', async () => {
+    // InMemoryStore 新建 issue 初始 severity 為 P2，故可直接驗證 P2
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const result = await processEvent(store, event({ severity: 'P2' }), now)
+    expect(result.created).toBe(true)
+    expect(result.issue.severity).toBe('P2')
+  })
+
+  it('event.severity 下 ratchet 仍生效：既有 P1 不降級且不呼叫 updateIssueTriage', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    await processEvent(store, event(), now) // 規則表 → P1
+    const spy = vi.spyOn(store, 'updateIssueTriage')
+    const result = await processEvent(
+      store,
+      event({ severity: 'P2', occurredAt: '2026-07-27T10:09:30.000Z' }),
+      now,
+    )
+    expect(result.issue.severity).toBe('P1')
+    expect(spy).not.toHaveBeenCalled()
   })
 
   it('ratchet: created issue still gets initial tags for a P2 rule', async () => {
