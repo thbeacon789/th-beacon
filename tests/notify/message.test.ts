@@ -154,3 +154,80 @@ describe('buildDiscordMessage details', () => {
     expect(msg.embeds[0].fields.length).toBeLessThanOrEqual(25)
   })
 })
+
+describe('extractNotifyDetails diagnosis', () => {
+  it('extractNotifyDetails 取出 diagnosis', () => {
+    expect(
+      extractNotifyDetails({
+        diagnosis: { category: 'env', severity: 'P2', reason: 'R', suggestion: 'S' },
+      }),
+    ).toEqual({ category: 'env', diagnosisReason: 'R', suggestion: 'S' })
+  })
+
+  it('diagnosis 結構不合法時不取', () => {
+    expect(
+      extractNotifyDetails({ diagnosis: { category: 'bogus', reason: 'R', suggestion: 'S' } }),
+    ).not.toHaveProperty('category')
+    expect(extractNotifyDetails({ diagnosis: 'nope' })).toEqual({})
+    expect(extractNotifyDetails({ diagnosis: ['env'] })).toEqual({})
+    expect(extractNotifyDetails({ diagnosis: { category: 'app', reason: 5, suggestion: '' } })).toEqual({
+      category: 'app',
+    })
+  })
+
+  it('diagnosis 字串套用截斷', () => {
+    const d = extractNotifyDetails({
+      diagnosis: { category: 'app', reason: 'x'.repeat(2000), suggestion: 'S' },
+    })
+    expect(d.diagnosisReason?.length).toBe(1000)
+  })
+
+  it('extractNotifyDetails 取出 diagnosisError', () => {
+    expect(extractNotifyDetails({ diagnosisError: 'timeout' })).toEqual({ diagnosisError: 'timeout' })
+  })
+})
+
+describe('buildDiscordMessage diagnosis', () => {
+  const b = {
+    serviceName: 'svc',
+    errorType: 'test_failure',
+    message: 'm',
+    count: 1,
+    firstSeen: 'a',
+    lastSeen: 'b',
+  }
+
+  it('有分類時標題為中文判定', () => {
+    expect(
+      buildDiscordMessage({ ...b, severity: 'P2', details: { category: 'env' } }).embeds[0].title,
+    ).toBe('[P2] svc — 環境問題')
+    expect(
+      buildDiscordMessage({ ...b, severity: 'P1', details: { category: 'app' } }).embeds[0].title,
+    ).toBe('[P1] svc — app 問題')
+    expect(buildDiscordMessage({ ...b, severity: 'P1' }).embeds[0].title).toBe('[P1] svc — test_failure')
+  })
+
+  it('欄位順序與標籤', () => {
+    const msg = buildDiscordMessage({
+      ...b,
+      severity: 'P1',
+      details: {
+        summary: 'sum',
+        diagnosisReason: 'why',
+        suggestion: 'fix',
+        diagnosisError: 'err',
+        runUrl: 'https://ci/run/1',
+      },
+    })
+    expect(msg.embeds[0].fields.map((f) => f.name)).toEqual([
+      '次數',
+      'First seen',
+      'Last seen',
+      '失敗摘要',
+      '判定原因',
+      '修正建議',
+      'AI 判讀失敗',
+      'CI Run',
+    ])
+  })
+})

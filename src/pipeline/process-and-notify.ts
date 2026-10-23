@@ -39,9 +39,11 @@ async function notifyStage(
   result: ProcessResult,
   now: Date,
 ): Promise<{ notified: boolean; notifyReason: string | null }> {
+  // 事件自帶 severity（AI 判讀）時以它為準；ratchet 只管 issue 狀態，不影響通知顏色／紀錄
+  const severity = event.severity ?? result.issue.severity
   const lastSent = await store.getLatestSentNotification(event.serviceId, result.issue.fingerprint)
   const decision = shouldNotify({
-    severity: result.issue.severity,
+    severity,
     duplicate: result.duplicate,
     lastSent,
     now,
@@ -56,7 +58,7 @@ async function notifyStage(
 
   const message = buildDiscordMessage({
     serviceName: service.name,
-    severity: result.issue.severity,
+    severity,
     errorType: result.issue.errorType,
     message: result.issue.message,
     count: result.issue.count,
@@ -70,7 +72,7 @@ async function notifyStage(
     issueId: result.issue.id,
     serviceId: event.serviceId,
     fingerprint: result.issue.fingerprint,
-    severity: result.issue.severity,
+    severity,
     status: sendResult.ok ? 'sent' : 'failed',
     countAtSend: result.issue.count,
     sentAt: now.toISOString(),

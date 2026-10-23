@@ -1,7 +1,7 @@
 import type { Severity } from '@/core/types'
 import type { LatestNotification } from '@/store/contracts'
 
-export const NOTIFY_MIN_SEVERITY: Severity = 'P1'
+export const NOTIFY_MIN_SEVERITY: Severity = 'P2'
 export const COOLDOWN_MINUTES = 30
 
 const RANK: Record<Severity, number> = { P2: 0, P1: 1, P0: 2 }

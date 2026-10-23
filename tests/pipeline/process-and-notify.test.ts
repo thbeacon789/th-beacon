@@ -49,12 +49,35 @@ describe('processAndNotify', () => {
     store.seedService(svc)
   })
 
-  it('P2 issue: pipeline runs, nothing sent', async () => {
+  it('P2 issue: 達門檻，發送', async () => {
     const { deps, sent } = fakeSender()
     const result = await processAndNotify(store, deps, event(), now)
-    expect(result.notified).toBe(false)
-    expect(result.notifyReason).toBe('below_threshold')
-    expect(sent).toHaveLength(0)
+    expect(result.notified).toBe(true)
+    expect(result.notifyReason).toBe('first')
+    expect(sent).toHaveLength(1)
+    expect(sent[0].message.embeds[0].color).toBe(0x95a5a6)
+  })
+
+  it('顏色與紀錄取 event severity', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { deps, sent } = fakeSender()
+    await processAndNotify(store, deps, event(), now) // issue 先被規則判為 P1
+    const later = new Date(now.getTime() + 31 * 60_000) // 過冷卻
+    const result = await processAndNotify(store, deps, event({ severity: 'P2' }), later)
+    expect(result.issue.severity).toBe('P1') // ratchet 不降
+    expect(sent).toHaveLength(2)
+    expect(sent[1].message.embeds[0].color).toBe(0x95a5a6)
+    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint)).toEqual({
+      severity: 'P2',
+      sentAt: later.toISOString(),
+    })
+  })
+
+  it('無 event severity 時取 issue severity', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { deps, sent } = fakeSender()
+    await processAndNotify(store, deps, event(), now)
+    expect(sent[0].message.embeds[0].color).toBe(0xe67e22)
   })
 
   it('first P1: sends embed to per-service webhook and records sent', async () => {

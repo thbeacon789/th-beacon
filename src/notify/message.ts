@@ -1,5 +1,5 @@
 import type { Severity } from '@/core/types'
-import { isSafeRunUrl } from '@/core/heartbeat'
+import { isSafeRunUrl, type DiagnosisCategory } from '@/core/heartbeat'
 
 export interface DiscordEmbedField {
   name: string
@@ -33,6 +33,10 @@ export interface NotifyDetails {
   runUrl?: string
   reason?: string
   lastRunAt?: string
+  category?: DiagnosisCategory
+  diagnosisReason?: string
+  suggestion?: string
+  diagnosisError?: string
 }
 
 // Discord field value 上限為 1024，留 buffer 截到 1000。
@@ -54,13 +58,31 @@ export function extractNotifyDetails(metadata: Record<string, unknown>): NotifyD
     const value = pickString(metadata, key)
     if (value !== undefined) details[key] = value
   }
+  const diagnosisError = pickString(metadata, 'diagnosisError')
+  if (diagnosisError !== undefined) details.diagnosisError = diagnosisError
+  const diagnosis = metadata.diagnosis
+  if (typeof diagnosis === 'object' && diagnosis !== null && !Array.isArray(diagnosis)) {
+    const d = diagnosis as Record<string, unknown>
+    if (d.category === 'env' || d.category === 'app') details.category = d.category
+    const reason = pickString(d, 'reason')
+    if (reason !== undefined) details.diagnosisReason = reason
+    const suggestion = pickString(d, 'suggestion')
+    if (suggestion !== undefined) details.suggestion = suggestion
+  }
   const runUrl = pickString(metadata, 'runUrl')
   if (runUrl !== undefined && isSafeRunUrl(runUrl)) details.runUrl = runUrl
   return details
 }
 
-const DETAIL_LABELS: Array<[key: (typeof TEXT_DETAIL_KEYS)[number], label: string]> = [
+const CATEGORY_TITLE: Record<DiagnosisCategory, string> = { env: '環境問題', app: 'app 問題' }
+
+const DETAIL_LABELS: Array<
+  [key: 'summary' | 'reason' | 'lastRunAt' | 'diagnosisReason' | 'suggestion' | 'diagnosisError', label: string]
+> = [
   ['summary', '失敗摘要'],
+  ['diagnosisReason', '判定原因'],
+  ['suggestion', '修正建議'],
+  ['diagnosisError', 'AI 判讀失敗'],
   ['reason', '原因'],
   ['lastRunAt', '最後回報'],
 ]
@@ -96,7 +118,11 @@ export function buildDiscordMessage(params: {
     username: 'th-beacon',
     embeds: [
       {
-        title: `[${params.severity}] ${params.serviceName} — ${params.errorType}`,
+        title: `[${params.severity}] ${params.serviceName} — ${
+          params.details?.category !== undefined
+            ? CATEGORY_TITLE[params.details.category]
+            : params.errorType
+        }`,
         description,
         color: SEVERITY_COLOR[params.severity],
         ...(params.dashboardUrl !== undefined ? { url: params.dashboardUrl } : {}),

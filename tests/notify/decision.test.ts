@@ -14,11 +14,17 @@ describe('shouldNotify', () => {
     })
   })
 
-  it('skips below threshold (P2)', () => {
+  it('P2 達門檻會發送', () => {
     expect(shouldNotify({ severity: 'P2', duplicate: false, lastSent: null, now })).toEqual({
-      notify: false,
-      reason: 'below_threshold',
+      notify: true,
+      reason: 'first',
     })
+  })
+
+  it('顯式傳入 minSeverity P1 時 P2 低於門檻', () => {
+    expect(
+      shouldNotify({ severity: 'P2', duplicate: false, lastSent: null, now, minSeverity: 'P1' }),
+    ).toEqual({ notify: false, reason: 'below_threshold' })
   })
 
   it('notifies first time at/above threshold', () => {
