@@ -178,7 +178,8 @@ values (
 `status: "fail"` 時額外帶（走 `processAndNotify` 建 issue、發通知）：
 
 ```jsonc
-{ "issueId": "uuid", "severity": "P1", "errorType": "test_failure", "notified": true }
+{ "issueId": "uuid", "severity": "P1", "eventSeverity": "P2", "errorType": "test_failure", "notified": true }
+// severity 為 issue 的 severity（受 ratchet 影響只升不降）；eventSeverity 為本次事件自帶的嚴重度（如 AI 診斷判定），僅在事件帶有時出現
 // errorType 為 "test_failure" 或 "test_failure_env"（診斷判為環境問題時）
 ```
 

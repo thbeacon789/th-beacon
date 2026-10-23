@@ -50,7 +50,7 @@
 
 **CI 腳本**
 - log 總量上限約 150,000 bytes（`DIAGNOSE_MAX_BYTES`）。
-- `curl --max-time 120`，失敗不重試。
+- `curl --max-time 100`，失敗不重試。
 - 腳本一律 `exit 0`。
 
 **相容性與既有約束**
@@ -576,7 +576,7 @@
   - 請使用者在 Console 操作：Workload identity → Connect workload → GitHub Actions。
     - issuer 一個、service account 一個（`e2e-triage`）。
     - rule 兩條，Android、iOS 各一條，`subject_prefix` 分別鎖定該 repo 的 `ref:refs/heads/main`。
-    - `oauth_scope: workspace:inference`，`token_lifetime_seconds: 600`。
+    - `oauth_scope: workspace:developer`（Console 只提供 workspace:developer／org:admin，inference 僅 Admin API 可設；rule 已鎖 repo＋main、token 600 秒），`token_lifetime_seconds: 600`。
   - 把 rule ID、org ID、service account ID 設成各 repo 的 Actions variables。注意兩個 repo 的 `ANTHROPIC_FEDERATION_RULE_ID` 不同。
   - 建議在 Console 對該 workspace 設定用量上限。
 

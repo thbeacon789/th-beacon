@@ -87,6 +87,8 @@ const DETAIL_LABELS: Array<
   ['lastRunAt', '最後回報'],
 ]
 
+const FREE_TEXT_KEYS = new Set<string>(['diagnosisReason', 'suggestion', 'diagnosisError'])
+
 export function buildDiscordMessage(params: {
   serviceName: string
   severity: Severity
@@ -105,7 +107,11 @@ export function buildDiscordMessage(params: {
   const detailFields: DiscordEmbedField[] = []
   for (const [key, label] of DETAIL_LABELS) {
     const value = params.details?.[key]
-    if (value !== undefined) detailFields.push({ name: label, value, inline: false })
+    if (value !== undefined) {
+      // 自由文字欄位（含 AI 輸出）：拆開 `](`，避免在 Discord embed 渲染成可點的 markdown 連結
+      const text = FREE_TEXT_KEYS.has(key) ? value.replaceAll('](', '] (') : value
+      detailFields.push({ name: label, value: text, inline: false })
+    }
   }
   if (params.details?.runUrl !== undefined) {
     detailFields.push({

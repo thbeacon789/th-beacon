@@ -98,7 +98,7 @@ th-beacon
   - `max_tokens` 約 2000
   - `output_config: {format: {type: "json_schema", schema: <§5.2>}}`
   - 不送 `temperature`（2026-10-21 起送了會 400）
-  - `curl --max-time 120`，失敗不重試（CI 已經夠久了）
+  - `curl --max-time 100`，失敗不重試（CI 已經夠久了）
 - 結果處理：
   - `stop_reason` 不是 `end_turn`（例如 `refusal`、`max_tokens`）、HTTP 錯誤、或 JSON 無法解析 → 輸出 `{"error": "<簡短原因>"}`
   - 腳本本身一律 `exit 0`，絕不讓判讀失敗影響後續心跳 step
@@ -135,7 +135,7 @@ th-beacon
     - `subject_prefix: repo:trustnel/trustnel-viewer-android:ref:refs/heads/main`（iOS 同理）
     - `audience: https://api.anthropic.com`
     - `claims: {repository_owner: trustnel}`
-    - `oauth_scope: workspace:inference`：最小權限，只能呼叫 Messages／Models
+    - `oauth_scope: workspace:developer`：Console 只提供 `workspace:developer`／`org:admin`（`workspace:inference` 僅 Admin API 可設）；權限以 rule 鎖定 repo＋main、token 600 秒來收斂
     - `token_lifetime_seconds: 600`
   - schedule 與 `workflow_dispatch`（在 main 上執行）的 `sub` 都是 `repo:<owner>/<repo>:ref:refs/heads/main`。從其他分支手動觸發會被拒絕，這是預期行為。
 - **workflow 變更**：
@@ -196,10 +196,12 @@ th-beacon
   - `TRUSTNEL_E2E_EMAIL`
   - `TRUSTNEL_E2E_PASSWORD`
   - `TRUSTNEL_E2E_LOCK`
+  - `TRUSTNEL_SUPABASE_URL`
   - `TRUSTNEL_SUPABASE_PUBLISHABLE_KEY`
   - `YOUTUBE_API_KEY`／`TRUSTNEL_YOUTUBE_API_KEY`
   - `BEACON_SECRET`
   - 遮蔽清單由 workflow 以環境變數傳入，腳本逐一替換。
+  - heartbeat 的 summary fallback（取 e2e.log 最後一行）以同一份清單遮蔽，且先遮蔽再截斷至 200 字。
   - GitHub OIDC JWT 與換到的 access token 只存在腳本變數中，不寫入 log、不寫進輸出檔。
 
 ## 6. th-beacon 端改動
@@ -278,7 +280,7 @@ diagnosisError?: string   // CI 端判讀失敗的原因，例如 "timeout"、"r
 - 不改 `deriveHealth`。env issue 和其他 issue 一樣，依 severity 映射：P0 → down、P1 → degraded、P2 → healthy。
 - 理由：
   - Claude 只有在「環境壞到整個 e2e 失去監控價值」時才會給 env P1。這時把服務標成 degraded 是對的。
-  - 一般的環境干擾是 P2，不影響燈號。
+  - issue severity 受 ratchet 影響只升不降，且 reopen 不重置：曾被判 P1 的 issue，之後即使當次為 P2，在 health window 內仍顯示 degraded。Discord 顏色不受影響（取當次 severity）。此為已接受的取捨。
   - 每日 e2e 的 issue 在超過 `healthWindowMinutes` 後就不再計入燈號，影響本來就是短暫的。
 
 ### 6.6 既有資料

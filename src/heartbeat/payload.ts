@@ -97,6 +97,14 @@ export function parseHeartbeatPayload(input: unknown): HeartbeatParseResult {
     }
   }
 
+  // 診斷被拒且 CI 端沒給明確的 diagnosisError：補一個，讓 Discord 訊息顯示「AI 判讀失敗」而非靜默退回
+  if (obj.diagnosis !== undefined && diagnosis === undefined && diagnosisError === undefined) {
+    const rejected = warnings.find((w) => w.startsWith('diagnosis was rejected: '))
+    if (rejected) {
+      diagnosisError = truncateText(`diagnosis rejected: ${rejected.slice('diagnosis was rejected: '.length)}`, DIAGNOSIS_ERROR_LIMIT)
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors }
 
   const value: RawHeartbeatReport = {

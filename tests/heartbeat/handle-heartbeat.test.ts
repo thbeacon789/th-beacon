@@ -205,7 +205,7 @@ describe('handleHeartbeat', () => {
       expect(open).toHaveLength(1)
       expect(open[0].errorType).toBe('test_failure_env')
       expect(open[0].severity).toBe('P2')
-      expect(res.body).toMatchObject({ errorType: 'test_failure_env', notified: true })
+      expect(res.body).toMatchObject({ errorType: 'test_failure_env', notified: true, eventSeverity: 'P2' })
     })
 
     it('app 診斷與 env 診斷分屬兩筆 issue', async () => {

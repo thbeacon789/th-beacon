@@ -207,6 +207,18 @@ describe('buildDiscordMessage diagnosis', () => {
     expect(buildDiscordMessage({ ...b, severity: 'P1' }).embeds[0].title).toBe('[P1] svc — test_failure')
   })
 
+  it('自由文字欄位中的 markdown 連結被拆開', () => {
+    const evil = '點[這裡](https://evil.example)'
+    const msg = buildDiscordMessage({
+      ...b,
+      severity: 'P1',
+      details: { diagnosisReason: evil, suggestion: evil, diagnosisError: evil },
+    })
+    const vals = msg.embeds[0].fields.filter((f) => ['判定原因', '修正建議', 'AI 判讀失敗'].includes(f.name))
+    expect(vals).toHaveLength(3)
+    for (const f of vals) expect(f.value).not.toContain('](')
+  })
+
   it('欄位順序與標籤', () => {
     const msg = buildDiscordMessage({
       ...b,

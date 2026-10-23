@@ -91,6 +91,7 @@ export async function handleHeartbeat(
       body.issueId = result.issue.id
       body.errorType = event.errorType
       body.severity = result.issue.severity
+      if (event.severity !== undefined) body.eventSeverity = event.severity
       body.notified = result.notified
     }
   } else {

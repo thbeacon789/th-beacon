@@ -111,6 +111,20 @@ describe('diagnosis', () => {
     expect(r.warnings.join()).toContain('diagnosisError was rejected')
   })
 
+  it('diagnosis 被拒且無 diagnosisError 時補上 diagnosisError', () => {
+    const r = parse({ diagnosis: 'env' })
+    expect(r.value.diagnosisError).toContain('diagnosis rejected:')
+    expect(r.warnings.join()).toContain('diagnosis was rejected')
+  })
+
+  it('diagnosis 被拒但有明確 diagnosisError 時以明確者為準', () => {
+    expect(parse({ diagnosis: 'env', diagnosisError: 'explicit' }).value.diagnosisError).toBe('explicit')
+  })
+
+  it('合法 diagnosis 不產生 diagnosisError', () => {
+    expect(parse({ diagnosis: good }).value).not.toHaveProperty('diagnosisError')
+  })
+
   it('舊格式（無 diagnosis）行為不變', () => {
     const r = parse({})
     expect(r.value).not.toHaveProperty('diagnosis')
