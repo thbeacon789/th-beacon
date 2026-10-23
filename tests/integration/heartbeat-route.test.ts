@@ -182,4 +182,30 @@ describe('POST /api/heartbeat (route-level, real DB)', () => {
     // 但非法 runUrl 絕不能被寫進 DB
     expect(hb?.last_run_url).toBeNull()
   })
+  it('env 診斷寫入 events.metadata.diagnosis 並建立 test_failure_env issue', async () => {
+    const diagnosis = {
+      category: 'env',
+      severity: 'P2',
+      reason: 'staging DB 連線逾時',
+      suggestion: '確認 staging 資料庫是否在線',
+    }
+    const body = JSON.stringify({ name: 'daily-test', status: 'fail', diagnosis })
+    const res = await POST(signedRequest(body))
+    expect(res.status).toBe(200)
+    expect((await res.json()).errorType).toBe('test_failure_env')
+
+    const { data: issue } = await client
+      .from('issues')
+      .select('id,severity,error_type,status')
+      .eq('service_id', serviceId)
+      .single()
+    expect(issue).toMatchObject({ severity: 'P2', error_type: 'test_failure_env', status: 'open' })
+
+    const { data: event } = await client
+      .from('events')
+      .select('metadata')
+      .eq('issue_id', issue!.id)
+      .single()
+    expect(event?.metadata).toMatchObject({ heartbeat: 'daily-test', diagnosis })
+  })
 })

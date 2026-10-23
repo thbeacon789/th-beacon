@@ -183,4 +183,70 @@ describe('handleHeartbeat', () => {
     )
     expect(await store.listOpenIssues('s-1')).toHaveLength(0)
   })
+  describe('AI 診斷', () => {
+    const diag = (category: 'env' | 'app', severity: string) => ({
+      category,
+      severity,
+      reason: 'r',
+      suggestion: 's',
+    })
+    // OpenIssue 不含 errorType，直接讀 InMemoryStore 內部 map 驗證（僅測試用）。
+    const openIssues = () =>
+      [...(store as unknown as { issues: Map<string, { status: string; errorType: string; severity: string }> }).issues.values()].filter(
+        (i) => i.status === 'open',
+      )
+    const failBody = (diagnosis?: unknown) =>
+      JSON.stringify({ name: 'daily-test', status: 'fail', ...(diagnosis ? { diagnosis } : {}) })
+
+    it('env 診斷建立 test_failure_env issue 並採用其 severity', async () => {
+      const deps: NotifyDeps = { ...noopDeps, fallbackWebhookUrl: 'https://discord.test/hook' }
+      const res = await handleHeartbeat(store, deps, request(failBody(diag('env', 'P2'))), now)
+      const open = openIssues()
+      expect(open).toHaveLength(1)
+      expect(open[0].errorType).toBe('test_failure_env')
+      expect(open[0].severity).toBe('P2')
+      expect(res.body).toMatchObject({ errorType: 'test_failure_env', notified: true })
+    })
+
+    it('app 診斷與 env 診斷分屬兩筆 issue', async () => {
+      await handleHeartbeat(store, noopDeps, request(failBody(diag('env', 'P2'))), now)
+      await handleHeartbeat(store, noopDeps, request(failBody(diag('app', 'P1'))), now)
+      const open = openIssues()
+      expect(open).toHaveLength(2)
+      expect(new Set(open.map((i) => i.errorType)).size).toBe(2)
+    })
+
+    it('pass 帶 diagnosis 時忽略且 resolve 兩筆 issue', async () => {
+      await handleHeartbeat(store, noopDeps, request(failBody(diag('env', 'P2'))), now)
+      await handleHeartbeat(store, noopDeps, request(failBody(diag('app', 'P1'))), now)
+      expect(await store.listOpenIssues('s-1')).toHaveLength(2)
+
+      const later = new Date('2026-07-30T03:00:00.000Z')
+      const laterSec = String(Math.floor(later.getTime() / 1000))
+      const body = JSON.stringify({ name: 'daily-test', status: 'pass', diagnosis: diag('env', 'P0') })
+      const res = await handleHeartbeat(
+        store,
+        noopDeps,
+        { rawBody: body, serviceName: 'svc-a', timestamp: laterSec, signature: sign(laterSec, body) },
+        later,
+      )
+      expect(res.status).toBe(200)
+      expect(await store.listOpenIssues('s-1')).toHaveLength(0)
+    })
+
+    it('不合法 diagnosis → 200 + warnings，退回 test_failure P1', async () => {
+      const res = await handleHeartbeat(
+        store,
+        noopDeps,
+        request(failBody({ category: 'bogus', severity: 'P9' })),
+        now,
+      )
+      expect(res.status).toBe(200)
+      expect((res.body as { warnings?: string[] }).warnings?.length).toBeGreaterThan(0)
+      const open = openIssues()
+      expect(open).toHaveLength(1)
+      expect(open[0].errorType).toBe('test_failure')
+      expect(open[0].severity).toBe('P1')
+    })
+  })
 })

@@ -1,7 +1,12 @@
 import { verifyIngestSignature } from '@/ingest/hmac'
 import type { IngestRequest, IngestResponse } from '@/ingest/handle-ingest'
 import { parseHeartbeatPayload } from '@/heartbeat/payload'
-import { heartbeatFingerprint, normalizeHeartbeatFailure, truncateRunSummary } from '@/core/heartbeat'
+import {
+  heartbeatFingerprint,
+  normalizeHeartbeatFailure,
+  truncateRunSummary,
+  TEST_FAILURE_ENV,
+} from '@/core/heartbeat'
 import { processAndNotify } from '@/pipeline/process-and-notify'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
@@ -77,11 +82,14 @@ export async function handleHeartbeat(
         serviceId,
         heartbeat,
         { ...(report.runUrl !== undefined ? { runUrl: report.runUrl } : {}),
-          ...(report.summary !== undefined ? { summary: report.summary } : {}) },
+          ...(report.summary !== undefined ? { summary: report.summary } : {}),
+          ...(report.diagnosis !== undefined ? { diagnosis: report.diagnosis } : {}),
+          ...(report.diagnosisError !== undefined ? { diagnosisError: report.diagnosisError } : {}) },
         now,
       )
       const result = await processAndNotify(store, deps, event, now)
       body.issueId = result.issue.id
+      body.errorType = event.errorType
       body.severity = result.issue.severity
       body.notified = result.notified
     }
@@ -90,6 +98,10 @@ export async function handleHeartbeat(
     await store.resolveIssueByFingerprint(
       serviceId,
       heartbeatFingerprint(serviceId, 'test_failure', report.name),
+    )
+    await store.resolveIssueByFingerprint(
+      serviceId,
+      heartbeatFingerprint(serviceId, TEST_FAILURE_ENV, report.name),
     )
     await refreshServiceHealth(store, serviceId, now)
   }

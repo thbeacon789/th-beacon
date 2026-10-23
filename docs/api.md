@@ -143,9 +143,23 @@ values (
   "name": "daily-test",   // 必填，非空字串；須與 heartbeats.name 完全相符
   "status": "pass",       // 必填，只接受 "pass" 或 "fail"
   "runUrl": "https://github.com/o/r/actions/runs/42",  // 選填
-  "summary": "3 of 120 failed"                          // 選填，超過 500 字截斷
+  "summary": "3 of 120 failed",                         // 選填，超過 500 字截斷
+  "diagnosis": {                                        // 選填，僅 status=fail 時使用（AI 失敗判讀）
+    "category": "env",          // 必填，"env"（環境問題）或 "app"（程式問題）
+    "severity": "P2",           // 必填，"P0" | "P1" | "P2"
+    "reason": "staging DB 連線逾時",       // 必填，非空字串，上限 500 字（超過截斷）
+    "suggestion": "確認 staging 資料庫是否在線", // 必填，非空字串，上限 1000 字（超過截斷）
+    "model": "claude-sonnet-5-5"           // 選填，字串
+  },
+  "diagnosisError": "AI 呼叫逾時"                         // 選填，診斷失敗的原因，上限 200 字（超過截斷）
 }
 ```
+
+**`diagnosis`／`diagnosisError` 同為附帶資訊，不合法絕不 422。** 格式不符（enum 值錯、必填欄位缺漏、型別不對）時只丟棄該欄位、回應帶 `warnings`，並退回一般 `test_failure`（P1 規則表判級）。
+
+- `status: "pass"` 時這兩個欄位一律忽略。
+- `category: "env"` 的失敗會建立**獨立的** `test_failure_env` issue（fingerprint 與 `test_failure` 分開），並採用 `diagnosis.severity` 作為嚴重度；`app` 仍是 `test_failure`，但同樣採用 `diagnosis.severity`。env 與 app 失敗因此分屬兩筆 issue，互不聚合。
+- `diagnosis`／`diagnosisError` 會寫入 event 的 `metadata`，Discord 通知會附上判定原因與修正建議。
 
 **`runUrl` 不合法不會擋掉整包回報。** 若不符 `^https?://` ＋ URL 字元白名單（`src/core/heartbeat.ts:12`），該欄位被丟棄、回應帶 `warnings`，其餘照常處理。理由：CI 端多用 `set -e` ＋ `curl --fail-with-body`，若因裝飾性欄位回 422，存活訊號送不出去，隔天反而觸發假的逾期告警。
 
@@ -164,7 +178,8 @@ values (
 `status: "fail"` 時額外帶（走 `processAndNotify` 建 issue、發通知）：
 
 ```jsonc
-{ "issueId": "uuid", "severity": "P1", "notified": true }
+{ "issueId": "uuid", "severity": "P1", "errorType": "test_failure", "notified": true }
+// errorType 為 "test_failure" 或 "test_failure_env"（診斷判為環境問題時）
 ```
 
 若該心跳 `enabled = false`，run 仍記錄，但不建 issue、不通知：
@@ -176,8 +191,8 @@ values (
 ### 副作用
 
 - **任何**回報（pass 或 fail）→ 關掉該心跳的 `heartbeat_missed` issue（有回報就證明排程活著）
-- `pass` → 額外關掉 `test_failure` issue 並重算服務健康度
-- `fail` → 建立/累計 `test_failure` issue，走通知管線
+- `pass` → 額外關掉 `test_failure` 與 `test_failure_env` issue 並重算服務健康度
+- `fail` → 建立/累計 `test_failure`（或帶 env 診斷時為 `test_failure_env`）issue，走通知管線
 
 ### 錯誤回應
 
