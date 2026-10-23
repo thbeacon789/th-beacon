@@ -18,6 +18,7 @@ KNOWN_FILE="${2:-}"
 OUT="${3:-}"
 if [ "$#" -lt 4 ] || [ -z "$OUT" ]; then
   echo "usage: diagnose-e2e-failure.sh <platform> <known-issues-file> <output-file> <log-file>..." >&2
+  [ -n "$OUT" ] && echo '{"error":"usage"}' >"$OUT" 2>/dev/null
   exit 0
 fi
 shift 3
@@ -37,6 +38,7 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+: >"$OUT" # 清掉自架 runner 上可能殘留的舊結果
 
 fail() { # 寫 {"error": "<=200 字"} 並結束
   jq -cn --arg e "$1" '{error: ($e | .[0:200])}' >"$OUT"
@@ -70,21 +72,23 @@ for f in "${FILES[@]}"; do
   header="=== $(basename "$f") ==="
   budget=$((PER - ${#header} - 2))
   [ "$budget" -lt 0 ] && budget=0
+  # 順序：整檔剔除非 UTF-8 -> 整檔遮蔽 -> 取尾段 -> 再清一次（尾段切口可能落在多位元組字元中間）。
+  # 先遮蔽再截斷，秘密才不會被切口劈成兩半而漏出後半段。
+  CLEAN="$WORK/clean.txt"
+  iconv -c -f utf-8 -t utf-8 "$f" >"$CLEAN" 2>/dev/null || fail "log cleanup failed"
+  # 逐字遮蔽：值經環境變數傳給 perl（不嵌進程式碼）；位元組層級比對（不用 -CSD），非 ASCII 秘密也能命中
+  for var in ${DIAGNOSE_REDACT_VARS:-}; do
+    case "$var" in *[!A-Za-z0-9_]*|'') continue ;; esac
+    val="${!var:-}"
+    [ -n "$val" ] || continue
+    REDACT_VAL="$val" perl -0777 -pe 'BEGIN { $s = $ENV{REDACT_VAL} } s/\Q$s\E/***/g' "$CLEAN" >"$CLEAN.new" \
+      && mv "$CLEAN.new" "$CLEAN" || fail "redaction failed"
+  done
   {
     printf '%s\n' "$header"
-    # 取尾段 -> 剔除非 UTF-8 位元組（尾段切口可能落在多位元組字元中間，所以先 tail 再 iconv）
-    tail -c "$budget" "$f" 2>/dev/null | iconv -c -f utf-8 -t utf-8 2>/dev/null
+    tail -c "$budget" "$CLEAN" 2>/dev/null | iconv -c -f utf-8 -t utf-8 2>/dev/null
     printf '\n'
   } >>"$LOG"
-done
-
-# ---------- 遮蔽秘密（逐字，值經環境變數傳給 perl，不嵌進程式碼）----------
-for var in ${DIAGNOSE_REDACT_VARS:-}; do
-  case "$var" in *[!A-Za-z0-9_]*|'') continue ;; esac
-  val="${!var:-}"
-  [ -n "$val" ] || continue
-  REDACT_VAL="$val" perl -CSD -0777 -pe 'BEGIN { $s = $ENV{REDACT_VAL} } s/\Q$s\E/***/g' "$LOG" >"$LOG.new" \
-    && mv "$LOG.new" "$LOG"
 done
 
 # ---------- system prompt ----------
@@ -174,10 +178,10 @@ code="$(curl -sS --max-time 120 -X POST -K "$HDR" \
   --data-binary @"$REQ" -o "$RESP" -w '%{http_code}' "$BASE_URL/v1/messages" 2>/dev/null)" || code="000"
 [ "$code" = "200" ] || fail "messages request failed: HTTP $code"
 
+jq -r '"usage: input_tokens=\(.usage.input_tokens // "?") output_tokens=\(.usage.output_tokens // "?")"' "$RESP" 2>/dev/null
+
 STOP="$(jq -r '.stop_reason // "none"' "$RESP" 2>/dev/null)" || fail "unparseable response"
 [ "$STOP" = "end_turn" ] || fail "stop_reason: $STOP"
-
-jq -r '"usage: input_tokens=\(.usage.input_tokens // "?") output_tokens=\(.usage.output_tokens // "?")"' "$RESP" 2>/dev/null
 
 TEXT="$(jq -r '[.content[]? | select(.type == "text")][0].text // empty' "$RESP" 2>/dev/null)"
 [ -n "$TEXT" ] || fail "no text block in response"

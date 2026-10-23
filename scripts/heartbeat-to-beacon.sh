@@ -16,10 +16,11 @@ RUN_URL="${3:-}"
 SUMMARY="${4:-}"
 DIAG_FILE="${5:-}"
 
-# 第 5 參數：只有檔案存在且是 JSON 物件才採用，否則視為沒有（絕不讓判讀檔影響心跳）
+# 第 5 參數：只有檔案恰含一個 JSON 物件才採用；多值、非物件、壞 JSON 一律忽略（判讀絕不能弄壞心跳）
 DIAG_JSON='{}'
-if [ -n "$DIAG_FILE" ] && [ -f "$DIAG_FILE" ] && jq -e 'type == "object"' "$DIAG_FILE" >/dev/null 2>&1; then
-  DIAG_JSON="$(jq -c . "$DIAG_FILE")"
+if [ -n "$DIAG_FILE" ] && [ -f "$DIAG_FILE" ]; then
+  DIAG_JSON="$(jq -cs 'if length == 1 and (.[0] | type) == "object" then .[0] else {} end' "$DIAG_FILE" 2>/dev/null)" || DIAG_JSON='{}'
+  [ -n "$DIAG_JSON" ] || DIAG_JSON='{}'
 fi
 
 TS="$(date +%s)"

@@ -168,6 +168,70 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(JSON.stringify(b.messages)).toContain('pw=*** end')
   })
 
+  it('非 ASCII 秘密（含 @ 與 %）被遮蔽，連片段都不外洩', async () => {
+    await start(() => ({ json: okMessage() }))
+    const secret = '密碼é@1%x'
+    await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('a.log', `pw=${secret} end`)],
+      keyEnv({ E2E_PW: secret, DIAGNOSE_REDACT_VARS: 'E2E_PW' }),
+    )
+    const content = JSON.parse(messages()[0].body).messages[0].content as string
+    expect(content).toContain('pw=*** end')
+    for (const frag of ['密碼é', '碼é@', 'é@1%', '@1%x']) expect(content).not.toContain(frag)
+  })
+
+  it('遮蔽失敗（perl 壞掉）時不送出 request，輸出 error', async () => {
+    await start(() => ({ json: okMessage() }))
+    const shim = path.join(dir, 'shim')
+    fs.mkdirSync(shim)
+    fs.writeFileSync(path.join(shim, 'perl'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    const r = await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('a.log', 'pw=SECRET')],
+      keyEnv({ E2E_PW: 'SECRET', DIAGNOSE_REDACT_VARS: 'E2E_PW', PATH: `${shim}:${process.env.PATH}` }),
+    )
+    expect(r.code).toBe(0)
+    expect(String(readOut().error)).toContain('redaction failed')
+    expect(messages()).toHaveLength(0)
+  })
+
+  it('秘密跨在截斷邊界時仍被遮蔽（先遮蔽再取尾段）', async () => {
+    await start(() => ({ json: okMessage() }))
+    const secret = 'SUPERSECRETVALUE'
+    // 尾端 = 秘密 + 5 字元；budget 刻意讓切口落在秘密中間
+    const log = 'y'.repeat(500) + secret + 'zzzzz'
+    const header = '=== a.log ==='
+    const cut = 'RETVALUEzzzzz'.length // 保留秘密後半 + 5 字元
+    const max = cut + header.length + 2
+    await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('a.log', log)],
+      keyEnv({ E2E_PW: secret, DIAGNOSE_REDACT_VARS: 'E2E_PW', DIAGNOSE_MAX_BYTES: String(max) }),
+    )
+    const content = JSON.parse(messages()[0].body).messages[0].content as string
+    expect(content).toContain('zzzzz')
+    for (const frag of ['RETV', 'ETVALUE', 'VALUE', 'SECR']) expect(content).not.toContain(frag)
+  })
+
+  it('輸出檔先清空：失敗時不會殘留舊結果；參數不足寫 usage', async () => {
+    await start(() => ({ status: 500, raw: 'x' }))
+    fs.writeFileSync(out(), JSON.stringify({ ...DIAG, model: 'stale' }))
+    await runBash(SCRIPT, ['android', write('k.md', 'k'), out(), write('a.log', 'x')], keyEnv())
+    expect(readOut().category).toBeUndefined()
+    expect(readOut().error).toBeDefined()
+    fs.rmSync(out())
+    const r = await runBash(SCRIPT, ['android', write('k.md', 'k'), out()], keyEnv())
+    expect(r.code).toBe(0)
+    expect(readOut()).toEqual({ error: 'usage' })
+  })
+
+  it('refusal 時仍印出 usage', async () => {
+    await start(() => ({ json: { ...okMessage(), stop_reason: 'refusal', usage: { input_tokens: 7, output_tokens: 3 } } }))
+    const r = await runBash(SCRIPT, ['android', write('k.md', 'k'), out(), write('a.log', 'x')], keyEnv())
+    expect(r.stdout).toContain('input_tokens=7')
+  })
+
   it('非 UTF-8 log 仍送出合法 request', async () => {
     await start(() => ({ json: okMessage() }))
     await runBash(

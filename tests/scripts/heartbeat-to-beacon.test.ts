@@ -58,6 +58,16 @@ describe('heartbeat-to-beacon.sh', () => {
     }
   })
 
+  it('diagnosis 檔含多個 JSON 值時忽略，心跳照送', async () => {
+    const f = path.join(dir, 'multi.json')
+    fs.writeFileSync(f, '{"category":"env","severity":"P2","reason":"r","suggestion":"s"}\n{"error":"x"}\n')
+    const r = await runBash(SCRIPT, ['daily', 'fail', 'http://run', 'sum', f], env())
+    expect(r.code).toBe(0)
+    expect(server.requests).toHaveLength(1)
+    expect(body().diagnosis).toBeUndefined()
+    expect(body().diagnosisError).toBeUndefined()
+  })
+
   it('簽章仍可被 verifyIngestSignature 驗過', async () => {
     const f = path.join(dir, 'd.json')
     fs.writeFileSync(f, JSON.stringify({ category: 'app', severity: 'P0', reason: '理由', suggestion: 's' }))
