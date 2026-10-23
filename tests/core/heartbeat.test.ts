@@ -8,7 +8,9 @@ import {
   normalizeHeartbeatFailure,
   truncateRunSummary,
   RUN_SUMMARY_LIMIT,
+  TEST_FAILURE_ENV,
   type HeartbeatDefinition,
+  type HeartbeatDiagnosis,
 } from '@/core/heartbeat'
 
 const base: HeartbeatDefinition = {
@@ -162,6 +164,51 @@ describe('normalizeHeartbeatFailure', () => {
     const a = normalizeHeartbeatFailure('s-1', base, { summary: 'x' }, now)
     const b = normalizeHeartbeatFailure('s-1', base, { summary: 'y' }, now)
     expect(a.fingerprint).toBe(b.fingerprint)
+  })
+
+  describe('AI 診斷分流', () => {
+    const diag = (category: 'env' | 'app', severity: 'P0' | 'P1' | 'P2'): HeartbeatDiagnosis => ({
+      category,
+      severity,
+      reason: '原因',
+      suggestion: '建議',
+    })
+
+    it('env 診斷 → test_failure_env 與獨立 fingerprint', () => {
+      const d = diag('env', 'P2')
+      const event = normalizeHeartbeatFailure('s-1', base, { diagnosis: d }, now)
+      const plain = normalizeHeartbeatFailure('s-1', base, {}, now)
+      expect(TEST_FAILURE_ENV).toBe('test_failure_env')
+      expect(event.errorType).toBe('test_failure_env')
+      expect(event.message).toBe('Test failed (env): daily-test')
+      expect(event.fingerprint).toBe(heartbeatFingerprint('s-1', 'test_failure_env', 'daily-test'))
+      expect(event.fingerprint).not.toBe(plain.fingerprint)
+      expect(event.severity).toBe('P2')
+      expect(event.metadata.diagnosis).toEqual(d)
+    })
+
+    it('app 診斷 → 沿用 test_failure，帶 severity', () => {
+      const event = normalizeHeartbeatFailure('s-1', base, { diagnosis: diag('app', 'P0') }, now)
+      expect(event.errorType).toBe('test_failure')
+      expect(event.severity).toBe('P0')
+    })
+
+    it('無診斷 → 行為不變且無 severity', () => {
+      const event = normalizeHeartbeatFailure('s-1', base, {}, now)
+      expect('severity' in event).toBe(false)
+    })
+
+    it('diagnosisError 寫入 metadata', () => {
+      const event = normalizeHeartbeatFailure('s-1', base, { diagnosisError: 'timeout' }, now)
+      expect(event.errorType).toBe('test_failure')
+      expect(event.metadata.diagnosisError).toBe('timeout')
+      expect('severity' in event).toBe(false)
+    })
+
+    it('metadata.summary 為截斷後的值', () => {
+      const event = normalizeHeartbeatFailure('s-1', base, { summary: 'x'.repeat(600) }, now)
+      expect((event.metadata.summary as string).length).toBe(RUN_SUMMARY_LIMIT)
+    })
   })
 })
 

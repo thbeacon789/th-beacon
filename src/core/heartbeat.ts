@@ -70,9 +70,13 @@ export function synthesizeHeartbeatMissedEvent(
   }
 }
 
+export const TEST_FAILURE_ENV = 'test_failure_env'
+
 export interface HeartbeatFailurePayload {
   runUrl?: string
   summary?: string
+  diagnosis?: HeartbeatDiagnosis
+  diagnosisError?: string
 }
 
 export function normalizeHeartbeatFailure(
@@ -81,8 +85,11 @@ export function normalizeHeartbeatFailure(
   payload: HeartbeatFailurePayload,
   occurredAt: Date,
 ): CanonicalEvent {
-  const errorType = 'test_failure'
-  const message = `Test failed: ${hb.name}`
+  const diagnosis = payload.diagnosis
+  const isEnv = diagnosis?.category === 'env'
+  const errorType = isEnv ? TEST_FAILURE_ENV : 'test_failure'
+  const message = isEnv ? `Test failed (env): ${hb.name}` : `Test failed: ${hb.name}`
+  const summary = truncateRunSummary(payload.summary)
   return {
     serviceId,
     source: 'push',
@@ -91,10 +98,13 @@ export function normalizeHeartbeatFailure(
     message,
     fingerprint: heartbeatFingerprint(serviceId, errorType, hb.name),
     occurredAt: occurredAt.toISOString(),
+    ...(diagnosis ? { severity: diagnosis.severity } : {}),
     metadata: {
       heartbeat: hb.name,
       ...(payload.runUrl !== undefined ? { runUrl: payload.runUrl } : {}),
-      ...(payload.summary !== undefined ? { summary: payload.summary } : {}),
+      ...(summary !== null ? { summary } : {}),
+      ...(diagnosis ? { diagnosis } : {}),
+      ...(payload.diagnosisError !== undefined ? { diagnosisError: payload.diagnosisError } : {}),
     },
   }
 }

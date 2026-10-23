@@ -11,6 +11,7 @@ export interface CanonicalEvent {
   message: string
   fingerprint: string
   occurredAt: string // ISO 8601
+  severity?: Severity // 來源已判定的嚴重度（如 AI 診斷），有值時優先於規則引擎
   metadata: Record<string, unknown>
 }
 
