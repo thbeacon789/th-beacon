@@ -24,7 +24,7 @@ Trustnel 的 Android／iOS 每日 e2e（`android-e2e-prod`、`ios-e2e-prod`）�
 - 環境造成的失敗與 app 造成的失敗拆成**兩筆獨立 issue**，各自計數。這樣環境問題重複發生時，不會蓋過真正的 app 問題。
 - Discord 顏色沿用現有對照：P0 紅、P1 橘、P2 灰。標題標明是「環境問題」還是「app 問題」，並附上原因與修正建議。
 - P2 也要發 Discord（全域門檻由 P1 降到 P2）。
-- 修正 iOS summary 的 grep 字串錯誤（見 §6.3）。
+- ~~修正 iOS summary 的 grep 字串錯誤~~：查證後確認沒有這個錯誤（見 §6.3）。
 
 **非目標**
 
@@ -54,6 +54,7 @@ Trustnel 的 Android／iOS 每日 e2e（`android-e2e-prod`、`ios-e2e-prod`）�
 | 環境 vs app | 拆成兩筆 issue |
 | P2 通知 | 全域開放：`NOTIFY_MIN_SEVERITY` 改為 P2。查線上 DB（2026-10-23）時從未出現 P2 issue，7 筆 issue 全是 CI 心跳類 P1，目前全域開放沒有洗版風險。日後有服務接上 `/api/ingest` 且 P2 太吵時，再調整 |
 | 模型 | `claude-sonnet-5-5` |
+| 認證 | **Workload Identity Federation（WIF）**，不用 API key：GitHub Actions 發 OIDC JWT → 換成短效 Claude token。CI 不存任何 Anthropic 秘密（見 §5.5） |
 | iOS summary | 一併修正 |
 
 ## 4. 架構
@@ -86,7 +87,8 @@ th-beacon
 - 源頭放在 th-beacon `scripts/`，兩個 CI repo 各複製一份。做法與現行 `heartbeat-to-beacon.sh` 相同，以 `cmp` 確保位元組一致。
 - 技術：bash＋`curl`＋`jq`。兩邊 runner 都已有這些工具，heartbeat 腳本也在用。不引入 Node 或 Python。
 - 輸入：
-  - `ANTHROPIC_API_KEY`（新 secret，兩個 repo 都要加）
+  - WIF 設定（非秘密，放 repo variables）：`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_ORGANIZATION_ID`、`ANTHROPIC_SERVICE_ACCOUNT_ID`，選填 `ANTHROPIC_WORKSPACE_ID`
+  - GitHub runner 自動提供的 `ACTIONS_ID_TOKEN_REQUEST_URL`／`ACTIONS_ID_TOKEN_REQUEST_TOKEN`（job 需 `id-token: write`）
   - 平台名（`android`／`ios`）
   - log 檔路徑：一或多個
   - 「已知環境問題」說明檔路徑（見 §5.3）
@@ -107,7 +109,39 @@ th-beacon
   - step 的 `timeout-minutes` 設 3
   - job 逾時被取消後，後續 step 是否還能執行**未確認**。實作時要實測：若不會執行，就接受「逾時不判讀，退回現行行為」，不另外設計補救機制。
 - 前置確認：iOS 自架 runner 是否有 `jq`，以及能否對外連到 `api.anthropic.com`。plan 的第一個 CI 任務先驗證這兩點。
-- `ANTHROPIC_API_KEY` 由使用者在 Anthropic Console 建立。建議兩個 repo 共用同一把專用 key，並在 Console 設用量上限。
+- 認證改用 WIF，不建立 API key，細節見 §5.5。
+
+### 5.5 認證：Workload Identity Federation
+
+依官方文件（platform.claude.com/docs/en/manage-claude/wif-providers/github-actions，2026-10-23 查閱）：
+
+- **流程**（腳本內完成，每次 run 一次）：
+  1. 取 GitHub OIDC JWT：`curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value`
+  2. 換 token：`POST /v1/oauth/token`，JSON body：
+     - `grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer"`
+     - `assertion: <JWT>`
+     - `federation_rule_id`、`organization_id`、`service_account_id`
+     - `workspace_id`（rule 只綁一個 workspace 時可省略）
+     - 回傳 `access_token`（`sk-ant-oat01-…`）
+  3. 呼叫 Messages API：header 用 `authorization: Bearer <access_token>`，不需額外 beta header。
+- **注意事項**：
+  - GitHub JWT 約 5 分鐘過期，且帶 `jti` 只能換一次。腳本必須在呼叫前現取，不可快取、不可重送同一個 JWT（腳本本來就不重試）。
+  - 換 token 失敗一律回 401 `Authentication failed`，不說原因。腳本輸出 `{"error":"wif exchange failed: 401"}`；真正原因要到 Console 的 authentication history 查。
+  - 自架 runner（iOS）一樣能取得 GitHub OIDC token，但要能連到 `token.actions.githubusercontent.com`（由 runner 環境變數提供的 URL）與 `api.anthropic.com`。
+- **Console 設定**（使用者操作；Workload identity → Connect workload → GitHub Actions）：
+  - Issuer：`https://token.actions.githubusercontent.com`，discovery 模式。
+  - Service account：一個，例如 `e2e-triage`。
+  - Federation rule：每個 repo 各一條。
+    - `subject_prefix: repo:trustnel/trustnel-viewer-android:ref:refs/heads/main`（iOS 同理）
+    - `audience: https://api.anthropic.com`
+    - `claims: {repository_owner: trustnel}`
+    - `oauth_scope: workspace:inference`：最小權限，只能呼叫 Messages／Models
+    - `token_lifetime_seconds: 600`
+  - schedule 與 `workflow_dispatch`（在 main 上執行）的 `sub` 都是 `repo:<owner>/<repo>:ref:refs/heads/main`。從其他分支手動觸發會被拒絕，這是預期行為。
+- **workflow 變更**：
+  - e2e job 加上 `permissions: { id-token: write, contents: read }`。
+  - 目前兩個 workflow 都沒有設 `permissions`，加上後其他權限會收斂到只剩這兩項。現有 step（checkout、cache、upload-artifact）不需要其他權限，但要實跑確認。
+- **本地手動測試的退路**：腳本另外接受 `ANTHROPIC_API_KEY`（有設定時跳過 WIF，改用 `x-api-key`），只給開發者本機試跑用，workflow 不設定。
 
 ### 5.2 輸出 schema（固定）
 
@@ -166,6 +200,7 @@ th-beacon
   - `YOUTUBE_API_KEY`／`TRUSTNEL_YOUTUBE_API_KEY`
   - `BEACON_SECRET`
   - 遮蔽清單由 workflow 以環境變數傳入，腳本逐一替換。
+  - GitHub OIDC JWT 與換到的 access token 只存在腳本變數中，不寫入 log、不寫進輸出檔。
 
 ## 6. th-beacon 端改動
 
@@ -205,12 +240,13 @@ diagnosisError?: string   // CI 端判讀失敗的原因，例如 "timeout"、"r
 - **pass 時**同時 resolve `test_failure` 與 `test_failure_env` 兩筆 issue。
 - triage 規則表：不必新增 `test_failure_env` 規則，有診斷時一定帶 severity。萬一沒帶，預設 P2，但依 §6.1 env issue 不可能沒帶 diagnosis。
 
-### 6.3 iOS summary 修正（在 iOS repo）
+### 6.3 iOS summary（更正：不需修改）
 
-- 問題：`e2e-prod.yml` 的 summary grep 抓 `^\[e2e\] (失敗段落|全部段落通過)`，但 iOS `e2e.sh` 實際印的字串不同（盤點時看到「段落失敗：…」），導致失敗時 summary 幾乎都退回 `job=failure`。
-- 修法：實作者先讀 iOS `scripts/e2e.sh` 結尾的彙總 echo，確認實際格式，再擇一處理：
-  - 讓 grep 對齊實際字串
-  - 或統一 iOS 的輸出字串與 Android 一致（建議此項，兩邊 summary 格式相同）
+- 原本懷疑 iOS 的 summary grep 對不上，但這是盤點時的誤讀。
+- iOS `scripts/e2e.sh:237` 印的就是 `[e2e] 失敗段落：…`，與 Android 一致。
+- 線上 DB 的 `ios-e2e-prod.last_run_summary` 顯示正常（`[e2e] 全部段落通過（target=prod）`）。
+- 2026-10-23 出現的 `job=failure（e2e.sh 未跑到結尾）`，是兩個平台都在 `e2e.sh` 跑完前就失敗，屬於預期中的回退文字。
+- 結論：本案不改。
 
 ### 6.4 通知
 
@@ -246,7 +282,7 @@ diagnosisError?: string   // CI 端判讀失敗的原因，例如 "timeout"、"r
 ## 7. 部署順序
 
 1. th-beacon 先上線：payload 相容、新 errorType、通知門檻、Discord 欄位。舊 CI 不受影響。
-2. 兩個 CI repo 各加 `ANTHROPIC_API_KEY` secret 與 `e2e-known-env-issues.md`，複製兩支腳本，workflow 加判讀 step；iOS 同時修 summary。
+2. 使用者在 Console 完成 WIF 設定（§5.5），把 rule／org／service account ID 設成兩個 repo 的 variables。兩個 CI repo 加 `e2e-known-env-issues.md`、複製兩支腳本，workflow 加判讀 step 與 `permissions`。
 3. 用 `workflow_dispatch` 在各平台各觸發一次真實失敗（或以已知失敗的 log 本地跑腳本），確認 Discord 訊息與 dashboard issue 正確。
 
 ## 8. 驗收
@@ -260,7 +296,7 @@ diagnosisError?: string   // CI 端判讀失敗的原因，例如 "timeout"、"r
   - Discord 標題、欄位、顏色取自 event severity
 - `pnpm typecheck`、`pnpm test`、`pnpm test:integration`（本地 stack）通過。
 - 診斷腳本以 Android 10/16–10/21 那幾輪的真實 log 試跑：判為 `env`，並提到沉浸模式提示。
-- 模擬 API 失敗（錯誤的 key）時：腳本 exit 0、心跳照送、Discord 出現「AI 判讀失敗」、維持 P1。
+- 模擬 API 失敗（換 token 回 401，或 Messages API 回 500）時：腳本 exit 0、心跳照送、Discord 出現「AI 判讀失敗」、維持 P1。
 - 檢查送出的 request body，確認不含任何秘密值。
 
 ## 9. 留給實作者決定
