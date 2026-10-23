@@ -1,4 +1,4 @@
-import type { CanonicalEvent } from '@/core/types'
+import type { CanonicalEvent, Severity } from '@/core/types'
 import { computeFingerprint } from '@/core/fingerprint'
 
 export type HeartbeatRunStatus = 'pass' | 'fail'
@@ -102,9 +102,24 @@ export function normalizeHeartbeatFailure(
 // 回報端不保證截斷（chatxbuy-api 目前有做，但那是它的實作細節），DB 不該吃下無上限字串。
 export const RUN_SUMMARY_LIMIT = 500
 
+export function truncateText(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
+}
+
 export function truncateRunSummary(summary: string | undefined): string | null {
   if (summary === undefined || summary === '') return null
-  return summary.length > RUN_SUMMARY_LIMIT
-    ? `${summary.slice(0, RUN_SUMMARY_LIMIT - 1)}…`
-    : summary
+  return truncateText(summary, RUN_SUMMARY_LIMIT)
 }
+
+// AI 診斷（CI 端附帶的 e2e 失敗判讀）。
+export type DiagnosisCategory = 'env' | 'app'
+export interface HeartbeatDiagnosis {
+  category: DiagnosisCategory
+  severity: Severity
+  reason: string
+  suggestion: string
+  model?: string
+}
+export const DIAGNOSIS_REASON_LIMIT = 500
+export const DIAGNOSIS_SUGGESTION_LIMIT = 1000
+export const DIAGNOSIS_ERROR_LIMIT = 200

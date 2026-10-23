@@ -1,10 +1,20 @@
-import { isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
+import {
+  DIAGNOSIS_ERROR_LIMIT,
+  DIAGNOSIS_REASON_LIMIT,
+  DIAGNOSIS_SUGGESTION_LIMIT,
+  isSafeRunUrl,
+  truncateText,
+  type HeartbeatDiagnosis,
+  type HeartbeatRunStatus,
+} from '@/core/heartbeat'
 
 export interface RawHeartbeatReport {
   name: string
   status: HeartbeatRunStatus
   runUrl?: string
   summary?: string
+  diagnosis?: HeartbeatDiagnosis
+  diagnosisError?: string
 }
 
 export type HeartbeatParseResult =
@@ -12,6 +22,36 @@ export type HeartbeatParseResult =
   | { ok: false; errors: string[] }
 
 const STATUSES: readonly string[] = ['pass', 'fail']
+const CATEGORIES: readonly string[] = ['env', 'app']
+const SEVERITIES: readonly string[] = ['P0', 'P1', 'P2']
+
+// 白名單萃取：只取 5 個欄位，未知欄位不進入結果。
+function parseDiagnosis(raw: unknown): { value: HeartbeatDiagnosis } | { reason: string } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { reason: 'must be an object' }
+  }
+  const o = raw as Record<string, unknown>
+  if (typeof o.category !== 'string' || !CATEGORIES.includes(o.category)) {
+    return { reason: 'category must be "env" or "app"' }
+  }
+  if (typeof o.severity !== 'string' || !SEVERITIES.includes(o.severity)) {
+    return { reason: 'severity must be "P0", "P1" or "P2"' }
+  }
+  if (typeof o.reason !== 'string' || o.reason.trim() === '') {
+    return { reason: 'reason must be a non-empty string' }
+  }
+  if (typeof o.suggestion !== 'string' || o.suggestion.trim() === '') {
+    return { reason: 'suggestion must be a non-empty string' }
+  }
+  const value: HeartbeatDiagnosis = {
+    category: o.category as HeartbeatDiagnosis['category'],
+    severity: o.severity as HeartbeatDiagnosis['severity'],
+    reason: truncateText(o.reason, DIAGNOSIS_REASON_LIMIT),
+    suggestion: truncateText(o.suggestion, DIAGNOSIS_SUGGESTION_LIMIT),
+  }
+  if (typeof o.model === 'string' && o.model !== '') value.model = o.model
+  return { value }
+}
 
 // 註：input 來自 JSON.parse，故所有值必為 JSON-safe。
 export function parseHeartbeatPayload(input: unknown): HeartbeatParseResult {
@@ -41,6 +81,22 @@ export function parseHeartbeatPayload(input: unknown): HeartbeatParseResult {
     warnings.push('runUrl was rejected: must be an http(s) URL')
   }
 
+  // diagnosis／diagnosisError 同為附帶資訊：不合法時丟棄並回 warning，絕不拒收整包。
+  let diagnosis: HeartbeatDiagnosis | undefined
+  if (obj.diagnosis !== undefined) {
+    const parsed = parseDiagnosis(obj.diagnosis)
+    if ('value' in parsed) diagnosis = parsed.value
+    else warnings.push(`diagnosis was rejected: ${parsed.reason}`)
+  }
+  let diagnosisError: string | undefined
+  if (obj.diagnosisError !== undefined) {
+    if (typeof obj.diagnosisError === 'string') {
+      diagnosisError = truncateText(obj.diagnosisError, DIAGNOSIS_ERROR_LIMIT)
+    } else {
+      warnings.push('diagnosisError was rejected: must be a string')
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors }
 
   const value: RawHeartbeatReport = {
@@ -49,5 +105,7 @@ export function parseHeartbeatPayload(input: unknown): HeartbeatParseResult {
   }
   if (obj.runUrl !== undefined && runUrlIsSafe) value.runUrl = obj.runUrl as string
   if (obj.summary !== undefined) value.summary = obj.summary as string
+  if (diagnosis) value.diagnosis = diagnosis
+  if (diagnosisError !== undefined) value.diagnosisError = diagnosisError
   return { ok: true, value, warnings }
 }
