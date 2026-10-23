@@ -24,7 +24,7 @@ Trustnel 的 Android／iOS 每日 e2e（`android-e2e-prod`、`ios-e2e-prod`）�
 - 環境造成的失敗與 app 造成的失敗拆成**兩筆獨立 issue**，各自計數。這樣環境問題重複發生時，不會蓋過真正的 app 問題。
 - Discord 顏色沿用現有對照：P0 紅、P1 橘、P2 灰。標題標明是「環境問題」還是「app 問題」，並附上原因與修正建議。
 - P2 也要發 Discord（全域門檻由 P1 降到 P2）。
-- ~~修正 iOS summary 的 grep 字串錯誤~~：查證後確認沒有這個錯誤（見 §6.3）。
+- 提早退出時，summary 改用 log 最後一行，不再只有 `job=failure`（見 §6.3）。
 
 **非目標**
 
@@ -240,13 +240,21 @@ diagnosisError?: string   // CI 端判讀失敗的原因，例如 "timeout"、"r
 - **pass 時**同時 resolve `test_failure` 與 `test_failure_env` 兩筆 issue。
 - triage 規則表：不必新增 `test_failure_env` 規則，有診斷時一定帶 severity。萬一沒帶，預設 P2，但依 §6.1 env issue 不可能沒帶 diagnosis。
 
-### 6.3 iOS summary（更正：不需修改）
+### 6.3 summary 回退文字太空泛（Android、iOS 都改）
 
-- 原本懷疑 iOS 的 summary grep 對不上，但這是盤點時的誤讀。
-- iOS `scripts/e2e.sh:237` 印的就是 `[e2e] 失敗段落：…`，與 Android 一致。
-- 線上 DB 的 `ios-e2e-prod.last_run_summary` 顯示正常（`[e2e] 全部段落通過（target=prod）`）。
-- 2026-10-23 出現的 `job=failure（e2e.sh 未跑到結尾）`，是兩個平台都在 `e2e.sh` 跑完前就失敗，屬於預期中的回退文字。
-- 結論：本案不改。
+**查證結果**
+- grep 字串本身沒錯：iOS `scripts/e2e.sh:237` 印的就是 `[e2e] 失敗段落：…`，hosted runner 時期的 8 次失敗都有正確抓到。
+- 使用者在 iOS 只看到 `job=failure（e2e.sh 未跑到結尾）`，原因如下：
+  - 改用自架 runner（8/26）後，iOS 只失敗過 2026-10-23 那一次（run 39877454337）。
+  - 那次 `TRUSTNEL_SUPABASE_PUBLISHABLE_KEY` 是空值，`e2e.sh` 在印出任何段落前就退出了。log 唯一一行是 `找不到 …/trustnel/apps/api/.env（可用 TRUSTNEL_API_ENV 指定，或直接以 TRUSTNEL_SUPABASE_* 注入）`。
+- 結論：這類「提早退出」的失敗（環境變數缺少、模擬器建不起來、前置健檢失敗），回退文字完全看不出原因。
+
+**修法**
+- 兩個 repo 的 heartbeat step 都改：抓不到段落結論時，改用 `e2e.log` 最後一行非空內容組成 summary：
+  - 格式：`job=<status>：<最後一行>`
+  - 先去掉 ANSI 色碼，截到 200 字
+  - `e2e.log` 不存在或內容為空時，維持原本的回退文字
+- known-env-issues 清單加一條：「必要環境變數／secret 為空（例如 secret 改名後漏補）→ env、P1（整個 e2e 跑不起來）」。
 
 ### 6.4 通知
 

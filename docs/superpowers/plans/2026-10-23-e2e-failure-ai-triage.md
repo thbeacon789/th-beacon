@@ -485,6 +485,7 @@
   - Gradle 與 emulator 搶資源
   - 鎖區影片誤報
   - job timeout
+  - 必要環境變數／secret 為空 → `e2e.sh` 開頭就退出 → env、P1
 
 - [ ] **Step 3: 新增 step `Diagnose failure with Claude`**
   - 位置：`Report heartbeat` 之前。
@@ -504,8 +505,13 @@
     - 否則執行：`./scripts/diagnose-e2e-failure.sh android .github/e2e-known-env-issues.md "${RUNNER_TEMP}/diagnosis.json" "${RUNNER_TEMP}/e2e.log" "${RUNNER_TEMP}/logcat.txt"`
 
 - [ ] **Step 4: 修改 heartbeat step**
-  - 呼叫時加上第 5 參數 `"${RUNNER_TEMP}/diagnosis.json"`。
-  - 判讀被跳過時檔案不存在，腳本會忽略。
+  - 呼叫時加上第 5 參數 `"${RUNNER_TEMP}/diagnosis.json"`。判讀被跳過時檔案不存在，腳本會忽略。
+  - summary 回退改寫（spec §6.3）：grep 抓不到段落結論、但 `e2e.log` 有內容時，SUMMARY 改為 `job=${JOB_STATUS}：<最後一行非空內容>`。
+    - 先用 `sed` 去掉 ANSI 色碼
+    - 截到 200 字元
+    - 檔案不存在或內容為空時，維持原本的回退文字
+  - 本地驗證：建一個只有 `找不到 /x/.env（…）` 一行的假 `e2e.log`，執行該段 shell。
+    - Expected：SUMMARY 為 `job=failure：找不到 /x/.env（…）`。
 
 - [ ] **Step 5: 靜態驗證**
   Run：`actionlint .github/workflows/e2e-prod.yml`（若未安裝，改用 `python3 -c "import yaml,sys;yaml.safe_load(open(sys.argv[1]))" .github/workflows/e2e-prod.yml`）
@@ -535,7 +541,8 @@
 - [ ] **Step 2: 複製腳本並以 `cmp` 驗證**（同 Task 7 Step 1）
 
 - [ ] **Step 3: 撰寫 `.github/e2e-known-env-issues.md`**
-  iOS 至少列出以下項目：
+  iOS 至少列出以下項目（Android 的清單也要加第一條）：
+  - 必要環境變數／secret 為空 → `e2e.sh` 開頭就退出（2026-10-23 實例：`TRUSTNEL_SUPABASE_PUBLISHABLE_KEY` 為空 → `找不到 …/.env`）→ env、P1
   - simulator 開機失敗（`simctl boot` 被吞錯）
   - 自架 runner 殘留狀態（舊 sim、DerivedData）
   - iOS runtime 低於 26
