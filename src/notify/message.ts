@@ -109,7 +109,12 @@ export function buildDiscordMessage(params: {
     const value = params.details?.[key]
     if (value !== undefined) {
       // 自由文字欄位（含 AI 輸出）：拆開 `](`，避免在 Discord embed 渲染成可點的 markdown 連結
-      const text = FREE_TEXT_KEYS.has(key) ? value.replaceAll('](', '] (') : value
+      // 先中和再截斷：替換會讓字串變長，順序反了可能超過 Discord 1024 上限而整則被拒。
+      let text = value
+      if (FREE_TEXT_KEYS.has(key)) {
+        text = value.replaceAll('](', '] (')
+        if (text.length > FIELD_LIMIT) text = `${text.slice(0, FIELD_LIMIT - 1)}…`
+      }
       detailFields.push({ name: label, value: text, inline: false })
     }
   }

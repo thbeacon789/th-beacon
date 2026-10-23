@@ -219,6 +219,16 @@ describe('buildDiscordMessage diagnosis', () => {
     for (const f of vals) expect(f.value).not.toContain('](')
   })
 
+  it('中和連結後仍不超過欄位上限', () => {
+    const suggestion = ']('.repeat(30) + 'x'.repeat(930)
+    expect(suggestion.length).toBe(990)
+    const details = extractNotifyDetails({ diagnosis: { category: 'app', reason: 'R', suggestion } })
+    const msg = buildDiscordMessage({ ...b, severity: 'P1', details })
+    const f = msg.embeds[0].fields.find((x) => x.name === '修正建議')
+    expect(f?.value.length).toBeLessThanOrEqual(1000)
+    expect(f?.value).not.toContain('](')
+  })
+
   it('欄位順序與標籤', () => {
     const msg = buildDiscordMessage({
       ...b,
