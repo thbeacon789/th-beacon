@@ -87,8 +87,6 @@ export async function finishEvent(
     notifyEvent = withMetadata(event, outcome.metadata)
   } else if (decision.kind === 'skip_budget') {
     notifyEvent = withMetadata(event, { diagnosisError: SKIP_BUDGET_TEXT })
-  } else if (decision.kind === 'no_ai') {
-    notifyEvent = withCiFallback(event)
   }
 
   const applied = await applyTriage(store, service, event, upsert, ai, now)
@@ -110,14 +108,6 @@ const SKIP_BUDGET_TEXT = '略過：本輪呼叫數已達上限'
 
 function withMetadata(event: CanonicalEvent, extra: Record<string, unknown>): CanonicalEvent {
   return { ...event, metadata: { ...event.metadata, ...extra } }
-}
-
-/** 沒有 AI 結果可呈現時，維持舊行為：CI 回報的 diagnosisError 仍顯示在通知上。 */
-function withCiFallback(event: CanonicalEvent): CanonicalEvent {
-  const ci = event.metadata.ciDiagnosisError
-  return typeof ci === 'string' && event.metadata.diagnosisError === undefined
-    ? withMetadata(event, { diagnosisError: ci })
-    : event
 }
 
 function aiMetadata(ai: IssueAiTriage): Record<string, unknown> {

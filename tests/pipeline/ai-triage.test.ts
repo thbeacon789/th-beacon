@@ -186,4 +186,27 @@ describe('pipeline AI 判級', () => {
     expect(h.calls()).toBe(1)
     expect(second.issue.severity).toBe('P0')
   })
+
+  it('no_ai 路徑（AI 停用）：CI 的 ciDiagnosisError 不進 Discord', async () => {
+    const h = setup([ok('P0')], { triager: null })
+    await processAndNotify(store, h.deps, event({ metadata: { ciDiagnosisError: 'wif exchange failed: 401' } }), t0)
+    expect(h.calls()).toBe(0)
+    expect(text(h.sent[0])).not.toContain('wif exchange failed')
+    expect(text(h.sent[0])).not.toContain('AI 判讀失敗')
+  })
+
+  it('no_ai 路徑（AI 啟用但既有 issue 無 AI 紀錄）：CI 錯誤不進 Discord', async () => {
+    const off = setup([ok('P0')], { triager: null })
+    await processAndNotify(store, off.deps, event(), t0) // 建立無 ai 的 issue
+    const h = setup([ok('P0')])
+    await processAndNotify(
+      store,
+      h.deps,
+      event({ metadata: { ciDiagnosisError: 'wif exchange failed: 401' } }),
+      after(40),
+    )
+    expect(h.calls()).toBe(0)
+    expect(h.sent).toHaveLength(1)
+    expect(text(h.sent[0])).not.toContain('wif exchange failed')
+  })
 })
