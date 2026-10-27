@@ -1,8 +1,8 @@
 import type { Database } from '@/db/database.types'
 import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
-import type { HeartbeatRunStatus } from '@/core/heartbeat'
-import type { ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat } from '@/store/contracts'
+import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
@@ -24,6 +24,22 @@ export const narrowIssueStatus = (v: string): IssueStatus => narrow(v, ISSUE_STA
 export const narrowHealthStatus = (v: string): HealthStatus => narrow(v, HEALTH_STATUSES, 'health status')
 export const narrowEventSource = (v: string): EventSource => narrow(v, EVENT_SOURCES, 'event source')
 
+const CATEGORIES: readonly DiagnosisCategory[] = ['env', 'app']
+
+export function rowToAiTriage(row: IssueRow): IssueAiTriage | null {
+  // ai_judged_at 是「有判過（含失敗）」的唯一標記
+  if (row.ai_judged_at === null) return null
+  return {
+    severity: row.ai_severity === null ? null : narrowSeverity(row.ai_severity),
+    category: row.ai_category === null ? null : narrow(row.ai_category, CATEGORIES, 'ai category'),
+    reason: row.ai_reason,
+    suggestion: row.ai_suggestion,
+    model: row.ai_model,
+    judgedAt: row.ai_judged_at,
+    error: row.ai_error,
+  }
+}
+
 export function rowToIssue(row: IssueRow): StoredIssue {
   return {
     id: row.id,
@@ -38,6 +54,7 @@ export function rowToIssue(row: IssueRow): StoredIssue {
     errorType: row.error_type,
     message: row.message,
     tags: row.tags,
+    ai: rowToAiTriage(row),
   }
 }
 
@@ -49,6 +66,7 @@ export function rowToService(row: ServiceRow): ServiceRecord {
     healthFailureThreshold: row.health_failure_threshold,
     healthStatus: narrowHealthStatus(row.health_status),
     discordWebhookUrl: row.discord_webhook_url,
+    description: row.description,
     poll:
       row.poll_health_url === null
         ? null

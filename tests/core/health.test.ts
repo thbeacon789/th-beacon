@@ -25,38 +25,38 @@ describe('deriveHealth', () => {
   })
 
   it('is degraded on an open P1 within the window', () => {
-    const issues: OpenIssue[] = [{ severity: 'P1', status: 'open', lastSeen: recent }]
+    const issues: OpenIssue[] = [{ severity: 'P1', status: 'open', lastSeen: recent, errorType: 'E' }]
     expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: issues })).toBe('degraded')
   })
 
   it('is down on an open P0 even when poll is healthy (take worst)', () => {
-    const issues: OpenIssue[] = [{ severity: 'P0', status: 'open', lastSeen: recent }]
+    const issues: OpenIssue[] = [{ severity: 'P0', status: 'open', lastSeen: recent, errorType: 'E' }]
     expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: issues })).toBe('down')
   })
 
   it('ignores resolved/ignored issues and issues outside the window', () => {
     const issues: OpenIssue[] = [
-      { severity: 'P0', status: 'resolved', lastSeen: recent },
-      { severity: 'P0', status: 'open', lastSeen: old },
+      { severity: 'P0', status: 'resolved', lastSeen: recent, errorType: 'E' },
+      { severity: 'P0', status: 'open', lastSeen: old, errorType: 'E' },
     ]
     expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: issues })).toBe('healthy')
   })
 
   it('falls back to issue-only derivation when poll is null', () => {
-    const issues: OpenIssue[] = [{ severity: 'P1', status: 'acknowledged', lastSeen: recent }]
+    const issues: OpenIssue[] = [{ severity: 'P1', status: 'acknowledged', lastSeen: recent, errorType: 'E' }]
     expect(deriveHealth({ ...base, poll: null, openIssues: issues })).toBe('degraded')
   })
 
   it('takes the worst across multiple concurrently-valid issues', () => {
     const bothOpen: OpenIssue[] = [
-      { severity: 'P1', status: 'open', lastSeen: recent },
-      { severity: 'P0', status: 'open', lastSeen: recent },
+      { severity: 'P1', status: 'open', lastSeen: recent, errorType: 'E' },
+      { severity: 'P0', status: 'open', lastSeen: recent, errorType: 'E' },
     ]
     expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: bothOpen })).toBe('down')
 
     const p2AndP1: OpenIssue[] = [
-      { severity: 'P2', status: 'open', lastSeen: recent },
-      { severity: 'P1', status: 'acknowledged', lastSeen: recent },
+      { severity: 'P2', status: 'open', lastSeen: recent, errorType: 'E' },
+      { severity: 'P1', status: 'acknowledged', lastSeen: recent, errorType: 'E' },
     ]
     expect(deriveHealth({ ...base, poll: healthyPoll, openIssues: p2AndP1 })).toBe('degraded')
   })

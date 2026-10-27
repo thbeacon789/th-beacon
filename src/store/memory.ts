@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -74,7 +74,7 @@ export class InMemoryStore implements Store {
       const issueId = this.dedup.get(`${event.serviceId}:${externalId}`)
       if (issueId !== undefined) {
         const issue = this.findIssueById(issueId)
-        return { issue: this.defensiveCopy(issue), created: false, duplicate: true }
+        return { issue: this.defensiveCopy(issue), created: false, duplicate: true, reopened: false }
       }
     }
 
@@ -97,6 +97,7 @@ export class InMemoryStore implements Store {
         errorType: event.errorType,
         message: event.message,
         tags: [],
+        ai: null,
       }
       created = true
     } else {
@@ -115,7 +116,12 @@ export class InMemoryStore implements Store {
 
     this.issues.set(key, issue)
     if (externalId !== null) this.dedup.set(`${event.serviceId}:${externalId}`, issue.id)
-    return { issue: this.defensiveCopy(issue), created, duplicate: false }
+    return {
+      issue: this.defensiveCopy(issue),
+      created,
+      duplicate: false,
+      reopened: existing?.status === 'resolved',
+    }
   }
 
   async loadRules(serviceId: string): Promise<TriageRule[]> {
@@ -151,7 +157,12 @@ export class InMemoryStore implements Store {
         (i) =>
           i.serviceId === serviceId && (i.status === 'open' || i.status === 'acknowledged'),
       )
-      .map((i) => ({ severity: i.severity, status: i.status, lastSeen: i.lastSeen }))
+      .map((i) => ({
+        severity: i.severity,
+        status: i.status,
+        lastSeen: i.lastSeen,
+        errorType: i.errorType,
+      }))
   }
 
   async updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void> {
@@ -266,7 +277,11 @@ export class InMemoryStore implements Store {
 
   // ---- 後台登記 ----
 
-  async createService(name: string, webhookSecret: string): Promise<ServiceRecord | null> {
+  async createService(
+    name: string,
+    webhookSecret: string,
+    description: string | null,
+  ): Promise<ServiceRecord | null> {
     for (const existing of this.services.values()) {
       if (existing.name === name) return null
     }
@@ -278,6 +293,7 @@ export class InMemoryStore implements Store {
       healthStatus: 'healthy',
       poll: null,
       discordWebhookUrl: null,
+      description,
     }
     this.services.set(service.id, service)
     this.secrets.set(service.id, webhookSecret)
@@ -310,6 +326,23 @@ export class InMemoryStore implements Store {
     return { ...created }
   }
 
+  async updateServiceDescription(serviceId: string, description: string | null): Promise<boolean> {
+    const service = this.services.get(serviceId)
+    if (service === undefined) return false
+    this.services.set(serviceId, { ...service, description })
+    return true
+  }
+
+  async recordIssueAiTriage(issueId: string, triage: IssueAiTriage): Promise<void> {
+    for (const [key, issue] of this.issues) {
+      if (issue.id === issueId) {
+        this.issues.set(key, { ...issue, ai: { ...triage } })
+        return
+      }
+    }
+    throw new Error(`unknown issue: ${issueId}`)
+  }
+
   async rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean> {
     if (!this.services.has(serviceId)) return false
     this.secrets.set(serviceId, webhookSecret)
@@ -323,6 +356,7 @@ export class InMemoryStore implements Store {
         id: service.id,
         name: service.name,
         hasWebhookSecret: (this.secrets.get(service.id) ?? null) !== null,
+        description: service.description,
         createdAt: this.createdAts.get(service.id) ?? new Date(0).toISOString(),
         heartbeats: this.heartbeats
           .filter((h) => h.serviceId === service.id)
@@ -332,7 +366,7 @@ export class InMemoryStore implements Store {
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {
-    return { ...issue, tags: [...issue.tags] }
+    return { ...issue, tags: [...issue.tags], ai: issue.ai === null ? null : { ...issue.ai } }
   }
 
   private findIssueById(issueId: string): StoredIssue {

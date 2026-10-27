@@ -11,6 +11,7 @@ const svc: ServiceRecord = {
   healthStatus: 'healthy',
   poll: null,
   discordWebhookUrl: null,
+  description: null,
 }
 
 const pollConfig = (over: Partial<import('@/store/contracts').PollConfig> = {}) => ({
@@ -116,7 +117,7 @@ describe('InMemoryStore', () => {
     await store.updateIssueTriage(issue.id, 'P0', ['db'])
     const open = await store.listOpenIssues('s-1')
     expect(open).toEqual([
-      { severity: 'P0', status: 'open', lastSeen: '2026-07-27T10:00:00.000Z' },
+      { severity: 'P0', status: 'open', lastSeen: '2026-07-27T10:00:00.000Z', errorType: 'TypeError' },
     ])
   })
 
@@ -274,6 +275,7 @@ describe('InMemoryStore 心跳', () => {
     healthStatus: 'healthy',
     poll: null,
     discordWebhookUrl: null,
+    description: null,
   }
   const hb: Omit<StoredHeartbeat, 'serviceId'> = {
     id: 'hb-1',
@@ -393,14 +395,14 @@ describe('InMemoryStore 心跳', () => {
 describe('InMemoryStore 登記', () => {
   it('createService 拒絕重複名稱', async () => {
     const store = new InMemoryStore()
-    const first = await store.createService('svc-new', 'secret-1')
+    const first = await store.createService('svc-new', 'secret-1', null)
     expect(first?.name).toBe('svc-new')
-    expect(await store.createService('svc-new', 'secret-2')).toBeNull()
+    expect(await store.createService('svc-new', 'secret-2', null)).toBeNull()
   })
 
   it('建立後可用 getServiceByName 取回金鑰', async () => {
     const store = new InMemoryStore()
-    const created = await store.createService('svc-new', 'secret-1')
+    const created = await store.createService('svc-new', 'secret-1', null)
     const auth = await store.getServiceByName('svc-new')
     expect(auth?.service.id).toBe(created?.id)
     expect(auth?.webhookSecret).toBe('secret-1')
@@ -408,8 +410,8 @@ describe('InMemoryStore 登記', () => {
 
   it('createHeartbeat 同服務內拒絕重複名稱，跨服務則允許', async () => {
     const store = new InMemoryStore()
-    const a = await store.createService('svc-a', 's')
-    const b = await store.createService('svc-b', 's')
+    const a = await store.createService('svc-a', 's', null)
+    const b = await store.createService('svc-b', 's', null)
     const hb = { name: 'daily', intervalSeconds: 86_400, graceSeconds: 3_600 }
 
     expect(await store.createHeartbeat(a!.id, hb)).not.toBeNull()
@@ -419,7 +421,7 @@ describe('InMemoryStore 登記', () => {
 
   it('新建的心跳預設 enabled，且會出現在 listEnabledHeartbeats', async () => {
     const store = new InMemoryStore()
-    const svcNew = await store.createService('svc-a', 's')
+    const svcNew = await store.createService('svc-a', 's', null)
     await store.createHeartbeat(svcNew!.id, {
       name: 'daily',
       intervalSeconds: 86_400,
@@ -432,7 +434,7 @@ describe('InMemoryStore 登記', () => {
 
   it('rotateWebhookSecret 換掉金鑰；服務不存在回 false', async () => {
     const store = new InMemoryStore()
-    const created = await store.createService('svc-a', 'old')
+    const created = await store.createService('svc-a', 'old', null)
     expect(await store.rotateWebhookSecret(created!.id, 'new')).toBe(true)
     expect((await store.getServiceByName('svc-a'))?.webhookSecret).toBe('new')
     expect(await store.rotateWebhookSecret('does-not-exist', 'x')).toBe(false)
@@ -440,8 +442,8 @@ describe('InMemoryStore 登記', () => {
 
   it('listRegisteredServices 依名稱排序並帶出各自的心跳', async () => {
     const store = new InMemoryStore()
-    const b = await store.createService('svc-b', 's')
-    await store.createService('svc-a', 's')
+    const b = await store.createService('svc-b', 's', null)
+    await store.createService('svc-a', 's', null)
     await store.createHeartbeat(b!.id, {
       name: 'nightly',
       intervalSeconds: 86_400,
@@ -453,5 +455,64 @@ describe('InMemoryStore 登記', () => {
     expect(listed[0].heartbeats).toEqual([])
     expect(listed[1].heartbeats.map((h) => h.name)).toEqual(['nightly'])
     expect(listed[1].hasWebhookSecret).toBe(true)
+  })
+})
+
+describe('InMemoryStore AI 判定與說明', () => {
+  let store: InMemoryStore
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService(svc)
+  })
+
+  it('reopened：新建 false；open/acknowledged false；resolved true', async () => {
+    const first = await store.upsertIssueWithEvent(event())
+    expect(first.reopened).toBe(false)
+    expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
+    await store.updateIssueStatus(first.issue.id, 'acknowledged')
+    expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
+    await store.updateIssueStatus(first.issue.id, 'resolved')
+    const again = await store.upsertIssueWithEvent(event())
+    expect(again.reopened).toBe(true)
+    expect(again.issue.status).toBe('open')
+  })
+
+  it('duplicate 時 reopened 為 false', async () => {
+    const ev = event({ metadata: { externalId: 'x1' } })
+    await store.upsertIssueWithEvent(ev)
+    expect((await store.upsertIssueWithEvent(ev)).reopened).toBe(false)
+  })
+
+  it('recordIssueAiTriage 後 issue.ai 等於寫入值；未寫過為 null', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    expect(issue.ai).toBeNull()
+    const triage = {
+      severity: 'P1' as const,
+      category: 'app' as const,
+      reason: 'r',
+      suggestion: 's',
+      model: 'm',
+      judgedAt: '2026-10-27T00:00:00.000Z',
+      error: null,
+    }
+    await store.recordIssueAiTriage(issue.id, triage)
+    const next = await store.upsertIssueWithEvent(event())
+    expect(next.issue.ai).toEqual(triage)
+  })
+
+  it('createService 帶 description；updateServiceDescription 可更新，不存在回 false', async () => {
+    const created = await store.createService('svc-d', 's', '說明')
+    expect((await store.getService(created!.id))?.description).toBe('說明')
+    expect(await store.updateServiceDescription(created!.id, '新')).toBe(true)
+    expect((await store.getService(created!.id))?.description).toBe('新')
+    expect(await store.updateServiceDescription(created!.id, null)).toBe(true)
+    expect((await store.getService(created!.id))?.description).toBeNull()
+    expect(await store.updateServiceDescription('nope', 'x')).toBe(false)
+  })
+
+  it('listOpenIssues 含 errorType', async () => {
+    await store.upsertIssueWithEvent(event())
+    const open = await store.listOpenIssues('s-1')
+    expect(open[0].errorType).toBe('TypeError')
   })
 })

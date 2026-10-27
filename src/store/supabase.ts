@@ -3,7 +3,7 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -71,7 +71,12 @@ export class SupabaseStore implements Store {
       .eq('id', outcome.issue_id)
       .single()
     if (issueError) throw new Error(`fetch issue failed: ${issueError.message}`)
-    return { issue: rowToIssue(issueRow), created: outcome.created, duplicate: outcome.duplicate }
+    return {
+      issue: rowToIssue(issueRow),
+      created: outcome.created,
+      duplicate: outcome.duplicate,
+      reopened: outcome.reopened,
+    }
   }
 
   async loadRules(serviceId: string): Promise<TriageRule[]> {
@@ -110,7 +115,7 @@ export class SupabaseStore implements Store {
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
     const { data, error } = await this.client
       .from('issues')
-      .select('severity,status,last_seen')
+      .select('severity,status,last_seen,error_type')
       .eq('service_id', serviceId)
       .in('status', ['open', 'acknowledged'])
     if (error) throw new Error(`listOpenIssues failed: ${error.message}`)
@@ -118,6 +123,7 @@ export class SupabaseStore implements Store {
       severity: narrowSeverity(row.severity),
       status: narrowIssueStatus(row.status),
       lastSeen: row.last_seen,
+      errorType: row.error_type,
     }))
   }
 
@@ -245,10 +251,14 @@ export class SupabaseStore implements Store {
 
   // ---- 後台登記 ----
 
-  async createService(name: string, webhookSecret: string): Promise<ServiceRecord | null> {
+  async createService(
+    name: string,
+    webhookSecret: string,
+    description: string | null,
+  ): Promise<ServiceRecord | null> {
     const { data, error } = await this.client
       .from('services')
-      .insert({ name, webhook_secret: webhookSecret })
+      .insert({ name, webhook_secret: webhookSecret, description })
       .select('*')
       .maybeSingle()
     // 交給 DB 的 unique 約束判重複，而不是先 select 再 insert——後者在兩人同時送出時
@@ -281,6 +291,34 @@ export class SupabaseStore implements Store {
     return data === null ? null : rowToHeartbeat(data)
   }
 
+  async updateServiceDescription(serviceId: string, description: string | null): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('services')
+      .update({ description })
+      .eq('id', serviceId)
+      .select('id')
+    if (error) throw new Error(`updateServiceDescription failed: ${error.message}`)
+    return data.length > 0
+  }
+
+  async recordIssueAiTriage(issueId: string, triage: IssueAiTriage): Promise<void> {
+    const { data, error } = await this.client
+      .from('issues')
+      .update({
+        ai_severity: triage.severity,
+        ai_category: triage.category,
+        ai_reason: triage.reason,
+        ai_suggestion: triage.suggestion,
+        ai_model: triage.model,
+        ai_judged_at: triage.judgedAt,
+        ai_error: triage.error,
+      })
+      .eq('id', issueId)
+      .select('id')
+    if (error) throw new Error(`recordIssueAiTriage failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
+  }
+
   async rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean> {
     const { data, error } = await this.client
       .from('services')
@@ -310,6 +348,7 @@ export class SupabaseStore implements Store {
       id: row.id,
       name: row.name,
       hasWebhookSecret: row.webhook_secret !== null,
+      description: row.description,
       createdAt: row.created_at,
       heartbeats: byService.get(row.id) ?? [],
     }))

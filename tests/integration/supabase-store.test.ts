@@ -271,7 +271,7 @@ describe('SupabaseStore.updateIssueStatus', () => {
 
 describe('SupabaseStore 登記（後台）', () => {
   it('createService 建立服務並寫入金鑰', async () => {
-    const created = await store.createService('svc-registered', 'secret-abc')
+    const created = await store.createService('svc-registered', 'secret-abc', null)
     expect(created?.name).toBe('svc-registered')
 
     const auth = await store.getServiceByName('svc-registered')
@@ -283,7 +283,7 @@ describe('SupabaseStore 登記（後台）', () => {
 
   it('createService 名稱重複時回 null 而不是拋錯', async () => {
     // beforeEach 已插入 svc-int
-    expect(await store.createService('svc-int', 'another-secret')).toBeNull()
+    expect(await store.createService('svc-int', 'another-secret', null)).toBeNull()
   })
 
   it('createHeartbeat 同服務重複名稱回 null，跨服務允許同名', async () => {
@@ -295,7 +295,7 @@ describe('SupabaseStore 登記（後台）', () => {
 
     expect(await store.createHeartbeat(serviceId, hb)).toBeNull()
 
-    const other = await store.createService('svc-other', 's')
+    const other = await store.createService('svc-other', 's', null)
     expect(await store.createHeartbeat(other!.id, hb)).not.toBeNull()
   })
 
@@ -334,5 +334,71 @@ describe('SupabaseStore 登記（後台）', () => {
     expect(target?.heartbeats.map((h) => h.name)).toEqual(['daily-test'])
     // 型別上就沒有 secret 欄位；這裡確認實際物件也沒有夾帶
     expect(JSON.stringify(listed)).not.toContain('webhook_secret')
+  })
+})
+
+describe('SupabaseStore AI 判定與說明', () => {
+  it('reopened：新建 false；open/acknowledged false；resolved true', async () => {
+    const first = await store.upsertIssueWithEvent(event())
+    expect(first.reopened).toBe(false)
+    expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
+    await store.updateIssueStatus(first.issue.id, 'acknowledged')
+    expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
+    await store.updateIssueStatus(first.issue.id, 'resolved')
+    const again = await store.upsertIssueWithEvent(event())
+    expect(again.reopened).toBe(true)
+    expect(again.issue.status).toBe('open')
+  })
+
+  it('duplicate 時 reopened 為 false', async () => {
+    const ev = event({ metadata: { externalId: 'x1' } })
+    await store.upsertIssueWithEvent(ev)
+    expect((await store.upsertIssueWithEvent(ev)).reopened).toBe(false)
+  })
+
+  it('recordIssueAiTriage 後 issue.ai 等於寫入值；未寫過為 null', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    expect(issue.ai).toBeNull()
+    const triage = {
+      severity: 'P1' as const,
+      category: 'app' as const,
+      reason: 'r',
+      suggestion: 's',
+      model: 'm',
+      judgedAt: '2026-10-27T00:00:00+00:00',
+      error: null,
+    }
+    await store.recordIssueAiTriage(issue.id, triage)
+    const next = await store.upsertIssueWithEvent(event())
+    expect(next.issue.ai).toEqual(triage)
+  })
+
+  it('失敗紀錄（severity null、error 有值）可寫入讀回', async () => {
+    const { issue } = await store.upsertIssueWithEvent(event())
+    const triage = {
+      severity: null,
+      category: null,
+      reason: null,
+      suggestion: null,
+      model: null,
+      judgedAt: '2026-10-27T00:00:00+00:00',
+      error: 'timeout',
+    }
+    await store.recordIssueAiTriage(issue.id, triage)
+    expect((await store.upsertIssueWithEvent(event())).issue.ai).toEqual(triage)
+  })
+
+  it('createService 帶 description；updateServiceDescription 可更新，不存在回 false', async () => {
+    const created = await store.createService('svc-d', 's', '說明')
+    expect((await store.getService(created!.id))?.description).toBe('說明')
+    expect(await store.updateServiceDescription(created!.id, '新')).toBe(true)
+    expect((await store.getService(created!.id))?.description).toBe('新')
+    expect(await store.updateServiceDescription('00000000-0000-0000-0000-000000000000', 'x')).toBe(false)
+  })
+
+  it('listOpenIssues 含 errorType', async () => {
+    await store.upsertIssueWithEvent(event())
+    const open = await store.listOpenIssues(serviceId)
+    expect(open[0].errorType).toBe('TypeError')
   })
 })

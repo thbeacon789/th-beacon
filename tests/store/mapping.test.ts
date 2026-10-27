@@ -27,6 +27,13 @@ const issueRow: IssueRow = {
   error_type: 'TypeError',
   message: 'boom',
   tags: ['db'],
+  ai_severity: null,
+  ai_category: null,
+  ai_reason: null,
+  ai_suggestion: null,
+  ai_model: null,
+  ai_judged_at: null,
+  ai_error: null,
   created_at: '2026-07-27T10:00:00+00:00',
   updated_at: '2026-07-27T10:05:00+00:00',
 }
@@ -35,6 +42,7 @@ const serviceRow: ServiceRow = {
   id: 's-1',
   name: 'svc-a',
   webhook_secret: null,
+  description: null,
   discord_webhook_url: null,
   health_window_minutes: 15,
   health_failure_threshold: 2,
@@ -91,7 +99,31 @@ describe('rowToIssue', () => {
       errorType: 'TypeError',
       message: 'boom',
       tags: ['db'],
+      ai: null,
     })
+  })
+
+  it('maps ai_* 欄位；ai_judged_at 為 null 時 ai 為 null，失敗紀錄 severity 為 null', () => {
+    const judged = rowToIssue({
+      ...issueRow,
+      ai_severity: 'P0',
+      ai_category: 'env',
+      ai_reason: 'r',
+      ai_suggestion: 's',
+      ai_model: 'm',
+      ai_judged_at: '2026-10-27T00:00:00+00:00',
+    })
+    expect(judged.ai).toEqual({
+      severity: 'P0',
+      category: 'env',
+      reason: 'r',
+      suggestion: 's',
+      model: 'm',
+      judgedAt: '2026-10-27T00:00:00+00:00',
+      error: null,
+    })
+    const failed = rowToIssue({ ...issueRow, ai_judged_at: '2026-10-27T00:00:00+00:00', ai_error: 'timeout' })
+    expect(failed.ai).toMatchObject({ severity: null, category: null, error: 'timeout' })
   })
 
   it('throws on invalid severity in row', () => {
@@ -108,6 +140,7 @@ describe('rowToService', () => {
       healthFailureThreshold: 2,
       healthStatus: 'degraded',
       discordWebhookUrl: null,
+      description: null,
       poll: { lastPollAt: '2026-07-27T10:04:00+00:00', healthy: false, consecutiveFailures: 1 },
     })
   })

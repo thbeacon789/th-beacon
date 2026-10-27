@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -172,6 +167,13 @@ export type Database = {
       }
       issues: {
         Row: {
+          ai_category: string | null
+          ai_error: string | null
+          ai_judged_at: string | null
+          ai_model: string | null
+          ai_reason: string | null
+          ai_severity: string | null
+          ai_suggestion: string | null
           count: number
           created_at: string
           error_type: string
@@ -188,6 +190,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_category?: string | null
+          ai_error?: string | null
+          ai_judged_at?: string | null
+          ai_model?: string | null
+          ai_reason?: string | null
+          ai_severity?: string | null
+          ai_suggestion?: string | null
           count?: number
           created_at?: string
           error_type: string
@@ -204,6 +213,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_category?: string | null
+          ai_error?: string | null
+          ai_judged_at?: string | null
+          ai_model?: string | null
+          ai_reason?: string | null
+          ai_severity?: string | null
+          ai_suggestion?: string | null
           count?: number
           created_at?: string
           error_type?: string
@@ -283,6 +299,7 @@ export type Database = {
       services: {
         Row: {
           created_at: string
+          description: string | null
           discord_webhook_url: string | null
           health_failure_threshold: number
           health_status: string
@@ -303,6 +320,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          description?: string | null
           discord_webhook_url?: string | null
           health_failure_threshold?: number
           health_status?: string
@@ -323,6 +341,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          description?: string | null
           discord_webhook_url?: string | null
           health_failure_threshold?: number
           health_status?: string
@@ -406,6 +425,7 @@ export type Database = {
           created: boolean
           duplicate: boolean
           issue_id: string
+          reopened: boolean
         }[]
       }
     }
@@ -543,3 +563,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

@@ -19,6 +19,7 @@ const svc: ServiceRecord = {
   healthStatus: 'healthy',
   poll: { lastPollAt: null, healthy: null, consecutiveFailures: 0 },
   discordWebhookUrl: null,
+  description: null,
 }
 
 const config = (over: Partial<PollConfig> = {}): PollConfig => ({

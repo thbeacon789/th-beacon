@@ -16,6 +16,7 @@ const svc: ServiceRecord = {
   healthStatus: 'healthy',
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
+  description: null,
 }
 
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({

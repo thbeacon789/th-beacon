@@ -6,7 +6,7 @@ export interface PollState {
   consecutiveFailures: number
 }
 
-export type OpenIssue = Pick<Issue, 'severity' | 'status' | 'lastSeen'>
+export type OpenIssue = Pick<Issue, 'severity' | 'status' | 'lastSeen' | 'errorType'>
 
 export interface DeriveHealthParams {
   poll: PollState | null

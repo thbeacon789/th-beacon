@@ -1,10 +1,22 @@
 import type { CanonicalEvent, HealthStatus, Issue, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
-import type { HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
+
+/** Claude 對 issue 的判定紀錄。成功或失敗都寫，judgedAt 即「上次嘗試」時間。 */
+export interface IssueAiTriage {
+  severity: Severity | null // 失敗時 null
+  category: DiagnosisCategory | null
+  reason: string | null
+  suggestion: string | null
+  model: string | null
+  judgedAt: string // ISO 8601
+  error: string | null
+}
 
 export interface StoredIssue extends Issue {
   id: string
+  ai: IssueAiTriage | null
 }
 
 export interface ServiceRecord {
@@ -15,6 +27,7 @@ export interface ServiceRecord {
   healthStatus: HealthStatus
   poll: PollState | null
   discordWebhookUrl: string | null
+  description: string | null
 }
 
 export interface ServiceAuth {
@@ -26,6 +39,7 @@ export interface UpsertOutcome {
   issue: StoredIssue
   created: boolean
   duplicate: boolean
+  reopened: boolean
 }
 
 export interface PollConfig {
@@ -88,6 +102,7 @@ export interface RegisteredService {
   id: string
   name: string
   hasWebhookSecret: boolean
+  description: string | null
   createdAt: string
   heartbeats: StoredHeartbeat[]
 }
@@ -115,10 +130,13 @@ export interface Store {
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
   resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean>
+  recordIssueAiTriage(issueId: string, triage: IssueAiTriage): Promise<void>
 
   // ---- 後台登記（Plan 9）：唯一寫入路徑是登入後的 server action ----
   /** 名稱已存在時回 null（unique 違反由 DB 判定，不做 check-then-insert 競態） */
-  createService(name: string, webhookSecret: string): Promise<ServiceRecord | null>
+  createService(name: string, webhookSecret: string, description: string | null): Promise<ServiceRecord | null>
+  /** 服務不存在時回 false */
+  updateServiceDescription(serviceId: string, description: string | null): Promise<boolean>
   /** 同服務下名稱已存在時回 null */
   createHeartbeat(serviceId: string, heartbeat: NewHeartbeat): Promise<StoredHeartbeat | null>
   /** 服務不存在時回 false */

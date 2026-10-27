@@ -64,7 +64,7 @@ export async function registerServiceAction(
 
   const store = createServerStore()
   const secret = newSecret()
-  const service = await store.createService(serviceInput.value.name, secret)
+  const service = await store.createService(serviceInput.value.name, secret, null)
   if (service === null) {
     return { status: 'error', errors: [`服務名稱「${serviceInput.value.name}」已經存在`] }
   }
