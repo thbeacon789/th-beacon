@@ -23,7 +23,7 @@ export default async function IssueDetailPage({
     getIssueDetail(createServerStore().rawClient(), id),
   ])
   if (detail === null) notFound()
-  const { issue, serviceName, events } = detail
+  const { issue, ai, serviceName, events } = detail
 
   return (
     <main>
@@ -34,6 +34,52 @@ export default async function IssueDetailPage({
         </h1>
       </div>
       <p className="detail-message">{issue.message}</p>
+      {ai !== null && (
+        <section aria-labelledby="ai-triage-title">
+          <h2 id="ai-triage-title">AI 判定</h2>
+          <ul className="meta">
+            {ai.severity !== null && (
+              <li>
+                <span className="meta-key">AI 等級</span>
+                <span className="meta-val">
+                  <span className={`badge badge-${ai.severity}`}>{ai.severity}</span>
+                </span>
+              </li>
+            )}
+            {ai.category !== null && (
+              <li>
+                <span className="meta-key">分類</span>
+                <span className="meta-val">{ai.category === 'env' ? '環境問題' : 'app 問題'}</span>
+              </li>
+            )}
+            {ai.reason !== null && ai.reason !== '' && (
+              <li>
+                <span className="meta-key">判定原因</span>
+                <span className="meta-val" style={{ whiteSpace: 'pre-wrap' }}>{ai.reason}</span>
+              </li>
+            )}
+            {ai.suggestion !== null && ai.suggestion !== '' && (
+              <li>
+                <span className="meta-key">修正建議</span>
+                <span className="meta-val" style={{ whiteSpace: 'pre-wrap' }}>{ai.suggestion}</span>
+              </li>
+            )}
+            <li>
+              <span className="meta-key">判定時間</span>
+              <span className="meta-val">
+                {formatDateTime(ai.judgedAt)}
+                {ai.model !== null && ` · ${ai.model}`}
+              </span>
+            </li>
+            {ai.error !== null && ai.error !== '' && (
+              <li>
+                <span className="meta-key">錯誤</span>
+                <span className="meta-val" style={{ whiteSpace: 'pre-wrap' }}>AI 判讀失敗：{ai.error}</span>
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
       <ul className="meta">
         <li>
           <span className="meta-key">狀態</span>

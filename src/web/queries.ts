@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/db/database.types'
 import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
-import type { StoredIssue } from '@/store/contracts'
+import type { IssueAiTriage, StoredIssue } from '@/store/contracts'
 import {
   narrowEventSource,
   narrowHealthStatus,
   narrowIssueStatus,
   narrowSeverity,
   rowToIssue,
+  rowToAiTriage,
   rowToHeartbeat,
 } from '@/store/mapping'
 import { isHeartbeatOverdue, isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
@@ -198,6 +199,7 @@ export async function listIssues(client: Client, filters: IssueListFilters): Pro
 
 export interface IssueDetail {
   issue: StoredIssue
+  ai: IssueAiTriage | null
   serviceName: string
   events: Array<{
     id: string
@@ -230,6 +232,7 @@ export async function getIssueDetail(client: Client, issueId: string): Promise<I
   const { services, ...bareIssue } = issueRes.data
   return {
     issue: rowToIssue(bareIssue),
+    ai: rowToAiTriage(bareIssue),
     serviceName: services?.name ?? '(unknown)',
     events: events.map((event) => ({
       id: event.id,
