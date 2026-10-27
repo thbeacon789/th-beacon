@@ -7,7 +7,8 @@ import {
   truncateRunSummary,
   TEST_FAILURE_ENV,
 } from '@/core/heartbeat'
-import { processAndNotify } from '@/pipeline/process-and-notify'
+import { processWithOptionalDefer } from '@/pipeline/defer'
+import type { Defer } from '@/pipeline/defer'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
 import type { Store } from '@/store/contracts'
@@ -19,6 +20,7 @@ export async function handleHeartbeat(
   deps: NotifyDeps,
   request: IngestRequest,
   now: Date,
+  defer?: Defer,
 ): Promise<IngestResponse> {
   if (request.serviceName === null || request.timestamp === null || request.signature === null) {
     return UNAUTHORIZED
@@ -87,12 +89,15 @@ export async function handleHeartbeat(
           ...(report.diagnosisError !== undefined ? { diagnosisError: report.diagnosisError } : {}) },
         now,
       )
-      const result = await processAndNotify(store, deps, event, now)
-      body.issueId = result.issue.id
+      const outcome = await processWithOptionalDefer(store, deps, event, now, defer)
+      body.issueId = outcome.issueId
       body.errorType = event.errorType
-      body.severity = result.issue.severity
-      if (event.severity !== undefined) body.eventSeverity = event.severity
-      body.notified = result.notified
+      body.triage = outcome.triage
+      if (outcome.triage === 'sync') {
+        body.severity = outcome.result.issue.severity
+        if (event.severity !== undefined) body.eventSeverity = event.severity
+        body.notified = outcome.result.notified
+      }
     }
   } else {
     // 測試修好了，關掉先前的失敗 issue

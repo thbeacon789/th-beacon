@@ -75,9 +75,12 @@ signature = "sha256=" + hex(HMAC_SHA256(secret, timestamp + "." + rawBody))
   "severity": "P0" | "P1" | "P2",       // 由規則引擎判定
   "health": "down" | "degraded" | "healthy",  // 該服務更新後的健康度
   "duplicate": true,                    // 是否命中既有 issue（非新建）
-  "notified": false                     // 本次是否實際發出 Discord 通知（受冷卻/去重影響）
+  "notified": false,                    // 本次是否實際發出 Discord 通知（受冷卻/去重影響）
+  "triage": "sync" | "deferred"         // AI 判級是否延後到回應之後執行
 }
 ```
+
+`triage: "deferred"` 表示這筆事件需要呼叫 Claude 判級，已入庫，但判級與通知在回應送出後才執行（避免拖慢呼叫端 CI）。此時回應只含 `{ "issueId": "uuid", "triage": "deferred" }`，**不含** `severity`、`health`、`duplicate`、`notified`。`"sync"` 為即時完成，欄位如上。
 
 ### 錯誤回應
 
@@ -182,6 +185,8 @@ values (
 // severity 為 issue 的 severity（受 ratchet 影響只升不降）；eventSeverity 為本次事件自帶的嚴重度（如 AI 診斷判定），僅在事件帶有時出現
 // errorType 為 "test_failure" 或 "test_failure_env"（診斷判為環境問題時）
 ```
+
+`triage: "sync" | "deferred"` 一併出現。`"deferred"`（事件需 Claude 判級；CI 已自帶 diagnosis 的不會延後）時判級與通知在回應之後執行，回應**不含** `severity`、`eventSeverity`、`notified`，只有 `issueId`、`errorType`、`triage`。
 
 若該心跳 `enabled = false`，run 仍記錄，但不建 issue、不通知：
 

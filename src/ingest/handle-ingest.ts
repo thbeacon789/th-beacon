@@ -1,7 +1,8 @@
 import { verifyIngestSignature } from '@/ingest/hmac'
 import { parsePushPayload } from '@/ingest/payload'
 import { normalizePushEvent } from '@/core/normalize'
-import { processAndNotify } from '@/pipeline/process-and-notify'
+import { processWithOptionalDefer } from '@/pipeline/defer'
+import type { Defer } from '@/pipeline/defer'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import type { Store } from '@/store/contracts'
 
@@ -24,6 +25,7 @@ export async function handleIngest(
   deps: NotifyDeps,
   request: IngestRequest,
   now: Date,
+  defer?: Defer,
 ): Promise<IngestResponse> {
   if (request.serviceName === null || request.timestamp === null || request.signature === null) {
     return UNAUTHORIZED
@@ -52,7 +54,11 @@ export async function handleIngest(
   if (!parsed.ok) return { status: 422, body: { error: 'invalid payload', details: parsed.errors } }
 
   const event = normalizePushEvent(auth.service.id, parsed.value, now)
-  const result = await processAndNotify(store, deps, event, now)
+  const outcome = await processWithOptionalDefer(store, deps, event, now, defer)
+  if (outcome.triage === 'deferred') {
+    return { status: 201, body: { issueId: outcome.issueId, triage: 'deferred' } }
+  }
+  const result = outcome.result
   return {
     status: 201,
     body: {
@@ -61,6 +67,7 @@ export async function handleIngest(
       health: result.health,
       duplicate: result.duplicate,
       notified: result.notified,
+      triage: 'sync',
     },
   }
 }

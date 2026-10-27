@@ -23,9 +23,10 @@ function envOrNull(name: string): string | null {
   return value === undefined || value === '' ? null : value
 }
 
-export function createServerNotifyDeps(): NotifyDeps {
+export function createServerNotifyDeps(opts: { budget?: { remaining: number } | null } = {}): NotifyDeps {
   const dashboardUrl = envOrNull('APP_URL')
   return {
+    triage: { triager: createServerTriager(), budget: opts.budget ?? null },
     sender: sendDiscordWebhook,
     fallbackWebhookUrl: envOrNull('DISCORD_WEBHOOK_URL'),
     ...(dashboardUrl !== null ? { dashboardUrl } : {}),

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { processAndNotify } from '@/pipeline/process-and-notify'
+import { processAndNotify, stageEvent, finishEvent } from '@/pipeline/process-and-notify'
 import type { NotifyDeps, TriageDeps } from '@/pipeline/process-and-notify'
 import { InMemoryStore } from '@/store/memory'
 import type { DiscordMessage } from '@/notify/message'
@@ -208,5 +208,22 @@ describe('pipeline AI 判級', () => {
     expect(h.calls()).toBe(0)
     expect(h.sent).toHaveLength(1)
     expect(text(h.sent[0])).not.toContain('wif exchange failed')
+  })
+})
+
+describe('cron 預算（逐筆 stage→finish）', () => {
+  it('budget 5、連續 7 個不同 fingerprint 新 issue → triager 只呼叫 5 次，後 2 筆 skip_budget', async () => {
+    const store = new InMemoryStore()
+    store.seedService(svc, null)
+    const h = setup([ok('P1')], { budget: { remaining: 5 } })
+    const decisions: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const staged = await stageEvent(store, h.deps, event({ fingerprint: `fp-budget-${i}` }), t0)
+      decisions.push(staged.decision.kind)
+      await finishEvent(store, h.deps, staged, t0)
+    }
+    expect(h.calls()).toBe(5)
+    expect(decisions).toEqual(['call', 'call', 'call', 'call', 'call', 'skip_budget', 'skip_budget'])
+    expect(h.deps.triage?.budget?.remaining).toBe(0)
   })
 })

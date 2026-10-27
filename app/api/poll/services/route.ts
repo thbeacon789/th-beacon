@@ -1,8 +1,11 @@
 import { timingSafeEqual } from 'node:crypto'
+import { CRON_AI_BUDGET } from '@/core/ai-triage'
 import { runPoll } from '@/poll/poll-service'
 import { httpGet } from '@/poll/http'
 import { runHeartbeatScan } from '@/heartbeat/scan'
 import { createServerStore, createServerNotifyDeps, getCronSecret } from '@/store/server'
+
+export const maxDuration = 300
 
 function bearerMatches(header: string | null, secret: string): boolean {
   const provided = Buffer.from(header ?? '')
@@ -21,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'unauthorized' }, { status: 401 })
   }
   const store = createServerStore()
-  const deps = createServerNotifyDeps()
+  const deps = createServerNotifyDeps({ budget: { remaining: CRON_AI_BUDGET } }) // runPoll 與 runHeartbeatScan 共用同一個 budget
   const now = new Date()
 
   let outcomes: Awaited<ReturnType<typeof runPoll>>
