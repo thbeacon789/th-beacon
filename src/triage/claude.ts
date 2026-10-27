@@ -21,6 +21,7 @@ function describeError(err: unknown): string {
   const status = (err as { status?: unknown } | null)?.status
   const raw = err instanceof Error ? err.message : String(err)
   const safe = raw.replace(/sk-ant[\w-]*/gi, '[redacted]').replace(/Bearer\s+\S+/gi, '[redacted]')
+    .replace(/eyJ[\w-]*(\.[\w-]*){0,2}/g, '[redacted]')
   return `${name}${typeof status === 'number' ? ` ${status}` : ''}: ${safe}`
 }
 

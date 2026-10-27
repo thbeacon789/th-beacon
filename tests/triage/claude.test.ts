@@ -96,6 +96,16 @@ describe('createClaudeTriager', () => {
     }
   })
 
+  it('錯誤訊息含 JWT → ok:false，error 不含 eyJ', async () => {
+    const jwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJvd25lcjp0ZWFtIn0.c2lnbmF0dXJl'
+    const { triage } = setup(() =>
+      jsonResponse({ type: 'error', error: { type: 'authentication_error', message: `bad token ${jwt}` } }, 401),
+    )
+    const r = await triage(PROMPT)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).not.toContain('eyJ')
+  })
+
   it('逾時 → ok:false', async () => {
     const { triage } = setup(
       () => new Promise<Response>(() => {}),
