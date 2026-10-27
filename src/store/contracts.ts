@@ -1,18 +1,9 @@
-import type { CanonicalEvent, HealthStatus, Issue, IssueStatus, Severity } from '@/core/types'
+import type { CanonicalEvent, HealthStatus, Issue, IssueAiTriage, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
-import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 
-/** Claude 對 issue 的判定紀錄。成功或失敗都寫，judgedAt 即「上次嘗試」時間。 */
-export interface IssueAiTriage {
-  severity: Severity | null // 失敗時 null
-  category: DiagnosisCategory | null
-  reason: string | null
-  suggestion: string | null
-  model: string | null
-  judgedAt: string // ISO 8601
-  error: string | null
-}
+export type { IssueAiTriage }
 
 export interface StoredIssue extends Issue {
   id: string
