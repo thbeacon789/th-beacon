@@ -21,8 +21,6 @@ export type HeartbeatParseResult =
   | { ok: false; errors: string[] }
 
 const STATUSES: readonly string[] = ['pass', 'fail']
-const CATEGORIES: readonly string[] = ['env', 'app']
-const SEVERITIES: readonly string[] = ['P0', 'P1', 'P2']
 
 function parseDiagnosis(raw: unknown): { value: HeartbeatDiagnosis } | { reason: string } {
   const r = parseTriageOutput(raw)

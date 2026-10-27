@@ -199,15 +199,47 @@ describe('pipeline AI 判級', () => {
     const off = setup([ok('P0')], { triager: null })
     await processAndNotify(store, off.deps, event(), t0) // 建立無 ai 的 issue
     const h = setup([ok('P0')])
+    // firstSeen 為 09:59；10:00:30 仍在首次判定寬限內 → no_ai
     await processAndNotify(
       store,
       h.deps,
       event({ metadata: { ciDiagnosisError: 'wif exchange failed: 401' } }),
-      after(40),
+      new Date(t0.getTime() + 30_000),
     )
     expect(h.calls()).toBe(0)
-    expect(h.sent).toHaveLength(1)
-    expect(text(h.sent[0])).not.toContain('wif exchange failed')
+    expect(h.sent.map(text).join('')).not.toContain('wif exchange failed') // 冷卻內不再發，且絕不含 CI 錯誤
+  })
+})
+
+describe('既有 issue 無 AI 紀錄（首次判定）', () => {
+  let store: InMemoryStore
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService(svc)
+  })
+  const seedP1 = async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const off = setup([ok('P0')], { triager: null })
+    const first = await processAndNotify(store, off.deps, event(), t0)
+    expect(first.issue.severity).toBe('P1')
+  }
+  it('firstSeen 已舊：呼叫 triager，AI 判 P2 → 降為 P2', async () => {
+    await seedP1()
+    const h = setup([ok('P2')])
+    const r = await processAndNotify(store, h.deps, event(), after(60))
+    expect(h.calls()).toBe(1)
+    expect(r.issue.severity).toBe('P2')
+  })
+  it('health_check_failed 規則 P0 → AI 判 P2 仍為 P0', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P0', match: { errorType: 'health_check_failed' } })
+    const off = setup([ok('P2')], { triager: null })
+    const ev = () => event({ errorType: 'health_check_failed', source: 'poll' })
+    const first = await processAndNotify(store, off.deps, ev(), t0)
+    expect(first.issue.severity).toBe('P0')
+    const h = setup([ok('P2')])
+    const r = await processAndNotify(store, h.deps, ev(), after(60))
+    expect(h.calls()).toBe(1)
+    expect(r.issue.severity).toBe('P0')
   })
 })
 

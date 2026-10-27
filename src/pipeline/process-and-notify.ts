@@ -55,6 +55,7 @@ export async function stageEvent(
           created: upsert.created,
           reopened: upsert.reopened,
           issueAi: upsert.issue.ai,
+          firstSeen: upsert.issue.firstSeen,
           now,
           budgetRemaining: deps.triage?.budget?.remaining ?? null,
         })

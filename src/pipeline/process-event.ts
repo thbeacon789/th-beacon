@@ -28,7 +28,7 @@ export async function processEvent(
 /**
  * upsert 之後的判級＋健康度。`ai` 為本 event 採用的 AI 等級（null = 無 AI，純規則）。
  * - event 自帶 severity（CI 判讀）：取代規則表、套 ratchet（維持既有行為，不套 reset）。
- * - 其餘：resolveSeverity；新建／reopened 用 reset（允許降級），否則 ratchet。
+ * - 其餘：resolveSeverity；新建／reopened／首次 AI 判定（呼叫前 issue.ai 為 null）用 reset（允許降級），否則 ratchet。
  */
 export async function applyTriage(
   store: Store,
@@ -63,7 +63,7 @@ export async function applyTriage(
       ai,
       rule: rule.severity,
       errorType: issue.errorType,
-      mode: created || reopened ? 'reset' : 'ratchet',
+      mode: created || reopened || issue.ai === null ? 'reset' : 'ratchet',
     })
     tags = rule.tags
   }
