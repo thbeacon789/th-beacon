@@ -198,10 +198,11 @@ describe('normalizeHeartbeatFailure', () => {
       expect('severity' in event).toBe(false)
     })
 
-    it('diagnosisError 寫入 metadata', () => {
+    it('diagnosisError 寫入 metadata.ciDiagnosisError', () => {
       const event = normalizeHeartbeatFailure('s-1', base, { diagnosisError: 'timeout' }, now)
       expect(event.errorType).toBe('test_failure')
-      expect(event.metadata.diagnosisError).toBe('timeout')
+      expect(event.metadata.ciDiagnosisError).toBe('timeout')
+      expect('diagnosisError' in event.metadata).toBe(false)
       expect('severity' in event).toBe(false)
     })
 

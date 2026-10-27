@@ -1,7 +1,8 @@
 import { evaluateSeverity } from '@/core/rules'
 import { deriveHealth } from '@/core/health'
+import { resolveSeverity } from '@/core/ai-triage'
 import type { CanonicalEvent, HealthStatus, Severity } from '@/core/types'
-import type { Store, StoredIssue } from '@/store/contracts'
+import type { ServiceRecord, Store, StoredIssue, UpsertOutcome } from '@/store/contracts'
 
 const SEVERITY_RANK: Record<Severity, number> = { P2: 0, P1: 1, P0: 2 }
 
@@ -20,8 +21,24 @@ export async function processEvent(
 ): Promise<ProcessResult> {
   const service = await store.getService(event.serviceId)
   if (service === null) throw new Error(`unknown service: ${event.serviceId}`)
+  const upsert = await store.upsertIssueWithEvent(event)
+  return applyTriage(store, service, event, upsert, null, now)
+}
 
-  const { issue, created, duplicate } = await store.upsertIssueWithEvent(event)
+/**
+ * upsert 之後的判級＋健康度。`ai` 為本 event 採用的 AI 等級（null = 無 AI，純規則）。
+ * - event 自帶 severity（CI 判讀）：取代規則表、套 ratchet（維持既有行為，不套 reset）。
+ * - 其餘：resolveSeverity；新建／reopened 用 reset（允許降級），否則 ratchet。
+ */
+export async function applyTriage(
+  store: Store,
+  service: ServiceRecord,
+  event: CanonicalEvent,
+  upsert: UpsertOutcome,
+  ai: Severity | null,
+  now: Date,
+): Promise<ProcessResult> {
+  const { issue, created, duplicate, reopened } = upsert
   if (duplicate) {
     return {
       issue,
@@ -33,18 +50,28 @@ export async function processEvent(
   }
 
   const previousSeverity = created ? null : issue.severity
-  // event 自帶 severity（如 AI 診斷分流）時取代規則表，tags 沿用 issue 現有值
-  const { severity: evaluated, tags } = event.severity
-    ? { severity: event.severity, tags: issue.tags }
-    : evaluateSeverity(issue, await store.loadRules(event.serviceId))
+  let final: Severity
+  let tags: string[]
+  if (event.severity) {
+    // Ratchet（已拍板）：severity 只升不降——避免 P0↔P2 震盪讓「升級才追發」的通知洗版。
+    final = SEVERITY_RANK[event.severity] > SEVERITY_RANK[issue.severity] ? event.severity : issue.severity
+    tags = issue.tags
+  } else {
+    const rule = evaluateSeverity(issue, await store.loadRules(event.serviceId))
+    final = resolveSeverity({
+      current: issue.severity,
+      ai,
+      rule: rule.severity,
+      errorType: issue.errorType,
+      mode: created || reopened ? 'reset' : 'ratchet',
+    })
+    tags = rule.tags
+  }
 
-  // Ratchet（已拍板）：severity 只升不降——頻率規則超窗回落時維持歷史最嚴重值，
-  // 避免 P0↔P2 震盪讓「升級才追發」的通知洗版。未升級時 tags 一併凍結。
-  const escalated = SEVERITY_RANK[evaluated] > SEVERITY_RANK[issue.severity]
   let triaged = issue
-  if (escalated) {
-    await store.updateIssueTriage(issue.id, evaluated, tags)
-    triaged = { ...issue, severity: evaluated, tags }
+  if (final !== issue.severity) {
+    await store.updateIssueTriage(issue.id, final, tags)
+    triaged = { ...issue, severity: final, tags }
   } else if (created && !sameTags(tags, issue.tags)) {
     await store.updateIssueTriage(issue.id, issue.severity, tags)
     triaged = { ...issue, tags }

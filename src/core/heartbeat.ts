@@ -104,7 +104,7 @@ export function normalizeHeartbeatFailure(
       ...(payload.runUrl !== undefined ? { runUrl: payload.runUrl } : {}),
       ...(summary !== null ? { summary } : {}),
       ...(diagnosis ? { diagnosis } : {}),
-      ...(payload.diagnosisError !== undefined ? { diagnosisError: payload.diagnosisError } : {}),
+      ...(payload.diagnosisError !== undefined ? { ciDiagnosisError: payload.diagnosisError } : {}),
     },
   }
 }
