@@ -8,11 +8,13 @@ import {
   GRACE_MIN,
   GRACE_MAX,
   NAME_PATTERN_SOURCE,
+  DESCRIPTION_MAX,
 } from '@/core/registration'
 import {
   registerServiceAction,
   registerHeartbeatAction,
   rotateSecretAction,
+  updateServiceDescriptionAction,
   type RegistrationState,
 } from './actions'
 
@@ -137,6 +139,18 @@ export function RegisterServiceForm() {
           <span className="hint">小寫英數與連字號。這個值就是 CI 要送的 X-Beacon-Service。</span>
         </label>
 
+        <label>
+          服務說明
+          <textarea
+            name="description"
+            required
+            maxLength={DESCRIPTION_MAX}
+            rows={3}
+            placeholder="這個服務做什麼、誰在用、哪些錯誤特別重要"
+          />
+          <span className="hint">AI 判 issue 等級時會參考；最多 {DESCRIPTION_MAX} 字。</span>
+        </label>
+
         <label className="reg-check">
           <input
             type="checkbox"
@@ -233,6 +247,59 @@ export function RotateSecretForm({
           title={`「${state.serviceName}」的新金鑰`}
           hint="立刻更新該專案 CI 的 BEACON_SECRET，否則下一次回報就會失敗。"
         />
+      )}
+    </div>
+  )
+}
+
+export function EditDescriptionForm({
+  serviceId,
+  serviceName,
+  description,
+}: {
+  serviceId: string
+  serviceName: string
+  description: string | null
+}) {
+  const [state, action] = useActionState(updateServiceDescriptionAction, IDLE)
+  const [editing, setEditing] = useState(false)
+
+  return (
+    <div className="reg-description">
+      {!editing ? (
+        <>
+          {description === null ? (
+            <p className="reg-warn">尚未填寫：AI 判級會缺少服務背景</p>
+          ) : (
+            <p>{description}</p>
+          )}
+          <button type="button" onClick={() => setEditing(true)}>
+            {description === null ? '填寫說明' : '編輯說明'}
+          </button>
+        </>
+      ) : (
+        <form action={action} className="reg-form">
+          <input type="hidden" name="serviceId" value={serviceId} />
+          <input type="hidden" name="serviceName" value={serviceName} />
+          <textarea
+            name="description"
+            required
+            maxLength={DESCRIPTION_MAX}
+            rows={4}
+            defaultValue={description ?? ''}
+            aria-label={`「${serviceName}」的服務說明`}
+          />
+          <SubmitButton pendingLabel="儲存中…">儲存說明</SubmitButton>
+          <button type="button" onClick={() => setEditing(false)}>
+            取消
+          </button>
+        </form>
+      )}
+      <ErrorList state={state} />
+      {state.status === 'description-updated' && (
+        <p className="reg-ok" role="status">
+          「{state.serviceName}」的說明已更新。
+        </p>
       )}
     </div>
   )

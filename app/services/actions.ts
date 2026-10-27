@@ -4,7 +4,11 @@ import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { validateServiceRegistration, validateHeartbeatRegistration } from '@/core/registration'
+import {
+  validateServiceRegistration,
+  validateServiceDescription,
+  validateHeartbeatRegistration,
+} from '@/core/registration'
 import { isUuid } from '@/web/queries'
 
 export type RegistrationState =
@@ -14,6 +18,7 @@ export type RegistrationState =
   // 忘了就走 rotate 換一把，避免金鑰長期停留在任何人的瀏覽器分頁裡。
   | { status: 'created'; serviceName: string; heartbeatName: string | null; secret: string }
   | { status: 'rotated'; serviceName: string; secret: string }
+  | { status: 'description-updated'; serviceName: string }
   | { status: 'heartbeat-added'; serviceName: string; heartbeatName: string }
 
 function newSecret(): string {
@@ -36,7 +41,10 @@ export async function registerServiceAction(
 ): Promise<RegistrationState> {
   await requireUser()
 
-  const serviceInput = validateServiceRegistration({ name: field(form, 'serviceName') })
+  const serviceInput = validateServiceRegistration({
+    name: field(form, 'serviceName'),
+    description: field(form, 'description'),
+  })
   const wantsHeartbeat = field(form, 'withHeartbeat') === 'on'
   const heartbeatInput = wantsHeartbeat
     ? validateHeartbeatRegistration({
@@ -64,7 +72,10 @@ export async function registerServiceAction(
 
   const store = createServerStore()
   const secret = newSecret()
-  const service = await store.createService(serviceInput.value.name, secret, null)
+  const service = await store.createService(serviceInput.value.name,
+    secret,
+    serviceInput.value.description,
+  )
   if (service === null) {
     return { status: 'error', errors: [`服務名稱「${serviceInput.value.name}」已經存在`] }
   }
@@ -133,4 +144,25 @@ export async function rotateSecretAction(
 
   revalidatePath('/services')
   return { status: 'rotated', serviceName, secret }
+}
+
+/** 更新服務說明。說明是 AI 判級的背景資料，改動只影響之後新判的 issue。 */
+export async function updateServiceDescriptionAction(
+  _prev: RegistrationState,
+  form: FormData,
+): Promise<RegistrationState> {
+  await requireUser()
+
+  const serviceId = field(form, 'serviceId')
+  const serviceName = field(form, 'serviceName')
+  if (!isUuid(serviceId)) return { status: 'error', errors: ['服務不存在'] }
+
+  const input = validateServiceDescription(field(form, 'description'))
+  if (!input.ok) return { status: 'error', errors: input.errors }
+
+  const ok = await createServerStore().updateServiceDescription(serviceId, input.value)
+  if (!ok) return { status: 'error', errors: ['服務不存在'] }
+
+  revalidatePath('/services')
+  return { status: 'description-updated', serviceName }
 }

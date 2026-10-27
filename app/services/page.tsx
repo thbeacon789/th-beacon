@@ -3,7 +3,12 @@ import { headers } from 'next/headers'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { formatDateTime } from '@/web/format'
-import { RegisterServiceForm, AddHeartbeatForm, RotateSecretForm } from './registration-ui'
+import {
+  RegisterServiceForm,
+  AddHeartbeatForm,
+  RotateSecretForm,
+  EditDescriptionForm,
+} from './registration-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,6 +128,12 @@ BEACON_SERVICE=<服務名稱> BEACON_SECRET=<金鑰> \\
               )}
               <RotateSecretForm serviceId={service.id} serviceName={service.name} />
             </div>
+
+            <EditDescriptionForm
+              serviceId={service.id}
+              serviceName={service.name}
+              description={service.description}
+            />
 
             {service.heartbeats.length === 0 ? (
               <p className="reg-warn">

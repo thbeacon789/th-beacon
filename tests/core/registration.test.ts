@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   validateServiceRegistration,
   validateHeartbeatRegistration,
+  validateServiceDescription,
+  DESCRIPTION_MAX,
   NAME_PATTERN_SOURCE,
   INTERVAL_MIN,
   INTERVAL_MAX,
@@ -9,10 +11,12 @@ import {
   GRACE_MAX,
 } from '@/core/registration'
 
+const DESC = '負責收單的後端服務'
+
 describe('validateServiceRegistration', () => {
   it('接受 kebab-case 名稱並去除前後空白', () => {
-    const result = validateServiceRegistration({ name: '  my-service-2  ' })
-    expect(result).toEqual({ ok: true, value: { name: 'my-service-2' } })
+    const result = validateServiceRegistration({ name: '  my-service-2  ', description: DESC })
+    expect(result).toEqual({ ok: true, value: { name: 'my-service-2', description: DESC } })
   })
 
   it.each([
@@ -26,18 +30,45 @@ describe('validateServiceRegistration', () => {
     ['非 ASCII', '我的服務'],
     ['單一字元', 'a'],
   ])('拒絕%s', (_label, name) => {
-    const result = validateServiceRegistration({ name })
+    const result = validateServiceRegistration({ name, description: DESC })
     expect(result.ok).toBe(false)
   })
 
   it('拒絕超過 64 字元的名稱', () => {
-    expect(validateServiceRegistration({ name: 'a'.repeat(65) }).ok).toBe(false)
-    expect(validateServiceRegistration({ name: 'a'.repeat(64) }).ok).toBe(true)
+    expect(validateServiceRegistration({ name: 'a'.repeat(65), description: DESC }).ok).toBe(false)
+    expect(validateServiceRegistration({ name: 'a'.repeat(64), description: DESC }).ok).toBe(true)
   })
 
   it('非字串輸入不會拋例外', () => {
-    expect(validateServiceRegistration({ name: undefined }).ok).toBe(false)
+    expect(validateServiceRegistration({ name: undefined, description: undefined }).ok).toBe(false)
     expect(validateServiceRegistration({}).ok).toBe(false)
+  })
+
+  it('名稱與說明的錯誤一起回報', () => {
+    const result = validateServiceRegistration({ name: 'Bad Name', description: '' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors).toHaveLength(2)
+  })
+})
+
+describe('validateServiceDescription', () => {
+  it('空字串與純空白回報必填', () => {
+    for (const raw of ['', '   ']) {
+      const result = validateServiceDescription(raw)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.errors[0]).toContain('必填')
+    }
+  })
+
+  it('前後空白被 trim', () => {
+    expect(validateServiceDescription('  說明  ')).toEqual({ ok: true, value: '說明' })
+  })
+
+  it('邊界：1000 字通過、1001 字超長', () => {
+    expect(validateServiceDescription('a'.repeat(DESCRIPTION_MAX)).ok).toBe(true)
+    const over = validateServiceDescription('a'.repeat(DESCRIPTION_MAX + 1))
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.errors[0]).toContain('1000')
   })
 })
 
@@ -99,7 +130,7 @@ describe('NAME_PATTERN_SOURCE（表單 <input pattern> 與後端驗證同源）'
     '我的服務',
   ])('瀏覽器端與後端對 %s 的判定一致', (name) => {
     const browserAccepts = browserEquivalent.test(name)
-    const serverAccepts = validateServiceRegistration({ name }).ok
+    const serverAccepts = validateServiceRegistration({ name, description: DESC }).ok
     // 長度規則另計，這裡只比對字元規則：兩者對同一個名稱不能一個放行一個擋下
     expect(browserAccepts).toBe(serverAccepts)
   })

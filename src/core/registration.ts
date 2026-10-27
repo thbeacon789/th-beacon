@@ -3,6 +3,7 @@
 
 export interface ServiceRegistrationInput {
   name: string
+  description: string
 }
 
 export interface HeartbeatRegistrationInput {
@@ -50,13 +51,38 @@ function validateName(raw: unknown, label: string, errors: string[]): string | n
   return name
 }
 
+// 服務說明是 AI 判級的背景資料，故必填；上限避免 prompt 被單一服務灌爆。
+// 表單 <textarea maxLength> 直接引用此常數，與後端同源。
+export const DESCRIPTION_MAX = 1000
+
+export function validateServiceDescription(raw: string): ValidationResult<string> {
+  const errors: string[] = []
+  const description = validateDescriptionInto(raw, errors)
+  if (description === null) return { ok: false, errors }
+  return { ok: true, value: description }
+}
+
+function validateDescriptionInto(raw: unknown, errors: string[]): string | null {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    errors.push('服務說明為必填')
+    return null
+  }
+  const description = raw.trim()
+  if (description.length > DESCRIPTION_MAX) {
+    errors.push(`服務說明不可超過 ${DESCRIPTION_MAX} 字`)
+    return null
+  }
+  return description
+}
+
 export function validateServiceRegistration(
   input: Record<string, unknown>,
 ): ValidationResult<ServiceRegistrationInput> {
   const errors: string[] = []
   const name = validateName(input.name, '服務名稱', errors)
-  if (name === null || errors.length > 0) return { ok: false, errors }
-  return { ok: true, value: { name } }
+  const description = validateDescriptionInto(input.description, errors)
+  if (name === null || description === null || errors.length > 0) return { ok: false, errors }
+  return { ok: true, value: { name, description } }
 }
 
 function validateSeconds(
