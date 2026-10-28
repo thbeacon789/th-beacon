@@ -1368,6 +1368,13 @@ tbody tr:last-child td {
 
 /* --- 服務列表 --- */
 
+/* 外層不再畫框：每個服務已是獨立面板，再包一層會變成框中框 */
+.reg-list {
+  padding: 0;
+  background: none;
+  border: none;
+}
+
 .reg-service-list {
   display: grid;
   gap: var(--space-4);

@@ -106,7 +106,7 @@ BEACON_SERVICE=<服務名稱> BEACON_SECRET=<金鑰> \\
         <RegisterServiceForm />
       </section>
 
-      <section className="card">
+      <section className="card reg-list">
         <div className="card-head">
           <h2>已登記的服務</h2>
           <span className="hint">{services.length} 個</span>
