@@ -289,10 +289,12 @@ export function EditDescriptionForm({
             defaultValue={description ?? ''}
             aria-label={`「${serviceName}」的服務說明`}
           />
-          <SubmitButton pendingLabel="儲存中…">儲存說明</SubmitButton>
-          <button type="button" onClick={() => setEditing(false)}>
-            取消
-          </button>
+          <div className="reg-actions">
+            <SubmitButton pendingLabel="儲存中…">儲存說明</SubmitButton>
+            <button type="button" onClick={() => setEditing(false)}>
+              取消
+            </button>
+          </div>
         </form>
       )}
       <ErrorList state={state} />

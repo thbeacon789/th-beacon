@@ -1108,6 +1108,18 @@ tbody tr:last-child td {
    服務登記頁 /services
    ============================================================ */
 
+/* 頁首、接入說明、登記表單、服務列表各自成塊，塊與塊之間留明確間距 */
+.reg-page {
+  display: grid;
+  gap: var(--space-5);
+}
+.reg-page > .page-head {
+  margin-bottom: 0;
+}
+.reg-page > .card {
+  gap: var(--space-4);
+}
+
 .reg-guide h2,
 .reg-guide h3 {
   margin: 0;
@@ -1169,6 +1181,16 @@ tbody tr:last-child td {
   display: grid;
   gap: var(--space-3);
   align-items: start;
+  max-width: 40rem;
+}
+.reg-form > button {
+  justify-self: start;
+}
+/* 主要動作＋取消並排，按鈕依內容寬度 */
+.reg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 .reg-form-inline {
   display: flex;
@@ -1258,6 +1280,33 @@ tbody tr:last-child td {
   font-size: 0.9rem;
 }
 
+/* --- 服務內的分段（說明／心跳） --- */
+
+.reg-section {
+  display: grid;
+  gap: var(--space-3);
+}
+.reg-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--lilac);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+.reg-section-title .hint {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+/* 新增心跳與既有心跳表之間以虛線分隔，表明是「另一個動作」 */
+.reg-add {
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--line);
+}
+
 /* --- 服務說明 --- */
 
 .reg-description {
@@ -1276,6 +1325,9 @@ tbody tr:last-child td {
 }
 .reg-description > .reg-form {
   flex: 1 1 100%;
+}
+.reg-description > button {
+  flex: none;
 }
 
 /* --- 金鑰揭露 --- */
@@ -1316,20 +1368,24 @@ tbody tr:last-child td {
 
 /* --- 服務列表 --- */
 
+.reg-service-list {
+  display: grid;
+  gap: var(--space-4);
+}
 .reg-service {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4) 0;
-  border-top: 1px solid var(--line);
-}
-.reg-service:first-of-type {
-  border-top: none;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
 }
 .reg-service-head {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
 }
 .reg-service-head h3 {
   margin: 0;
@@ -1356,7 +1412,6 @@ tbody tr:last-child td {
     align-items: stretch;
   }
   .reg-form-inline label,
-  .reg-form-inline button,
   .reg-form input,
   .reg-form-inline input {
     width: 100%;

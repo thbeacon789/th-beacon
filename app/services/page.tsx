@@ -42,7 +42,7 @@ export default async function ServicesPage() {
       "\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"`
 
   return (
-    <main>
+    <main className="reg-page">
       <div className="page-head">
         <h1>服務登記</h1>
         <p className="hint">
@@ -119,79 +119,91 @@ BEACON_SERVICE=<服務名稱> BEACON_SECRET=<金鑰> \\
           </p>
         )}
 
-        {services.map((service) => (
-          <article key={service.id} className="reg-service">
-            <div className="reg-service-head">
-              <h3 className="mono">{service.name}</h3>
-              {!service.hasWebhookSecret && (
-                <span className="badge badge-P1">未設定金鑰</span>
-              )}
-              <RotateSecretForm serviceId={service.id} serviceName={service.name} />
-            </div>
+        <div className="reg-service-list">
+          {services.map((service) => (
+            <article key={service.id} className="reg-service">
+              <header className="reg-service-head">
+                <h3 className="mono">{service.name}</h3>
+                {!service.hasWebhookSecret && (
+                  <span className="badge badge-P1">未設定金鑰</span>
+                )}
+                <RotateSecretForm serviceId={service.id} serviceName={service.name} />
+              </header>
 
-            <EditDescriptionForm
-              serviceId={service.id}
-              serviceName={service.name}
-              description={service.description}
-            />
+              <section className="reg-section">
+                <h4 className="reg-section-title">服務說明</h4>
+                <EditDescriptionForm
+                  serviceId={service.id}
+                  serviceName={service.name}
+                  description={service.description}
+                />
+              </section>
 
-            {service.heartbeats.length === 0 ? (
-              <p className="reg-warn">
-                尚未登記任何心跳——CI 現在送過來會收到 404。請在下方登記。
-              </p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">心跳名稱</th>
-                      <th scope="col" className="num">
-                        間隔
-                      </th>
-                      <th scope="col" className="num">
-                        寬限
-                      </th>
-                      <th scope="col">最後回報</th>
-                      <th scope="col">狀態</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {service.heartbeats.map((hb) => (
-                      <tr key={hb.id}>
-                        <td className="mono">{hb.name}</td>
-                        <td className="num">{hb.intervalSeconds}s</td>
-                        <td className="num">{hb.graceSeconds}s</td>
-                        <td className="cell-time">
-                          {hb.lastRunAt === null ? (
-                            <span className="muted">尚未回報</span>
-                          ) : (
-                            formatDateTime(hb.lastRunAt)
-                          )}
-                        </td>
-                        <td>
-                          {hb.lastRunStatus === null ? (
-                            <span className="muted">—</span>
-                          ) : (
-                            <span
-                              className={
-                                hb.lastRunStatus === 'pass' ? 'status-healthy' : 'status-down'
-                              }
-                            >
-                              {hb.lastRunStatus}
-                            </span>
-                          )}
-                          {!hb.enabled && <span className="muted"> · 已停用</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              <section className="reg-section">
+                <h4 className="reg-section-title">
+                  心跳<span className="hint">{service.heartbeats.length} 個</span>
+                </h4>
+                {service.heartbeats.length === 0 ? (
+                  <p className="reg-warn">
+                    尚未登記任何心跳——CI 現在送過來會收到 404。請在下方登記。
+                  </p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th scope="col">心跳名稱</th>
+                          <th scope="col" className="num">
+                            間隔
+                          </th>
+                          <th scope="col" className="num">
+                            寬限
+                          </th>
+                          <th scope="col">最後回報</th>
+                          <th scope="col">狀態</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {service.heartbeats.map((hb) => (
+                          <tr key={hb.id}>
+                            <td className="mono">{hb.name}</td>
+                            <td className="num">{hb.intervalSeconds}s</td>
+                            <td className="num">{hb.graceSeconds}s</td>
+                            <td className="cell-time">
+                              {hb.lastRunAt === null ? (
+                                <span className="muted">尚未回報</span>
+                              ) : (
+                                formatDateTime(hb.lastRunAt)
+                              )}
+                            </td>
+                            <td>
+                              {hb.lastRunStatus === null ? (
+                                <span className="muted">—</span>
+                              ) : (
+                                <span
+                                  className={
+                                    hb.lastRunStatus === 'pass' ? 'status-healthy' : 'status-down'
+                                  }
+                                >
+                                  {hb.lastRunStatus}
+                                </span>
+                              )}
+                              {!hb.enabled && <span className="muted"> · 已停用</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-            <AddHeartbeatForm serviceId={service.id} serviceName={service.name} />
-          </article>
-        ))}
+                <div className="reg-add">
+                  <AddHeartbeatForm serviceId={service.id} serviceName={service.name} />
+                </div>
+              </section>
+            </article>
+          ))}
+        </div>
       </section>
     </main>
   )
