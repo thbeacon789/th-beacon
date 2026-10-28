@@ -261,8 +261,16 @@ export function EditDescriptionForm({
   serviceName: string
   description: string | null
 }) {
-  const [state, action] = useActionState(updateServiceDescriptionAction, IDLE)
   const [editing, setEditing] = useState(false)
+  // 儲存成功就收回編輯狀態；失敗則留在輸入框，讓使用者直接修正
+  const [state, action] = useActionState(
+    async (prev: RegistrationState, form: FormData) => {
+      const next = await updateServiceDescriptionAction(prev, form)
+      if (next.status === 'description-updated') setEditing(false)
+      return next
+    },
+    IDLE,
+  )
 
   return (
     <div className="reg-description">
