@@ -1,5 +1,12 @@
 import { applyTriage, type ProcessResult } from '@/pipeline/process-event'
-import { AI_TRIAGE_MODEL, buildTriagePrompt, decideTriage, type TriageDecision } from '@/core/ai-triage'
+import {
+  AI_STATS_WINDOW_DAYS,
+  AI_TRIAGE_MODEL,
+  buildTriagePrompt,
+  decideTriage,
+  summarizeServiceIssues,
+  type TriageDecision,
+} from '@/core/ai-triage'
 import { DIAGNOSIS_ERROR_LIMIT, truncateText } from '@/core/heartbeat'
 import type { Triager, TriageCallResult } from '@/triage/claude'
 import { shouldNotify } from '@/notify/decision'
@@ -132,7 +139,10 @@ async function runTriager(
 
   let call: TriageCallResult
   try {
-    const open = await store.listOpenIssues(event.serviceId)
+    const [open, recent] = await Promise.all([
+      store.listOpenIssues(event.serviceId),
+      store.listRecentIssues(event.serviceId, new Date(now.getTime() - AI_STATS_WINDOW_DAYS * 86_400_000).toISOString()),
+    ])
     // OpenIssue 不含 id：以「同 errorType 且等級同本 issue」的第一筆視為本 issue 排除。
     const selfIndex = open.findIndex(
       (o) => o.errorType === upsert.issue.errorType && o.severity === upsert.issue.severity,
@@ -149,6 +159,7 @@ async function runTriager(
         previousAiSeverity: upsert.issue.ai?.severity ?? null,
       },
       otherOpenIssues: others,
+      serviceStats: summarizeServiceIssues(recent, now, AI_STATS_WINDOW_DAYS),
     })
     call = await triager(prompt)
   } catch (error) {

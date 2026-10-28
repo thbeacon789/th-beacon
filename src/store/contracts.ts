@@ -112,6 +112,11 @@ export interface Store {
   updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void>
   updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue>
   listOpenIssues(serviceId: string): Promise<OpenIssue[]>
+  // 該服務 lastSeen >= sinceIso 的所有 issue（任何狀態），供 AI 判級的統計用。
+  listRecentIssues(
+    serviceId: string,
+    sinceIso: string,
+  ): Promise<Array<{ severity: Severity; status: IssueStatus; firstSeen: string; lastSeen: string }>>
   updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void>
   listPollableServices(): Promise<PollableService[]>
   updatePollState(serviceId: string, state: PollStateUpdate): Promise<void>

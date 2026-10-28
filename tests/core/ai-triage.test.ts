@@ -6,6 +6,8 @@ import {
   CRON_AI_BUDGET,
   METADATA_ALLOWLIST,
   METADATA_VALUE_LIMIT,
+  summarizeServiceIssues,
+  type ServiceIssueStats,
   TRIAGE_OUTPUT_SCHEMA,
   buildTriagePrompt,
   decideTriage,
@@ -96,12 +98,69 @@ describe('resolveSeverity', () => {
   })
 })
 
+const stats: ServiceIssueStats = {
+  windowDays: 7,
+  total: 9,
+  byStatus: { open: 4, acknowledged: 1, resolved: 3, ignored: 1 },
+  newCount: 5,
+  openBySeverity: { P0: 1, P1: 2, P2: 2 },
+}
+
+describe('summarizeServiceIssues', () => {
+  const start = new Date(now.getTime() - 7 * 86_400_000).toISOString()
+  const row = (o: Partial<{ severity: 'P0' | 'P1' | 'P2'; status: 'open' | 'acknowledged' | 'resolved' | 'ignored'; firstSeen: string; lastSeen: string }> = {}) => ({
+    severity: 'P2' as const, status: 'open' as const, firstSeen: start, lastSeen: start, ...o,
+  })
+  it('視窗邊界含端點：剛好在 start 算、早 1ms 不算', () => {
+    const early = new Date(new Date(start).getTime() - 1).toISOString()
+    const r = summarizeServiceIssues([row(), row({ lastSeen: early })], now, 7)
+    expect(r.total).toBe(1)
+  })
+  it('空輸入：所有鍵都存在且為 0', () => {
+    expect(summarizeServiceIssues([], now, 7)).toEqual({
+      windowDays: 7,
+      total: 0,
+      byStatus: { open: 0, acknowledged: 0, resolved: 0, ignored: 0 },
+      newCount: 0,
+      openBySeverity: { P0: 0, P1: 0, P2: 0 },
+    })
+  })
+  it('newCount 看 firstSeen；openBySeverity 只計 open／acknowledged', () => {
+    const old = '2026-01-01T00:00:00Z'
+    const recent = '2026-10-26T00:00:00Z'
+    const r = summarizeServiceIssues(
+      [
+        row({ severity: 'P0', status: 'open', firstSeen: recent, lastSeen: recent }),
+        row({ severity: 'P1', status: 'acknowledged', firstSeen: old, lastSeen: recent }),
+        row({ severity: 'P0', status: 'resolved', firstSeen: recent, lastSeen: recent }),
+        row({ severity: 'P2', status: 'ignored', firstSeen: old, lastSeen: recent }),
+      ],
+      now,
+      7,
+    )
+    expect(r.total).toBe(4)
+    expect(r.byStatus).toEqual({ open: 1, acknowledged: 1, resolved: 1, ignored: 1 })
+    expect(r.newCount).toBe(2)
+    expect(r.openBySeverity).toEqual({ P0: 1, P1: 1, P2: 0 })
+  })
+})
+
 describe('buildTriagePrompt', () => {
+  it('service_stats 區塊位於 </issue> 之後、<other_open_issues> 之前', () => {
+    const { user, system } = buildTriagePrompt(input())
+    expect(user).toContain(
+      '</issue>\n<service_stats>\n統計範圍：近 7 天有發生過的 issue（含本 issue）\n' +
+        'issue 數：9（open 4、acknowledged 1、resolved 3、ignored 1）\n其中新出現：5\n' +
+        '未解決的等級分布：P0 1、P1 2、P2 2\n</service_stats>\n<other_open_issues>',
+    )
+    expect(system).toContain('service_stats')
+  })
   const input = (o: { event?: CanonicalEvent; description?: string | null } = {}) => ({
     service: { name: 'viewer', description: o.description === undefined ? '對外展示站' : o.description },
     event: o.event ?? ev(),
     issue: { count: 3, firstSeen: 'a', lastSeen: 'b', reopened: false, previousAiSeverity: null },
     otherOpenIssues: [{ errorType: 'health_check_failed', severity: 'P0' as const }],
+    serviceStats: stats,
   })
   it('system content', () => {
     const { system } = buildTriagePrompt(input())

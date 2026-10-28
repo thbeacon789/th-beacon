@@ -127,6 +127,24 @@ export class SupabaseStore implements Store {
     }))
   }
 
+  async listRecentIssues(
+    serviceId: string,
+    sinceIso: string,
+  ): Promise<Array<{ severity: Severity; status: IssueStatus; firstSeen: string; lastSeen: string }>> {
+    const { data, error } = await this.client
+      .from('issues')
+      .select('severity,status,first_seen,last_seen')
+      .eq('service_id', serviceId)
+      .gte('last_seen', sinceIso)
+    if (error) throw new Error(`listRecentIssues failed: ${error.message}`)
+    return data.map((row) => ({
+      severity: narrowSeverity(row.severity),
+      status: narrowIssueStatus(row.status),
+      firstSeen: row.first_seen,
+      lastSeen: row.last_seen,
+    }))
+  }
+
   async updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void> {
     const { data, error } = await this.client
       .from('services')

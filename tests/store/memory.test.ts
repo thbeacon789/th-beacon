@@ -515,4 +515,19 @@ describe('InMemoryStore AI 判定與說明', () => {
     const open = await store.listOpenIssues('s-1')
     expect(open[0].errorType).toBe('TypeError')
   })
+
+  it('listRecentIssues 依服務與 lastSeen 過濾', async () => {
+    store.seedService({ ...svc, id: 's-2', name: 'svc-b' })
+    await store.upsertIssueWithEvent(event({ fingerprint: 'old', occurredAt: '2026-07-01T00:00:00.000Z' }))
+    await store.upsertIssueWithEvent(event({ fingerprint: 'new', occurredAt: '2026-07-27T10:00:00.000Z' }))
+    await store.upsertIssueWithEvent(event({ serviceId: 's-2', fingerprint: 'other', occurredAt: '2026-07-27T10:00:00.000Z' }))
+    const rows = await store.listRecentIssues('s-1', '2026-07-20T00:00:00.000Z')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({
+      severity: 'P2',
+      status: 'open',
+      firstSeen: '2026-07-27T10:00:00.000Z',
+      lastSeen: '2026-07-27T10:00:00.000Z',
+    })
+  })
 })

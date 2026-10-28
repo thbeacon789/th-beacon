@@ -4,7 +4,7 @@ import {
   truncateText,
   type HeartbeatDiagnosis,
 } from '@/core/heartbeat'
-import type { CanonicalEvent, IssueAiTriage, Severity } from '@/core/types'
+import type { CanonicalEvent, IssueAiTriage, IssueStatus, Severity } from '@/core/types'
 
 export const AI_TRIAGE_MODEL = 'claude-sonnet-5-5'
 // 與 notify/decision 的 COOLDOWN_MINUTES 同值（core 不依賴 notify；測試鎖定相等）。
@@ -13,6 +13,8 @@ export const AI_RETRIAGE_MINUTES = 30
 export const AI_FIRST_JUDGE_GRACE_MINUTES = 2
 export const CRON_AI_BUDGET = 5
 export const METADATA_VALUE_LIMIT = 500
+// 附給 AI 的服務 issue 統計視窗（天）。
+export const AI_STATS_WINDOW_DAYS = 7
 
 const SEVERITIES: readonly string[] = ['P0', 'P1', 'P2']
 const CATEGORIES: readonly string[] = ['env', 'app']
@@ -67,6 +69,40 @@ export function decideTriage(p: {
   return { kind: 'no_ai' }
 }
 
+// ---- 服務 issue 統計 ----
+
+export interface ServiceIssueStats {
+  windowDays: number
+  total: number
+  byStatus: Record<IssueStatus, number>
+  newCount: number
+  openBySeverity: Record<Severity, number>
+}
+
+// 視窗 = now 往前 windowDays 天（含端點）；以 lastSeen 判斷「近期有發生」，firstSeen 判斷「新出現」。
+export function summarizeServiceIssues(
+  rows: ReadonlyArray<{ severity: Severity; status: IssueStatus; firstSeen: string; lastSeen: string }>,
+  now: Date,
+  windowDays: number,
+): ServiceIssueStats {
+  const start = now.getTime() - windowDays * 86_400_000
+  const stats: ServiceIssueStats = {
+    windowDays,
+    total: 0,
+    byStatus: { open: 0, acknowledged: 0, resolved: 0, ignored: 0 },
+    newCount: 0,
+    openBySeverity: { P0: 0, P1: 0, P2: 0 },
+  }
+  for (const r of rows) {
+    if (new Date(r.lastSeen).getTime() < start) continue
+    stats.total++
+    stats.byStatus[r.status]++
+    if (new Date(r.firstSeen).getTime() >= start) stats.newCount++
+    if (r.status === 'open' || r.status === 'acknowledged') stats.openBySeverity[r.severity]++
+  }
+  return stats
+}
+
 // ---- prompt ----
 
 // 實查各 normalizer 放進 metadata 的鍵後挑選：
@@ -96,6 +132,7 @@ export interface TriagePromptInput {
   event: CanonicalEvent
   issue: { count: number; firstSeen: string; lastSeen: string; reopened: boolean; previousAiSeverity: Severity | null }
   otherOpenIssues: Array<{ errorType: string; severity: Severity }>
+  serviceStats: ServiceIssueStats
 }
 
 const SYSTEM_PROMPT = `你是服務監控平台的 issue 分級員。依下列標準為 issue 判定優先等級：
@@ -104,6 +141,7 @@ const SYSTEM_PROMPT = `你是服務監控平台的 issue 分級員。依下列�
 - P2：排進待辦
 
 判斷依據：是否有使用者受影響、是否持續發生、是否有替代路徑撐著、服務說明中的重要度。
+service_stats 是該服務近期的 issue 統計：短時間內新出現多筆代表可能是突發狀況；長期反覆出現、多數已 resolved 或 ignored 的則較可能是雜訊。
 不確定時往高判，但必須在 reason 寫出不確定之處，讓讀者看得出這是保守判斷。
 測試／排程本身的雜訊、外部依賴偶發、已知環境問題且不影響使用者時，判 P2。
 category：env 代表環境／基礎設施／外部依賴問題，app 代表應用程式本身的問題。
@@ -144,7 +182,7 @@ function metaLine(k: string, v: unknown): string | null {
 }
 
 export function buildTriagePrompt(input: TriagePromptInput): { system: string; user: string } {
-  const { service, event, issue, otherOpenIssues } = input
+  const { service, event, issue, otherOpenIssues, serviceStats: st } = input
   const desc = service.description?.trim()
   const serviceBody = desc
     ? `名稱：${esc(service.name)}\n說明：${esc(desc)}`
@@ -166,11 +204,17 @@ export function buildTriagePrompt(input: TriagePromptInput): { system: string; u
     `reopened: ${issue.reopened}`,
     `previousAiSeverity: ${issue.previousAiSeverity ?? '無'}`,
   ].join('\n')
+  const statsBody = [
+    `統計範圍：近 ${st.windowDays} 天有發生過的 issue（含本 issue）`,
+    `issue 數：${st.total}（open ${st.byStatus.open}、acknowledged ${st.byStatus.acknowledged}、resolved ${st.byStatus.resolved}、ignored ${st.byStatus.ignored}）`,
+    `其中新出現：${st.newCount}`,
+    `未解決的等級分布：P0 ${st.openBySeverity.P0}、P1 ${st.openBySeverity.P1}、P2 ${st.openBySeverity.P2}`,
+  ].join('\n')
   const othersBody =
     otherOpenIssues.length === 0
       ? '無'
       : otherOpenIssues.map((o) => `${esc(o.errorType)}: ${o.severity}`).join('\n')
-  const user = `<service>\n${serviceBody}\n</service>\n<event>\n${eventBody}\n</event>\n<issue>\n${issueBody}\n</issue>\n<other_open_issues>\n${othersBody}\n</other_open_issues>`
+  const user = `<service>\n${serviceBody}\n</service>\n<event>\n${eventBody}\n</event>\n<issue>\n${issueBody}\n</issue>\n<service_stats>\n${statsBody}\n</service_stats>\n<other_open_issues>\n${othersBody}\n</other_open_issues>`
   return { system: SYSTEM_PROMPT, user }
 }
 

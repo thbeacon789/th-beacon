@@ -401,4 +401,13 @@ describe('SupabaseStore AI 判定與說明', () => {
     const open = await store.listOpenIssues(serviceId)
     expect(open[0].errorType).toBe('TypeError')
   })
+
+  it('listRecentIssues 依 lastSeen 過濾並回傳四欄', async () => {
+    await store.upsertIssueWithEvent(event({ fingerprint: 'old', occurredAt: '2026-07-01T00:00:00.000Z' }))
+    await store.upsertIssueWithEvent(event({ fingerprint: 'new', occurredAt: '2026-07-27T10:00:00.000Z' }))
+    const rows = await store.listRecentIssues(serviceId, '2026-07-20T00:00:00.000Z')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ severity: 'P2', status: 'open' })
+    expect(new Date(rows[0].lastSeen).toISOString()).toBe('2026-07-27T10:00:00.000Z')
+  })
 })

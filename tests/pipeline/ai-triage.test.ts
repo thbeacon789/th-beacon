@@ -241,6 +241,18 @@ describe('既有 issue 無 AI 紀錄（首次判定）', () => {
     expect(h.calls()).toBe(1)
     expect(r.issue.severity).toBe('P0')
   })
+
+  it('prompt 附帶服務近 7 天 issue 統計', async () => {
+    await store.upsertIssueWithEvent(event({ fingerprint: 'old', occurredAt: '2026-09-01T00:00:00.000Z' }))
+    await store.upsertIssueWithEvent(event({ fingerprint: 'other', errorType: 'E2', occurredAt: '2026-10-26T00:00:00.000Z' }))
+    const h = setup([ok('P1')])
+    await processAndNotify(store, h.deps, event(), t0)
+    const u = h.prompts[0].user
+    expect(u).toContain('<service_stats>')
+    expect(u).toContain('issue 數：2（open 2、acknowledged 0、resolved 0、ignored 0）')
+    expect(u).toContain('其中新出現：2')
+    expect(u).toContain('未解決的等級分布：P0 0、P1 0、P2 2')
+  })
 })
 
 describe('cron 預算（逐筆 stage→finish）', () => {

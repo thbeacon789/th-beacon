@@ -165,6 +165,16 @@ export class InMemoryStore implements Store {
       }))
   }
 
+  async listRecentIssues(
+    serviceId: string,
+    sinceIso: string,
+  ): Promise<Array<{ severity: Severity; status: IssueStatus; firstSeen: string; lastSeen: string }>> {
+    const since = new Date(sinceIso).getTime()
+    return [...this.issues.values()]
+      .filter((i) => i.serviceId === serviceId && new Date(i.lastSeen).getTime() >= since)
+      .map((i) => ({ severity: i.severity, status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen }))
+  }
+
   async updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void> {
     const service = this.services.get(serviceId)
     if (service === undefined) throw new Error(`unknown service: ${serviceId}`)
