@@ -194,6 +194,7 @@ input {
 .reg-form button,
 .reg-form-inline button,
 .reg-rotate > button,
+.reg-description > button,
 .secret-value button {
   display: inline-flex;
   align-items: center;
@@ -219,6 +220,7 @@ input {
 .reg-form button:hover:not(:disabled),
 .reg-form-inline button:hover:not(:disabled),
 .reg-rotate > button:hover:not(:disabled),
+.reg-description > button:hover:not(:disabled),
 .secret-value button:hover:not(:disabled) {
   background: var(--lilac);
   border-color: var(--lilac);
@@ -232,6 +234,7 @@ input {
 .reg-form button:active:not(:disabled),
 .reg-form-inline button:active:not(:disabled),
 .reg-rotate > button:active:not(:disabled),
+.reg-description > button:active:not(:disabled),
 .secret-value button:active:not(:disabled) {
   transform: translate(1px, 1px);
 }
@@ -1196,6 +1199,17 @@ tbody tr:last-child td {
   color: var(--fg);
   font-family: var(--font-mono);
 }
+.reg-form textarea {
+  width: 100%;
+  max-width: 40rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  resize: vertical;
+}
 .reg-form input:invalid:not(:placeholder-shown),
 .reg-form-inline input:invalid:not(:placeholder-shown) {
   border-color: var(--pink);
@@ -1242,6 +1256,26 @@ tbody tr:last-child td {
   margin: 0;
   color: var(--yellow);
   font-size: 0.9rem;
+}
+
+/* --- 服務說明 --- */
+
+.reg-description {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.reg-description > p:not(.reg-warn):not(.reg-ok) {
+  flex: 1 1 20rem;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.reg-description > .reg-form {
+  flex: 1 1 100%;
 }
 
 /* --- 金鑰揭露 --- */
