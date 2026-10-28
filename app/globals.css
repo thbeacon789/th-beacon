@@ -1111,7 +1111,7 @@ tbody tr:last-child td {
 /* 頁首、接入說明、登記表單、服務列表各自成塊，塊與塊之間留明確間距 */
 .reg-page {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 .reg-page > .page-head {
   margin-bottom: 0;
@@ -1377,7 +1377,7 @@ tbody tr:last-child td {
 
 .reg-service-list {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 .reg-service {
   display: grid;
