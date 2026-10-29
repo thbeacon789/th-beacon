@@ -57,11 +57,11 @@ signature = "sha256=" + hex(HMAC_SHA256(secret, timestamp + "." + rawBody))
 
 ```jsonc
 {
-  "message": "nightly tests failed: 3 of 120",  // 必填，非空字串
-  "errorType": "test_failure",                  // 選填，預設 "unknown"
+  "message": "payment provider request failed", // 必填，非空字串
+  "errorType": "payment_error",                 // 選填，預設 "unknown"
   "level": "error",                             // 選填，預設 "error"
   "occurredAt": "2026-08-11T02:00:00Z",         // 選填，ISO 8601；預設為伺服器收到的時間
-  "metadata": { "runUrl": "https://ci.example/run/42" }  // 選填，必須是 JSON 物件（非陣列）
+  "metadata": { "requestId": "req_42", "status": 502 }  // 選填，必須是 JSON 物件（非陣列）
 }
 ```
 
@@ -92,19 +92,21 @@ signature = "sha256=" + hex(HMAC_SHA256(secret, timestamp + "." + rawBody))
 
 ### 範例
 
-現成 script：`scripts/report-to-beacon.sh`
+ingest 用來推**服務執行期的錯誤**（例如外部 API 呼叫失敗、背景工作炸掉）。**CI 測試結果請走 §3 的 `/api/heartbeat`**——heartbeat 的 fail 已會建 `test_failure` issue 並告警；兩邊都推會因 fingerprint 算法不同而長出兩筆 issue、發兩次告警。
+
+現成 script：`scripts/report-to-beacon.sh`（第 3 參數為 `errorType`，省略時為 `test_failure`，為相容舊用法保留）
 
 ```bash
-BEACON_URL=https://beacon.example.com/api/ingest \
+BEACON_URL=https://th-beacon.vercel.app/api/ingest \
 BEACON_SERVICE=my-service BEACON_SECRET=xxx \
-./scripts/report-to-beacon.sh "nightly tests failed: 3 of 120" "https://ci.example/run/42"
+./scripts/report-to-beacon.sh "payment provider request failed" "https://logs.example/req/42" "payment_error"
 ```
 
 手寫版本：
 
 ```bash
 TS="$(date +%s)"
-BODY='{"message":"nightly tests failed","errorType":"test_failure","level":"error"}'
+BODY='{"message":"payment provider request failed","errorType":"payment_error","level":"error"}'
 SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
 
 curl -sS --fail-with-body -X POST "$BEACON_URL" \
@@ -215,7 +217,7 @@ values (
 - name: Report heartbeat
   if: always()
   env:
-    BEACON_URL: https://beacon.example.com/api/heartbeat
+    BEACON_URL: https://th-beacon.vercel.app/api/heartbeat
     BEACON_SERVICE: my-service
     BEACON_SECRET: ${{ secrets.BEACON_SECRET }}
   run: |
@@ -282,7 +284,7 @@ Authorization: Bearer ${CRON_SECRET}
 1. 登記服務名稱 → 取得 `BEACON_SECRET`（**只顯示一次**，忘了就按「重新產生」換一把）
 2. 把 secret 放進該專案 CI 的 secrets（`BEACON_SECRET`）
 3. 登記心跳名稱與 interval/grace（**必須早於** CI 接線，否則一律 404）
-4. CI 加上回報步驟：測試失敗 → `/api/ingest`；存活證明 → `/api/heartbeat`（`if: always()`）
+4. CI 加上回報步驟：測試結果（pass/fail）→ `/api/heartbeat`（`if: always()`；fail 會自動建 `test_failure` issue 並告警，不必再推 ingest）。服務執行期錯誤才走 `/api/ingest`
 5. 先手動跑一次 curl 確認回 201/200，再交給排程
 
 CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分鐘。

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # th-beacon 心跳回報。CI 在 if: always() 下呼叫，成功失敗都要送。
-# 用法：BEACON_URL=https://beacon.example.com/api/heartbeat \
+# 用法：BEACON_URL=https://th-beacon.vercel.app/api/heartbeat \
 #       BEACON_SERVICE=my-service BEACON_SECRET=xxx \
 #       ./heartbeat-to-beacon.sh daily-test pass "https://github.com/o/r/actions/runs/42" "summary" [diagnosisFile]
 # diagnosisFile（選填）：diagnose-e2e-failure.sh 的輸出。含 .error → diagnosisError；含 .category → diagnosis；

@@ -1,0 +1,1 @@
+../../../scripts/diagnose-e2e-failure.sh

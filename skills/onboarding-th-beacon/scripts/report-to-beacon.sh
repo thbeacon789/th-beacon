@@ -1,0 +1,1 @@
+../../../scripts/report-to-beacon.sh

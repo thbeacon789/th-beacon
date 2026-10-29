@@ -1,0 +1,1 @@
+../../../scripts/heartbeat-to-beacon.sh
