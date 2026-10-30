@@ -231,9 +231,10 @@ describe('diagnose-e2e-failure.sh', () => {
     const secret = 'SUPERSECRETVALUE'
     // 尾端 = 秘密 + 5 字元；budget 刻意讓切口落在秘密中間
     const log = 'y'.repeat(500) + secret + 'zzzzz'
-    const header = '=== a.log ==='
+    // 腳本以「尾段」版標題（size/size）的位元組數預留標題空間，內文預算因此精確等於 max - header - 2
+    const header = `=== a.log（只有尾段：${log.length}/${log.length} bytes，前面已截掉）===`
     const cut = 'RETVALUEzzzzz'.length // 保留秘密後半 + 5 字元
-    const max = cut + header.length + 2
+    const max = cut + Buffer.byteLength(header) + 2
     await runBash(
       SCRIPT,
       ['android', write('k.md', 'k'), out(), write('a.log', log)],
@@ -271,6 +272,55 @@ describe('diagnose-e2e-failure.sh', () => {
     )
     expect(() => JSON.parse(messages()[0].body)).not.toThrow()
     expect(readOut().category).toBe('env')
+  })
+
+  it('預算按需分配：小檔整份送、省下的給大檔，標題註明完整或尾段', async () => {
+    await start(() => ({ json: okMessage() }))
+    const small = 'SMALL_HEAD ' + 's'.repeat(200) + ' SMALL_TAIL' // 221 bytes，遠小於平分額度
+    const big = 'BIG_HEAD ' + 'b'.repeat(5000) + ' BIG_TAIL'
+    await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('small.log', small), write('big.log', big)],
+      keyEnv({ DIAGNOSE_MAX_BYTES: '3000' }),
+    )
+    const content = JSON.parse(messages()[0].body).messages[0].content as string
+    // 小檔完整（平分的話只能拿 1500，仍完整；重點在大檔拿到的比平分多）
+    expect(content).toContain('SMALL_HEAD')
+    expect(content).toContain('SMALL_TAIL')
+    expect(content).toContain(`=== small.log（完整，${small.length} bytes）===`)
+    expect(content).toContain('BIG_TAIL')
+    expect(content).not.toContain('BIG_HEAD')
+    expect(content).toMatch(new RegExp(`=== big\\.log（只有尾段：\\d+/${big.length} bytes，前面已截掉）===`))
+    const bCount = content.split('b').length - 1
+    expect(bCount).toBeGreaterThan(2000) // 平分只會有 ~1500 個 b
+    // log 部分（第一個標題起）總量不超過預算；前面是固定的 user prompt 前言，不計
+    expect(Buffer.byteLength(content.slice(content.indexOf('=== ')))).toBeLessThanOrEqual(3000)
+  })
+
+  it('輸出順序照呼叫順序，不因大小排序而改變', async () => {
+    await start(() => ({ json: okMessage() }))
+    await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('first.log', 'f'.repeat(300)), write('second.log', 'x')],
+      keyEnv(),
+    )
+    const content = JSON.parse(messages()[0].body).messages[0].content as string
+    expect(content.indexOf('=== first.log')).toBeLessThan(content.indexOf('=== second.log'))
+  })
+
+  it('DIAGNOSE_DRY_RUN 只組 log 寫到輸出檔，不取憑證也不打 API', async () => {
+    await start(() => ({ json: okMessage() }))
+    const r = await runBash(
+      SCRIPT,
+      ['android', write('k.md', 'k'), out(), write('a.log', 'pw=SECRET DRY_MARKER')],
+      { ANTHROPIC_BASE_URL: server!.url, DIAGNOSE_DRY_RUN: '1', E2E_PW: 'SECRET', DIAGNOSE_REDACT_VARS: 'E2E_PW' },
+    )
+    expect(r.code).toBe(0)
+    expect(server!.requests).toHaveLength(0)
+    const text = fs.readFileSync(out(), 'utf8')
+    expect(text).toContain('=== a.log（完整，')
+    expect(text).toContain('pw=*** DRY_MARKER')
+    expect(text).not.toContain('SECRET')
   })
 
   it('超過 DIAGNOSE_MAX_BYTES 只取尾段', async () => {

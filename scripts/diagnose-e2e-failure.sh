@@ -10,6 +10,7 @@
 # 其他：ANTHROPIC_BASE_URL、DIAGNOSE_MODEL、DIAGNOSE_MAX_BYTES、DIAGNOSE_REDACT_VARS（空白分隔的變數名）
 #
 # 輸出檔：成功 {"category","severity","reason","suggestion","model"}；失敗 {"error":"..."}。一律 exit 0。
+# DIAGNOSE_DRY_RUN=1：只組 log（遮蔽＋分配預算）寫到輸出檔，不打 API——用來驗證模型實際會看到什麼。
 # 相容 bash 3.2（macOS）。JWT 與 access token 只存在變數與 0600 暫存檔，不會印出或寫入輸出檔。
 set -uo pipefail
 
@@ -47,6 +48,84 @@ fail() { # 寫 {"error": "<=200 字"} 並結束
   exit 0
 }
 
+# ---------- 組 log ----------
+# 預算分配是「按需」而不是平分：小檔整份收進去，省下的額度讓給大檔。平分的下場在
+# 2026-10-30 那輪看得很清楚——e2e.log 只有 31KB 卻佔走 75KB 配額，logcat 2.7MB 只拿到
+# 尾 75KB，App 被殺的那幾行（距檔尾 141KB）剛好在切口之前，模型只看到一片收尾雜訊。
+# 作法：由小到大逐檔分配，每檔拿 min(檔案大小, 剩餘額度／剩餘檔數)。輸出仍照呼叫順序。
+# 呼叫端應把「已聚焦、量小」的檔排前面、原始大檔排最後。
+FILES=()
+for f in "$@"; do
+  [ -f "$f" ] && [ -r "$f" ] && FILES+=("$f")
+done
+[ "${#FILES[@]}" -gt 0 ] || fail "no log files found"
+
+# 標題行的位元組數先從總預算扣掉（取最長的「尾段」版本計算，完整版只會更短），
+# 內文預算因此是精確的：DIAGNOSE_MAX_BYTES 設 N 就最多送 N 位元組。
+CLEAN_SIZES=()
+HEADER_BYTES=0
+i=0
+for f in "${FILES[@]}"; do
+  # 順序：整檔剔除非 UTF-8 -> 整檔遮蔽（尾段切口在後面才做，秘密不會被切口劈成兩半而漏出後半段）
+  CLEAN="$WORK/clean.$i"
+  iconv -c -f utf-8 -t utf-8 "$f" >"$CLEAN" 2>/dev/null || fail "log cleanup failed"
+  # 逐字遮蔽：值經環境變數傳給 perl（不嵌進程式碼）；位元組層級比對（不用 -CSD），非 ASCII 秘密也能命中
+  for var in ${DIAGNOSE_REDACT_VARS:-}; do
+    case "$var" in *[!A-Za-z0-9_]*|'') continue ;; esac
+    val="${!var:-}"
+    [ -n "$val" ] || continue
+    REDACT_VAL="$val" perl -0777 -pe 'BEGIN { $s = $ENV{REDACT_VAL} } s/\Q$s\E/***/g' "$CLEAN" >"$CLEAN.new" \
+      && mv "$CLEAN.new" "$CLEAN" || fail "redaction failed"
+  done
+  CLEAN_SIZES[$i]="$(wc -c <"$CLEAN" | tr -d ' ')"
+  hdr="=== $(basename "$f")（只有尾段：${CLEAN_SIZES[$i]}/${CLEAN_SIZES[$i]} bytes，前面已截掉）==="
+  HEADER_BYTES=$((HEADER_BYTES + $(printf '%s' "$hdr" | wc -c | tr -d ' ') + 2))
+  i=$((i + 1))
+done
+
+# 由小到大分配。bash 3.2 沒有關聯陣列，用索引陣列＋sort 排序索引。
+REMAINING=$((MAX_BYTES - HEADER_BYTES))
+[ "$REMAINING" -lt 0 ] && REMAINING=0
+LEFT=${#FILES[@]}
+BUDGETS=()
+for idx in $(i=0; for sz in "${CLEAN_SIZES[@]}"; do echo "$sz $i"; i=$((i + 1)); done | sort -n | awk '{print $2}'); do
+  share=$((REMAINING / LEFT))
+  take=${CLEAN_SIZES[$idx]}
+  [ "$take" -gt "$share" ] && take=$share
+  BUDGETS[$idx]=$take
+  REMAINING=$((REMAINING - take))
+  LEFT=$((LEFT - 1))
+done
+
+LOG="$WORK/log.txt"
+: >"$LOG"
+i=0
+for f in "${FILES[@]}"; do
+  CLEAN="$WORK/clean.$i"
+  size=${CLEAN_SIZES[$i]}
+  budget=${BUDGETS[$i]}
+  if [ "$budget" -ge "$size" ]; then
+    header="=== $(basename "$f")（完整，${size} bytes）==="
+  else
+    header="=== $(basename "$f")（只有尾段：${budget}/${size} bytes，前面已截掉）==="
+  fi
+  {
+    printf '%s\n' "$header"
+    # 取尾段後再清一次：切口可能落在多位元組字元中間
+    tail -c "$budget" "$CLEAN" 2>/dev/null | iconv -c -f utf-8 -t utf-8 2>/dev/null
+    printf '\n'
+  } >>"$LOG"
+  echo "diagnose: $(basename "$f") ${budget}/${size} bytes"
+  i=$((i + 1))
+done
+
+# 測試鉤子：只組 log 不打 API，把送給模型的 user 內容寫到輸出檔。
+if [ -n "${DIAGNOSE_DRY_RUN:-}" ]; then
+  cp "$LOG" "$OUT"
+  echo "diagnose: dry run, assembled log written to $OUT"
+  exit 0
+fi
+
 # ---------- 認證 ----------
 AUTH_MODE=""
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
@@ -58,39 +137,6 @@ elif [ -n "${ANTHROPIC_FEDERATION_RULE_ID:-}" ] && [ -n "${ANTHROPIC_ORGANIZATIO
 else
   fail "no credentials"
 fi
-
-# ---------- 組 log ----------
-FILES=()
-for f in "$@"; do
-  [ -f "$f" ] && [ -r "$f" ] && FILES+=("$f")
-done
-[ "${#FILES[@]}" -gt 0 ] || fail "no log files found"
-
-LOG="$WORK/log.txt"
-: >"$LOG"
-PER=$((MAX_BYTES / ${#FILES[@]}))
-for f in "${FILES[@]}"; do
-  header="=== $(basename "$f") ==="
-  budget=$((PER - ${#header} - 2))
-  [ "$budget" -lt 0 ] && budget=0
-  # 順序：整檔剔除非 UTF-8 -> 整檔遮蔽 -> 取尾段 -> 再清一次（尾段切口可能落在多位元組字元中間）。
-  # 先遮蔽再截斷，秘密才不會被切口劈成兩半而漏出後半段。
-  CLEAN="$WORK/clean.txt"
-  iconv -c -f utf-8 -t utf-8 "$f" >"$CLEAN" 2>/dev/null || fail "log cleanup failed"
-  # 逐字遮蔽：值經環境變數傳給 perl（不嵌進程式碼）；位元組層級比對（不用 -CSD），非 ASCII 秘密也能命中
-  for var in ${DIAGNOSE_REDACT_VARS:-}; do
-    case "$var" in *[!A-Za-z0-9_]*|'') continue ;; esac
-    val="${!var:-}"
-    [ -n "$val" ] || continue
-    REDACT_VAL="$val" perl -0777 -pe 'BEGIN { $s = $ENV{REDACT_VAL} } s/\Q$s\E/***/g' "$CLEAN" >"$CLEAN.new" \
-      && mv "$CLEAN.new" "$CLEAN" || fail "redaction failed"
-  done
-  {
-    printf '%s\n' "$header"
-    tail -c "$budget" "$CLEAN" 2>/dev/null | iconv -c -f utf-8 -t utf-8 2>/dev/null
-    printf '\n'
-  } >>"$LOG"
-done
 
 # ---------- system prompt ----------
 SYS="$WORK/system.txt"
@@ -166,7 +212,7 @@ SCHEMA='{
 
 REQ="$WORK/req.json"
 {
-  printf '平台：%s\n\n以下是這次 e2e 失敗的 log（各檔取尾段）：\n\n' "$PLATFORM"
+  printf '平台：%s\n\n以下是這次 e2e 失敗的 log。每檔標題註明是完整內容還是只剩尾段；聚焦檔（如 logcat-focus）是從原始 log 篩出 App 進程、測試標記與系統殺進程事件的子集，請優先依它判斷 App 是否被系統殺掉或 crash。\n\n' "$PLATFORM"
   cat "$LOG"
 } >"$WORK/user.txt"
 jq -n --arg model "$MODEL" --rawfile system "$SYS" --rawfile user "$WORK/user.txt" --argjson schema "$SCHEMA" \
