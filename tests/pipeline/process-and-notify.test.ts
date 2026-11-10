@@ -306,6 +306,37 @@ describe('processAndNotify（bot 模式）', () => {
     expect(n.payload).not.toHaveProperty('message_reference')
   })
 
+  it('復發第一次 post 失敗：下個事件仍 reply 上一根訊息，此時才標記上一則已復發', async () => {
+    const good = fakeBot()
+    const first = await processAndNotify(store, good.deps, event(), now)
+    store.setIssueStatus(first.issue.id, 'resolved')
+    let fail = true
+    const posts: DiscordOutgoing[] = []
+    const edits: Array<{ messageId: string; message: DiscordOutgoing }> = []
+    const bot: DiscordBot = {
+      post: async (m): Promise<BotPostResult> => {
+        if (fail) return { ok: false, reason: 'http 500' }
+        posts.push(m)
+        return { ok: true, channelId: 'c1', messageId: 'm9' }
+      },
+      edit: async (_c, messageId, message) => {
+        edits.push({ messageId, message })
+        return { ok: true }
+      },
+    }
+    const deps = { ...good.deps, bot } as NotifyDeps
+    const r1 = await processAndNotify(store, deps, event(), min(1))
+    expect(r1.notified).toBe(false)
+    expect(edits).toHaveLength(0)
+    fail = false
+    const r2 = await processAndNotify(store, deps, event(), min(2))
+    expect(r2.reopened).toBe(false)
+    expect(r2.notified).toBe(true)
+    expect((posts[0] as DiscordMessage).message_reference?.message_id).toBe('m1')
+    expect(edits).toHaveLength(1)
+    expect(edits[0].messageId).toBe('m1')
+  })
+
   it('編輯上一則失敗不阻止新告警寫入紀錄', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { deps } = fakeBot({ editFail: true })

@@ -186,4 +186,22 @@ describe('processEvent', () => {
     expect(again.issue.count).toBe(3)
     expect(again.issue.severity).toBe('P2')
   })
+
+  it('復發、無 AI：歷史 P0、規則判 P2 → P2；同事故達門檻規則判 P0 → P0', async () => {
+    store.seedRule(null, {
+      id: 'freq',
+      priority: 10,
+      severity: 'P0',
+      match: { minCountInWindow: 2, windowMinutes: 60 },
+    })
+    await processEvent(store, event(), now)
+    const second = await processEvent(store, event({ occurredAt: '2026-07-27T10:09:10.000Z' }), now)
+    expect(second.issue.severity).toBe('P0')
+    store.setIssueStatus(second.issue.id, 'resolved')
+    const low = await processEvent(store, event({ occurredAt: '2026-07-27T10:09:20.000Z' }), now)
+    expect(low.reopened).toBe(true)
+    expect(low.issue.severity).toBe('P2')
+    const high = await processEvent(store, event({ occurredAt: '2026-07-27T10:09:30.000Z' }), now)
+    expect(high.issue.severity).toBe('P0')
+  })
 })

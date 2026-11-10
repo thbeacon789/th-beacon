@@ -286,20 +286,16 @@ async function notifyStage(
   }
 
   let outgoing: DiscordMessage = built
+  let prev: Awaited<ReturnType<Store['getIncidentRoot']>> = null
   if (root !== null) {
     outgoing = buildFollowUpAlert(built, root.messageId)
-  } else if (result.reopened && seq > 0) {
-    const prev = await store.getIncidentRoot(issue.id, seq - 1)
+  } else if (seq > 0) {
+    // 不依賴 result.reopened：新事故首則 post 失敗時，下個事件仍要接回上一事故
+    prev = await store.getIncidentRoot(issue.id, seq - 1)
     if (prev !== null) {
       outgoing = {
         ...built,
         message_reference: { message_id: prev.messageId, fail_if_not_exists: false },
-      }
-      try {
-        const edited = await bot.edit(prev.channelId, prev.messageId, applyReopened(prev.payload, seq))
-        if (!edited.ok) console.error('mark previous incident reopened failed:', edited.reason)
-      } catch (error) {
-        console.error('mark previous incident reopened failed:', error)
       }
     }
   }
@@ -314,6 +310,15 @@ async function notifyStage(
     discordMessageId: post.ok ? post.messageId : null,
     payload: stored,
   })
+  if (post.ok && prev !== null) {
+    // 新告警送出成功後才標記上一則已復發；失敗則留待下次重試
+    try {
+      const edited = await bot.edit(prev.channelId, prev.messageId, applyReopened(prev.payload, seq))
+      if (!edited.ok) console.error('mark previous incident reopened failed:', edited.reason)
+    } catch (error) {
+      console.error('mark previous incident reopened failed:', error)
+    }
+  }
   return { notified: post.ok, notifyReason: decision.reason }
 }
 

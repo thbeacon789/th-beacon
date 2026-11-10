@@ -69,7 +69,8 @@ export async function applyTriage(
       await store.loadRules(event.serviceId),
     )
     final = resolveSeverity({
-      current: issue.severity,
+      // 復發＝新事故：以最低級為基準，不被歷史等級墊高
+      current: reopened ? 'P2' : issue.severity,
       ai,
       rule: rule.severity,
       errorType: issue.errorType,
