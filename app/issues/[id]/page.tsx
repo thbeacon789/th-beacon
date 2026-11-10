@@ -5,6 +5,7 @@ import { getIssueDetail, extractRunUrl } from '@/web/queries'
 import { SubmitButton } from '@/web/submit-button'
 import { ExternalLinkIcon } from '@/web/icons'
 import { formatDateTime, formatDateTimeSeconds } from '@/web/format'
+import { allowedFrom } from '@/core/lifecycle'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -106,7 +107,7 @@ export default async function IssueDetailPage({
       </ul>
       <p className="hint">severity 為歷史最高判級（只升不降）；降級請改操作狀態（resolve / ignore）。</p>
       <div className="actions">
-        {NEXT_STATUSES.filter((s) => s !== issue.status).map((status) => (
+        {NEXT_STATUSES.filter((s) => s !== issue.status && allowedFrom(s).includes(issue.status)).map((status) => (
           <form key={status} action={changeIssueStatusAction.bind(null, issue.id, status)}>
             <SubmitButton pendingLabel={`更新中…`}>{`標記為 ${status}`}</SubmitButton>
           </form>

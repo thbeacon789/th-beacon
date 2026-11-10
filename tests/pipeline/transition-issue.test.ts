@@ -217,4 +217,18 @@ describe('transitionIssue', () => {
     })
     expect((await store.getService('s-1'))?.healthStatus).toBe('down')
   })
+
+  it('getIncidentRoot reject：outcome 仍 changed、健康度重算、bot 未被呼叫', async () => {
+    const issue = await setupIssue('P0')
+    store.getIncidentRoot = async () => {
+      throw new Error('db down')
+    }
+    const f = fakeBot()
+    const r = await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'system', source: 'poll' }, now)
+    expect(r.outcome).toBe('changed')
+    expect(r.rootEdit).toBeNull()
+    expect((await store.getService('s-1'))?.healthStatus).toBe('healthy')
+    expect(f.edits).toHaveLength(0)
+    expect(f.posts).toHaveLength(0)
+  })
 })

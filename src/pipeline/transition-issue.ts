@@ -79,17 +79,23 @@ export async function transitionIssue(
   if (!result.changed) return { outcome: 'unchanged', issue: result.issue, rootEdit: null, followUp: noop }
 
   const issue = result.issue
-  const root = bot === null ? null : await store.getIncidentRoot(issue.id, issue.reopenCount)
-  // channelId 為空字串＝store 對 null channel 的退化，視同沒有根訊息
-  const usableRoot = root !== null && root.channelId !== '' ? root : null
-  const rootEdit =
-    usableRoot === null
-      ? null
-      : {
-          channelId: usableRoot.channelId,
-          messageId: usableRoot.messageId,
-          payload: transformRoot(usableRoot.payload, to, issue, actor, nowIso),
+  let rootEdit: TransitionResult['rootEdit'] = null
+  if (bot !== null) {
+    try {
+      const root = await store.getIncidentRoot(issue.id, issue.reopenCount)
+      // channelId 為空字串＝store 對 null channel 的退化，視同沒有根訊息
+      if (root !== null && root.channelId !== '') {
+        rootEdit = {
+          channelId: root.channelId,
+          messageId: root.messageId,
+          payload: transformRoot(root.payload, to, issue, actor, nowIso),
         }
+      }
+    } catch (error) {
+      // Discord 是投影：DB 已寫入，取根訊息失敗只當作沒有根訊息
+      console.error('transitionIssue: load root failed', error)
+    }
+  }
 
   const followUp = async (): Promise<void> => {
     if (refreshHealth) {
