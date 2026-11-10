@@ -81,7 +81,7 @@ describe('processAndNotify', () => {
     expect(result.issue.severity).toBe('P1') // ratchet 不降
     expect(sent).toHaveLength(2)
     expect(sent[1].message.embeds[0].color).toBe(0x95a5a6)
-    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint)).toEqual({
+    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint, 0)).toEqual({
       severity: 'P2',
       sentAt: later.toISOString(),
     })
@@ -103,7 +103,7 @@ describe('processAndNotify', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0].url).toBe('https://discord/webhook')
     expect(sent[0].message.embeds[0].title).toBe('[P1] svc-a — TypeError')
-    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint)).toEqual({
+    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint, 0)).toEqual({
       severity: 'P1',
       sentAt: now.toISOString(),
     })
@@ -138,7 +138,7 @@ describe('processAndNotify', () => {
     expect(result.notified).toBe(false)
     expect(result.notifyReason).toBe('first')
     expect(result.issue.severity).toBe('P1') // 管線不受影響
-    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint)).toBeNull() // failed 不計
+    expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint, 0)).toBeNull() // failed 不計
 
     const ok = fakeSender()
     const retry = await processAndNotify(store, ok.deps, event(), now)

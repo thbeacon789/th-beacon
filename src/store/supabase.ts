@@ -3,7 +3,8 @@ import type { Database, Json } from '@/db/database.types'
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage } from '@/store/contracts'
+import type { DiscordMessage } from '@/notify/message'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -199,6 +200,7 @@ export class SupabaseStore implements Store {
   async getLatestSentNotification(
     serviceId: string,
     fingerprint: string,
+    incidentSeq: number,
   ): Promise<LatestNotification | null> {
     const { data, error } = await this.client
       .from('notifications')
@@ -206,11 +208,89 @@ export class SupabaseStore implements Store {
       .eq('service_id', serviceId)
       .eq('fingerprint', fingerprint)
       .eq('status', 'sent')
+      .eq('incident_seq', incidentSeq)
+      .in('kind', ['alert', 'count_edit'])
       .order('sent_at', { ascending: false })
       .limit(1)
       .maybeSingle()
     if (error) throw new Error(`getLatestSentNotification failed: ${error.message}`)
     return data === null ? null : { severity: narrowSeverity(data.severity), sentAt: data.sent_at }
+  }
+
+  async getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null> {
+    const { data, error } = await this.client
+      .from('notifications')
+      .select('discord_channel_id,discord_message_id,payload')
+      .eq('issue_id', issueId)
+      .eq('incident_seq', incidentSeq)
+      .eq('kind', 'alert')
+      .eq('status', 'sent')
+      .not('discord_message_id', 'is', null)
+      .order('sent_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(`getIncidentRoot failed: ${error.message}`)
+    if (data === null || data.discord_message_id === null || data.payload === null) return null
+    return {
+      channelId: data.discord_channel_id ?? '',
+      messageId: data.discord_message_id,
+      payload: data.payload as unknown as DiscordMessage,
+    }
+  }
+
+  async transitionIssueStatus(
+    issueId: string,
+    to: IssueStatus,
+    allowedFrom: readonly IssueStatus[],
+    actor: string | null,
+    nowIso: string,
+  ): Promise<{ issue: StoredIssue; changed: boolean } | null> {
+    const patch: Database['public']['Tables']['issues']['Update'] = { status: to }
+    if (to === 'acknowledged') {
+      patch.acknowledged_at = nowIso
+      patch.acknowledged_by = actor
+    } else if (to === 'resolved') {
+      patch.resolved_at = nowIso
+      patch.resolved_by = actor
+    } else if (to === 'open') {
+      patch.acknowledged_at = null
+      patch.acknowledged_by = null
+      patch.resolved_at = null
+      patch.resolved_by = null
+    }
+    const { data, error } = await this.client
+      .from('issues')
+      .update(patch)
+      .eq('id', issueId)
+      .in('status', [...allowedFrom])
+      .select('*')
+    if (error) throw new Error(`transitionIssueStatus failed: ${error.message}`)
+    if (data.length > 0) return { issue: rowToIssue(data[0]), changed: true }
+    const { data: current, error: readError } = await this.client
+      .from('issues')
+      .select('*')
+      .eq('id', issueId)
+      .maybeSingle()
+    if (readError) throw new Error(`transitionIssueStatus read failed: ${readError.message}`)
+    return current === null ? null : { issue: rowToIssue(current), changed: false }
+  }
+
+  async findActiveIssueIds(
+    serviceId: string,
+    match: { fingerprint: string } | { errorType: 'health_check_failed' },
+  ): Promise<string[]> {
+    let query = this.client
+      .from('issues')
+      .select('id')
+      .eq('service_id', serviceId)
+      .in('status', ['open', 'acknowledged'])
+    query =
+      'fingerprint' in match
+        ? query.eq('fingerprint', match.fingerprint)
+        : query.eq('error_type', match.errorType)
+    const { data, error } = await query
+    if (error) throw new Error(`findActiveIssueIds failed: ${error.message}`)
+    return data.map((r) => r.id)
   }
 
   async recordNotification(record: NotificationRecord): Promise<void> {
@@ -222,6 +302,11 @@ export class SupabaseStore implements Store {
       status: record.status,
       count_at_send: record.countAtSend,
       sent_at: record.sentAt,
+      kind: record.kind,
+      incident_seq: record.incidentSeq,
+      discord_channel_id: record.discordChannelId,
+      discord_message_id: record.discordMessageId,
+      payload: record.payload === null ? null : (record.payload as unknown as Json),
     })
     if (error) throw new Error(`recordNotification failed: ${error.message}`)
   }

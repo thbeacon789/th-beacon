@@ -241,20 +241,129 @@ describe('InMemoryStore', () => {
       serviceId: 's-1',
       fingerprint: 'fp-n',
       countAtSend: 1,
+      kind: 'alert' as const,
+      incidentSeq: 0,
+      discordChannelId: null,
+      discordMessageId: null,
+      payload: null,
     }
     await store.recordNotification({ ...base, severity: 'P1', status: 'sent', sentAt: '2026-07-28T10:00:00.000Z' })
     await store.recordNotification({ ...base, severity: 'P0', status: 'failed', sentAt: '2026-07-28T10:05:00.000Z' })
     // failed 不計入冷卻判斷
-    expect(await store.getLatestSentNotification('s-1', 'fp-n')).toEqual({
+    expect(await store.getLatestSentNotification('s-1', 'fp-n', 0)).toEqual({
       severity: 'P1',
       sentAt: '2026-07-28T10:00:00.000Z',
     })
     await store.recordNotification({ ...base, severity: 'P0', status: 'sent', sentAt: '2026-07-28T10:06:00.000Z' })
-    expect(await store.getLatestSentNotification('s-1', 'fp-n')).toEqual({
+    expect(await store.getLatestSentNotification('s-1', 'fp-n', 0)).toEqual({
       severity: 'P0',
       sentAt: '2026-07-28T10:06:00.000Z',
     })
-    expect(await store.getLatestSentNotification('s-1', 'nope')).toBeNull()
+    expect(await store.getLatestSentNotification('s-1', 'nope', 0)).toBeNull()
+  })
+
+  describe('告警生命週期', () => {
+    const nbase = {
+      issueId: 'i-1',
+      serviceId: 's-1',
+      fingerprint: 'fp-n',
+      countAtSend: 1,
+      severity: 'P1' as const,
+      status: 'sent' as const,
+      kind: 'alert' as const,
+      incidentSeq: 0,
+      discordChannelId: null,
+      discordMessageId: null,
+      payload: null,
+    }
+    const msg = { content: 'x', embeds: [] } as unknown as import('@/notify/message').DiscordMessage
+
+    it('transitionIssueStatus ack 從 open 成功並記 actor', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      const r = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'discord:111', '2026-07-28T00:00:00.000Z')
+      expect(r?.changed).toBe(true)
+      expect(r?.issue.status).toBe('acknowledged')
+      expect(r?.issue.acknowledgedBy).toBe('discord:111')
+      expect(r?.issue.acknowledgedAt).toBe('2026-07-28T00:00:00.000Z')
+    })
+
+    it('transitionIssueStatus 第二次 ack 回 changed=false 且不覆寫 actor', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'discord:111', '2026-07-28T00:00:00.000Z')
+      const r = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'discord:222', '2026-07-28T01:00:00.000Z')
+      expect(r?.changed).toBe(false)
+      expect(r?.issue.acknowledgedBy).toBe('discord:111')
+    })
+
+    it('transitionIssueStatus 不存在的 issue 回 null', async () => {
+      expect(await store.transitionIssueStatus('nope', 'resolved', ['open'], null, '2026-07-28T00:00:00.000Z')).toBeNull()
+    })
+
+    it('transitionIssueStatus resolved 寫 resolved_*；open 清空四欄', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      const r = await store.transitionIssueStatus(issue.id, 'resolved', ['open', 'acknowledged'], 'discord:9', '2026-07-28T00:00:00.000Z')
+      expect(r?.issue).toMatchObject({ status: 'resolved', resolvedBy: 'discord:9', resolvedAt: '2026-07-28T00:00:00.000Z' })
+      const o = await store.transitionIssueStatus(issue.id, 'open', ['resolved'], null, '2026-07-28T02:00:00.000Z')
+      expect(o?.issue).toMatchObject({ status: 'open', acknowledgedAt: null, acknowledgedBy: null, resolvedAt: null, resolvedBy: null })
+    })
+
+    it('新建 issue incidentFirstSeen=occurredAt、incidentCount=1、reopenCount=0；後續事件 incidentCount+1', async () => {
+      const a = await store.upsertIssueWithEvent(event())
+      expect(a.issue).toMatchObject({ reopenCount: 0, incidentCount: 1, incidentFirstSeen: '2026-07-27T10:00:00.000Z', acknowledgedAt: null, resolvedBy: null })
+      const b = await store.upsertIssueWithEvent(event({ occurredAt: '2026-07-27T10:01:00.000Z' }))
+      expect(b.issue).toMatchObject({ count: 2, incidentCount: 2, incidentFirstSeen: '2026-07-27T10:00:00.000Z' })
+    })
+
+    it('reopen 時 reopenCount+1、incidentCount=1、清空 ack/resolved', async () => {
+      const a = await store.upsertIssueWithEvent(event())
+      await store.transitionIssueStatus(a.issue.id, 'acknowledged', ['open'], 'discord:1', '2026-07-27T10:01:00.000Z')
+      await store.transitionIssueStatus(a.issue.id, 'resolved', ['open', 'acknowledged'], 'discord:1', '2026-07-27T10:02:00.000Z')
+      const b = await store.upsertIssueWithEvent(event({ occurredAt: '2026-07-27T11:00:00.000Z' }))
+      expect(b.reopened).toBe(true)
+      expect(b.issue).toMatchObject({
+        status: 'open',
+        reopenCount: 1,
+        incidentCount: 1,
+        incidentFirstSeen: '2026-07-27T11:00:00.000Z',
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+        resolvedAt: null,
+        resolvedBy: null,
+      })
+    })
+
+    it('getLatestSentNotification 只看同 incidentSeq 的 alert/count_edit', async () => {
+      await store.recordNotification({ ...nbase, sentAt: '2026-07-28T10:00:00.000Z' })
+      expect(await store.getLatestSentNotification('s-1', 'fp-n', 1)).toBeNull()
+      await store.recordNotification({ ...nbase, incidentSeq: 1, kind: 'resolve_reply', sentAt: '2026-07-28T10:05:00.000Z' })
+      expect(await store.getLatestSentNotification('s-1', 'fp-n', 1)).toBeNull()
+      await store.recordNotification({ ...nbase, kind: 'count_edit', severity: 'P0', sentAt: '2026-07-28T10:10:00.000Z' })
+      expect(await store.getLatestSentNotification('s-1', 'fp-n', 0)).toEqual({ severity: 'P0', sentAt: '2026-07-28T10:10:00.000Z' })
+    })
+
+    it('getIncidentRoot 取最早且有 messageId 的 alert', async () => {
+      const ids = { discordChannelId: 'c', payload: msg }
+      await store.recordNotification({ ...nbase, ...ids, discordMessageId: null, sentAt: '2026-07-28T09:00:00.000Z' })
+      await store.recordNotification({ ...nbase, ...ids, discordMessageId: 'm2', sentAt: '2026-07-28T10:00:00.000Z' })
+      await store.recordNotification({ ...nbase, ...ids, discordMessageId: 'm1', sentAt: '2026-07-28T09:30:00.000Z' })
+      await store.recordNotification({ ...nbase, ...ids, discordMessageId: 'm0', kind: 'count_edit', sentAt: '2026-07-28T08:00:00.000Z' })
+      await store.recordNotification({ ...nbase, ...ids, discordMessageId: 'm9', incidentSeq: 1, sentAt: '2026-07-28T07:00:00.000Z' })
+      expect(await store.getIncidentRoot('i-1', 0)).toEqual({ channelId: 'c', messageId: 'm1', payload: msg })
+      expect(await store.getIncidentRoot('i-1', 5)).toBeNull()
+    })
+
+    it('findActiveIssueIds 只回 open/acknowledged', async () => {
+      const a = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-a' }))
+      const b = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-b' }))
+      const c = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-c' }))
+      const h = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-h', errorType: 'health_check_failed' }))
+      await store.transitionIssueStatus(b.issue.id, 'acknowledged', ['open'], null, '2026-07-28T00:00:00.000Z')
+      await store.transitionIssueStatus(c.issue.id, 'resolved', ['open'], null, '2026-07-28T00:00:00.000Z')
+      expect((await store.findActiveIssueIds('s-1', { fingerprint: 'fp-a' })).sort()).toEqual([a.issue.id])
+      expect(await store.findActiveIssueIds('s-1', { fingerprint: 'fp-b' })).toEqual([b.issue.id])
+      expect(await store.findActiveIssueIds('s-1', { fingerprint: 'fp-c' })).toEqual([])
+      expect(await store.findActiveIssueIds('s-1', { errorType: 'health_check_failed' })).toEqual([h.issue.id])
+    })
   })
 
   it('updateIssueStatus returns updated copy and rejects unknown id', async () => {

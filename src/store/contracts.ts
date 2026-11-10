@@ -1,6 +1,7 @@
 import type { CanonicalEvent, HealthStatus, Issue, IssueAiTriage, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
+import type { DiscordMessage } from '@/notify/message'
 import type { HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 
 export type { IssueAiTriage }
@@ -8,6 +9,13 @@ export type { IssueAiTriage }
 export interface StoredIssue extends Issue {
   id: string
   ai: IssueAiTriage | null
+  acknowledgedAt: string | null
+  acknowledgedBy: string | null
+  resolvedAt: string | null
+  resolvedBy: string | null
+  reopenCount: number
+  incidentFirstSeen: string
+  incidentCount: number
 }
 
 export interface ServiceRecord {
@@ -61,6 +69,8 @@ export interface LatestNotification {
   sentAt: string
 }
 
+export type NotificationKind = 'alert' | 'count_edit' | 'resolve_reply'
+
 export interface NotificationRecord {
   issueId: string
   serviceId: string
@@ -69,6 +79,17 @@ export interface NotificationRecord {
   status: 'sent' | 'failed'
   countAtSend: number
   sentAt: string
+  kind: NotificationKind
+  incidentSeq: number
+  discordChannelId: string | null
+  discordMessageId: string | null
+  payload: DiscordMessage | null
+}
+
+export interface IncidentRoot {
+  channelId: string
+  messageId: string
+  payload: DiscordMessage
 }
 
 export interface StoredHeartbeat extends HeartbeatDefinition {
@@ -123,7 +144,28 @@ export interface Store {
   listPollableServices(): Promise<PollableService[]>
   updatePollState(serviceId: string, state: PollStateUpdate): Promise<void>
   resolveHealthCheckIssue(serviceId: string): Promise<boolean>
-  getLatestSentNotification(serviceId: string, fingerprint: string): Promise<LatestNotification | null>
+  getLatestSentNotification(
+    serviceId: string,
+    fingerprint: string,
+    incidentSeq: number,
+  ): Promise<LatestNotification | null>
+  /** 該 issue、該事故序號中 sent_at 最早、kind='alert'、status='sent' 且有 messageId 的通知 */
+  getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null>
+  /**
+   * 單一條件式轉換（where status in allowedFrom）。issue 不存在回 null；
+   * 存在但現況不在 allowedFrom 回 { issue: 現況, changed: false }。
+   */
+  transitionIssueStatus(
+    issueId: string,
+    to: IssueStatus,
+    allowedFrom: readonly IssueStatus[],
+    actor: string | null,
+    nowIso: string,
+  ): Promise<{ issue: StoredIssue; changed: boolean } | null>
+  findActiveIssueIds(
+    serviceId: string,
+    match: { fingerprint: string } | { errorType: 'health_check_failed' },
+  ): Promise<string[]>
   recordNotification(record: NotificationRecord): Promise<void>
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>

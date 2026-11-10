@@ -1,7 +1,7 @@
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -98,9 +98,17 @@ export class InMemoryStore implements Store {
         message: event.message,
         tags: [],
         ai: null,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+        resolvedAt: null,
+        resolvedBy: null,
+        reopenCount: 0,
+        incidentFirstSeen: event.occurredAt,
+        incidentCount: 1,
       }
       created = true
     } else {
+      const reopening = existing.status === 'resolved'
       issue = {
         ...existing,
         count: existing.count + 1,
@@ -110,7 +118,19 @@ export class InMemoryStore implements Store {
             : event.occurredAt,
         // 取最後到達（與 SQL upsert 的 excluded.level 一致）
         level: event.level,
-        status: existing.status === 'resolved' ? 'open' : existing.status,
+        status: reopening ? 'open' : existing.status,
+        // 鏡像 rpc：resolved→open 開新事故並清空確認／解決紀錄
+        ...(reopening
+          ? {
+              reopenCount: existing.reopenCount + 1,
+              incidentFirstSeen: event.occurredAt,
+              incidentCount: 1,
+              acknowledgedAt: null,
+              acknowledgedBy: null,
+              resolvedAt: null,
+              resolvedBy: null,
+            }
+          : { incidentCount: existing.incidentCount + 1 }),
       }
     }
 
@@ -234,11 +254,86 @@ export class InMemoryStore implements Store {
   async getLatestSentNotification(
     serviceId: string,
     fingerprint: string,
+    incidentSeq: number,
   ): Promise<LatestNotification | null> {
     const sent = this.notifications
-      .filter((n) => n.serviceId === serviceId && n.fingerprint === fingerprint && n.status === 'sent')
+      .filter(
+        (n) =>
+          n.serviceId === serviceId &&
+          n.fingerprint === fingerprint &&
+          n.incidentSeq === incidentSeq &&
+          (n.kind === 'alert' || n.kind === 'count_edit') &&
+          n.status === 'sent',
+      )
       .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
     return sent.length === 0 ? null : { severity: sent[0].severity, sentAt: sent[0].sentAt }
+  }
+
+  async getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null> {
+    const roots = this.notifications
+      .filter(
+        (n) =>
+          n.issueId === issueId &&
+          n.incidentSeq === incidentSeq &&
+          n.kind === 'alert' &&
+          n.status === 'sent' &&
+          n.discordMessageId !== null,
+      )
+      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime())
+    const root = roots[0]
+    if (root === undefined || root.discordMessageId === null || root.payload === null) return null
+    return {
+      channelId: root.discordChannelId ?? '',
+      messageId: root.discordMessageId,
+      payload: root.payload,
+    }
+  }
+
+  async transitionIssueStatus(
+    issueId: string,
+    to: IssueStatus,
+    allowedFrom: readonly IssueStatus[],
+    actor: string | null,
+    nowIso: string,
+  ): Promise<{ issue: StoredIssue; changed: boolean } | null> {
+    for (const [key, issue] of this.issues) {
+      if (issue.id !== issueId) continue
+      if (!allowedFrom.includes(issue.status)) {
+        return { issue: this.defensiveCopy(issue), changed: false }
+      }
+      const updated: StoredIssue = { ...issue, status: to }
+      if (to === 'acknowledged') {
+        updated.acknowledgedAt = nowIso
+        updated.acknowledgedBy = actor
+      } else if (to === 'resolved') {
+        updated.resolvedAt = nowIso
+        updated.resolvedBy = actor
+      } else if (to === 'open') {
+        updated.acknowledgedAt = null
+        updated.acknowledgedBy = null
+        updated.resolvedAt = null
+        updated.resolvedBy = null
+      }
+      this.issues.set(key, updated)
+      return { issue: this.defensiveCopy(updated), changed: true }
+    }
+    return null
+  }
+
+  async findActiveIssueIds(
+    serviceId: string,
+    match: { fingerprint: string } | { errorType: 'health_check_failed' },
+  ): Promise<string[]> {
+    return [...this.issues.values()]
+      .filter(
+        (i) =>
+          i.serviceId === serviceId &&
+          (i.status === 'open' || i.status === 'acknowledged') &&
+          ('fingerprint' in match
+            ? i.fingerprint === match.fingerprint
+            : i.errorType === match.errorType),
+      )
+      .map((i) => i.id)
   }
 
   async recordNotification(record: NotificationRecord): Promise<void> {

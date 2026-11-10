@@ -108,6 +108,13 @@ describe('rowToIssue', () => {
       message: 'boom',
       tags: ['db'],
       ai: null,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      resolvedAt: null,
+      resolvedBy: null,
+      reopenCount: 0,
+      incidentFirstSeen: '2026-07-27T10:00:00+00:00',
+      incidentCount: 3,
     })
   })
 

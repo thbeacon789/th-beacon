@@ -55,6 +55,13 @@ export function rowToIssue(row: IssueRow): StoredIssue {
     message: row.message,
     tags: row.tags,
     ai: rowToAiTriage(row),
+    acknowledgedAt: row.acknowledged_at,
+    acknowledgedBy: row.acknowledged_by,
+    resolvedAt: row.resolved_at,
+    resolvedBy: row.resolved_by,
+    reopenCount: row.reopen_count,
+    incidentFirstSeen: row.incident_first_seen,
+    incidentCount: row.incident_count,
   }
 }
 
