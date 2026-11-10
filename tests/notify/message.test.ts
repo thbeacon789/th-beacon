@@ -27,6 +27,18 @@ describe('buildDiscordMessage', () => {
     ])
   })
 
+  it('無負責人：不帶 content，allowed_mentions 禁止所有解析', () => {
+    const msg = buildDiscordMessage(base)
+    expect(msg.content).toBeUndefined()
+    expect(msg.allowed_mentions).toEqual({ parse: [] })
+  })
+
+  it('有負責人：content 為 mention，allowed_mentions 只放行該使用者', () => {
+    const msg = buildDiscordMessage({ ...base, ownerDiscordId: '123456789012345678' })
+    expect(msg.content).toBe('<@123456789012345678>')
+    expect(msg.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] })
+  })
+
   it('uses severity colors and attaches dashboard url when provided', () => {
     expect(buildDiscordMessage({ ...base, severity: 'P1' }).embeds[0].color).toBe(0xe67e22)
     expect(buildDiscordMessage({ ...base, severity: 'P2' }).embeds[0].color).toBe(0x95a5a6)

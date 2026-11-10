@@ -43,6 +43,7 @@ const serviceRow: ServiceRow = {
   name: 'svc-a',
   webhook_secret: null,
   description: null,
+  owner_discord_id: null,
   discord_webhook_url: null,
   health_window_minutes: 15,
   health_failure_threshold: 2,
@@ -141,6 +142,7 @@ describe('rowToService', () => {
       healthStatus: 'degraded',
       discordWebhookUrl: null,
       description: null,
+      ownerDiscordId: null,
       poll: { lastPollAt: '2026-07-27T10:04:00+00:00', healthy: false, consecutiveFailures: 1 },
     })
   })

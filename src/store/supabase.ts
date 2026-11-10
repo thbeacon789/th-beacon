@@ -273,10 +273,11 @@ export class SupabaseStore implements Store {
     name: string,
     webhookSecret: string,
     description: string | null,
+    ownerDiscordId: string | null = null,
   ): Promise<ServiceRecord | null> {
     const { data, error } = await this.client
       .from('services')
-      .insert({ name, webhook_secret: webhookSecret, description })
+      .insert({ name, webhook_secret: webhookSecret, description, owner_discord_id: ownerDiscordId })
       .select('*')
       .maybeSingle()
     // 交給 DB 的 unique 約束判重複，而不是先 select 再 insert——後者在兩人同時送出時
@@ -316,6 +317,16 @@ export class SupabaseStore implements Store {
       .eq('id', serviceId)
       .select('id')
     if (error) throw new Error(`updateServiceDescription failed: ${error.message}`)
+    return data.length > 0
+  }
+
+  async updateServiceOwner(serviceId: string, ownerDiscordId: string | null): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('services')
+      .update({ owner_discord_id: ownerDiscordId })
+      .eq('id', serviceId)
+      .select('id')
+    if (error) throw new Error(`updateServiceOwner failed: ${error.message}`)
     return data.length > 0
   }
 
@@ -367,6 +378,7 @@ export class SupabaseStore implements Store {
       name: row.name,
       hasWebhookSecret: row.webhook_secret !== null,
       description: row.description,
+      ownerDiscordId: row.owner_discord_id,
       createdAt: row.created_at,
       heartbeats: byService.get(row.id) ?? [],
     }))

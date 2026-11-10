@@ -9,6 +9,10 @@ export interface DiscordEmbedField {
 
 export interface DiscordMessage {
   username: string
+  /** 負責人 mention。embed 內的 mention 不會推播，必須放頂層 content。 */
+  content?: string
+  /** 一律帶上：外部錯誤內文若含 @everyone／@role 也不會被解析 */
+  allowed_mentions: { parse: []; users?: [string] }
   embeds: [
     {
       title: string
@@ -99,6 +103,7 @@ export function buildDiscordMessage(params: {
   lastSeen: string
   dashboardUrl?: string
   details?: NotifyDetails
+  ownerDiscordId?: string | null
 }): DiscordMessage {
   const description =
     params.message.length > DESCRIPTION_LIMIT
@@ -125,8 +130,11 @@ export function buildDiscordMessage(params: {
       inline: false,
     })
   }
+  const owner = params.ownerDiscordId ?? null
   return {
     username: 'th-beacon',
+    ...(owner !== null ? { content: `<@${owner}>` } : {}),
+    allowed_mentions: owner !== null ? { parse: [], users: [owner] } : { parse: [] },
     embeds: [
       {
         title: `[${params.severity}] ${params.serviceName} — ${

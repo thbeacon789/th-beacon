@@ -19,6 +19,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
   description: '付款服務',
+  ownerDiscordId: null,
 }
 
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({

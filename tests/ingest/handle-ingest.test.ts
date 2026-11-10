@@ -23,6 +23,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
+  ownerDiscordId: null,
 }
 
 function sign(sec: string, ts: string, raw: string): string {

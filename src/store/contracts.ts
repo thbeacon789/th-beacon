@@ -19,6 +19,7 @@ export interface ServiceRecord {
   poll: PollState | null
   discordWebhookUrl: string | null
   description: string | null
+  ownerDiscordId: string | null
 }
 
 export interface ServiceAuth {
@@ -94,6 +95,7 @@ export interface RegisteredService {
   name: string
   hasWebhookSecret: boolean
   description: string | null
+  ownerDiscordId: string | null
   createdAt: string
   heartbeats: StoredHeartbeat[]
 }
@@ -130,9 +132,16 @@ export interface Store {
 
   // ---- 後台登記（Plan 9）：唯一寫入路徑是登入後的 server action ----
   /** 名稱已存在時回 null（unique 違反由 DB 判定，不做 check-then-insert 競態） */
-  createService(name: string, webhookSecret: string, description: string | null): Promise<ServiceRecord | null>
+  createService(
+    name: string,
+    webhookSecret: string,
+    description: string | null,
+    ownerDiscordId?: string | null,
+  ): Promise<ServiceRecord | null>
   /** 服務不存在時回 false */
   updateServiceDescription(serviceId: string, description: string | null): Promise<boolean>
+  /** 設定／清除（null）負責人。服務不存在時回 false */
+  updateServiceOwner(serviceId: string, ownerDiscordId: string | null): Promise<boolean>
   /** 同服務下名稱已存在時回 null */
   createHeartbeat(serviceId: string, heartbeat: NewHeartbeat): Promise<StoredHeartbeat | null>
   /** 服務不存在時回 false */

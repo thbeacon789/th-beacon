@@ -15,6 +15,7 @@ import {
   registerHeartbeatAction,
   rotateSecretAction,
   updateServiceDescriptionAction,
+  updateServiceOwnerAction,
   type RegistrationState,
 } from './actions'
 
@@ -23,6 +24,8 @@ const IDLE: RegistrationState = { status: 'idle' }
 // 每日一次是最常見的 CI 排程；寬限 2 小時吸收排隊與重跑。
 const DEFAULT_INTERVAL = 86400
 const DEFAULT_GRACE = 7200
+
+const OWNER_HINT = 'Discord 開發者模式下對使用者按右鍵 → 複製使用者 ID'
 
 const NAME_TITLE = '小寫英數與連字號，須以英數開頭結尾'
 
@@ -149,6 +152,18 @@ export function RegisterServiceForm() {
             placeholder="這個服務做什麼、誰在用、哪些錯誤特別重要"
           />
           <span className="hint">AI 判 issue 等級時會參考；最多 {DESCRIPTION_MAX} 字。</span>
+        </label>
+
+        <label>
+          負責人 Discord ID（選填）
+          <input
+            name="ownerDiscordId"
+            inputMode="numeric"
+            pattern="[0-9]{17,20}"
+            title="17–20 位數字"
+            placeholder="123456789012345678"
+          />
+          <span className="hint">{OWNER_HINT}。設定後，這個服務的告警會 tag 此人。</span>
         </label>
 
         <label className="reg-check">
@@ -309,6 +324,70 @@ export function EditDescriptionForm({
       {state.status === 'description-updated' && (
         <p className="reg-ok" role="status">
           「{state.serviceName}」的說明已更新。
+        </p>
+      )}
+    </div>
+  )
+}
+
+export function EditOwnerForm({
+  serviceId,
+  serviceName,
+  ownerDiscordId,
+}: {
+  serviceId: string
+  serviceName: string
+  ownerDiscordId: string | null
+}) {
+  const [editing, setEditing] = useState(false)
+  const [state, action] = useActionState(
+    async (prev: RegistrationState, form: FormData) => {
+      const next = await updateServiceOwnerAction(prev, form)
+      if (next.status === 'owner-updated') setEditing(false)
+      return next
+    },
+    IDLE,
+  )
+
+  return (
+    <div className="reg-description">
+      {!editing ? (
+        <>
+          {ownerDiscordId === null ? (
+            <p className="reg-warn">尚未設定：告警不會 tag 任何人</p>
+          ) : (
+            <p className="mono">{ownerDiscordId}</p>
+          )}
+          <button type="button" onClick={() => setEditing(true)}>
+            {ownerDiscordId === null ? '設定負責人' : '修改負責人'}
+          </button>
+        </>
+      ) : (
+        <form action={action} className="reg-form">
+          <input type="hidden" name="serviceId" value={serviceId} />
+          <input type="hidden" name="serviceName" value={serviceName} />
+          <input
+            name="ownerDiscordId"
+            inputMode="numeric"
+            pattern="[0-9]{17,20}"
+            title="17–20 位數字"
+            placeholder="123456789012345678"
+            defaultValue={ownerDiscordId ?? ''}
+            aria-label={`「${serviceName}」的負責人 Discord ID`}
+          />
+          <span className="hint">{OWNER_HINT}。留空儲存＝清除負責人。</span>
+          <div className="reg-actions">
+            <SubmitButton pendingLabel="儲存中…">儲存負責人</SubmitButton>
+            <button type="button" onClick={() => setEditing(false)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+      <ErrorList state={state} />
+      {state.status === 'owner-updated' && (
+        <p className="reg-ok" role="status">
+          「{state.serviceName}」的負責人已更新。
         </p>
       )}
     </div>

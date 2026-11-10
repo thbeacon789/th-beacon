@@ -18,6 +18,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
+  ownerDiscordId: null,
 }
 
 const hb: Omit<StoredHeartbeat, 'serviceId'> = {

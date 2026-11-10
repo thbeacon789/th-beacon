@@ -4,6 +4,8 @@
 export interface ServiceRegistrationInput {
   name: string
   description: string
+  /** Discord 使用者 ID（snowflake）；null = 未設定負責人 */
+  ownerDiscordId: string | null
 }
 
 export interface HeartbeatRegistrationInput {
@@ -75,14 +77,31 @@ function validateDescriptionInto(raw: unknown, errors: string[]): string | null 
   return description
 }
 
+// Discord snowflake 目前 17–20 位數字；與 DB check constraint（^[0-9]{17,20}$）同源。
+// 空值 = 清除負責人，回 null。
+const OWNER_ID_PATTERN = /^[0-9]{17,20}$/
+
+export function validateOwnerDiscordId(raw: unknown): ValidationResult<string | null> {
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  if (text === '') return { ok: true, value: null }
+  if (!OWNER_ID_PATTERN.test(text)) {
+    return { ok: false, errors: ['負責人 Discord ID 須為 17–20 位數字'] }
+  }
+  return { ok: true, value: text }
+}
+
 export function validateServiceRegistration(
   input: Record<string, unknown>,
 ): ValidationResult<ServiceRegistrationInput> {
   const errors: string[] = []
   const name = validateName(input.name, '服務名稱', errors)
   const description = validateDescriptionInto(input.description, errors)
-  if (name === null || description === null || errors.length > 0) return { ok: false, errors }
-  return { ok: true, value: { name, description } }
+  const owner = validateOwnerDiscordId(input.ownerDiscordId)
+  if (!owner.ok) errors.push(...owner.errors)
+  if (name === null || description === null || !owner.ok || errors.length > 0) {
+    return { ok: false, errors }
+  }
+  return { ok: true, value: { name, description, ownerDiscordId: owner.value } }
 }
 
 function validateSeconds(

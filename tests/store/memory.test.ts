@@ -12,6 +12,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
+  ownerDiscordId: null,
 }
 
 const pollConfig = (over: Partial<import('@/store/contracts').PollConfig> = {}) => ({
@@ -276,6 +277,7 @@ describe('InMemoryStore 心跳', () => {
     poll: null,
     discordWebhookUrl: null,
     description: null,
+    ownerDiscordId: null,
   }
   const hb: Omit<StoredHeartbeat, 'serviceId'> = {
     id: 'hb-1',
@@ -498,6 +500,14 @@ describe('InMemoryStore AI 判定與說明', () => {
     await store.recordIssueAiTriage(issue.id, triage)
     const next = await store.upsertIssueWithEvent(event())
     expect(next.issue.ai).toEqual(triage)
+  })
+
+  it('createService 可帶負責人；updateServiceOwner 可改可清，不存在回 false', async () => {
+    const created = await store.createService('svc-o', 's', '說明', '123456789012345678')
+    expect((await store.getService(created!.id))?.ownerDiscordId).toBe('123456789012345678')
+    expect(await store.updateServiceOwner(created!.id, null)).toBe(true)
+    expect((await store.getService(created!.id))?.ownerDiscordId).toBeNull()
+    expect(await store.updateServiceOwner('nope', null)).toBe(false)
   })
 
   it('createService 帶 description；updateServiceDescription 可更新，不存在回 false', async () => {

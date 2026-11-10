@@ -3,6 +3,7 @@ import {
   validateServiceRegistration,
   validateHeartbeatRegistration,
   validateServiceDescription,
+  validateOwnerDiscordId,
   DESCRIPTION_MAX,
   NAME_PATTERN_SOURCE,
   INTERVAL_MIN,
@@ -16,7 +17,10 @@ const DESC = '負責收單的後端服務'
 describe('validateServiceRegistration', () => {
   it('接受 kebab-case 名稱並去除前後空白', () => {
     const result = validateServiceRegistration({ name: '  my-service-2  ', description: DESC })
-    expect(result).toEqual({ ok: true, value: { name: 'my-service-2', description: DESC } })
+    expect(result).toEqual({
+      ok: true,
+      value: { name: 'my-service-2', description: DESC, ownerDiscordId: null },
+    })
   })
 
   it.each([
@@ -145,5 +149,46 @@ describe('NAME_PATTERN_SOURCE（表單 <input pattern> 與後端驗證同源）'
     expect(at(INTERVAL_MAX + 1, GRACE_MIN)).toBe(false)
     expect(at(INTERVAL_MIN, GRACE_MIN - 1)).toBe(false)
     expect(at(INTERVAL_MIN, GRACE_MAX + 1)).toBe(false)
+  })
+})
+
+describe('validateOwnerDiscordId', () => {
+  it.each([
+    ['空字串', '', null],
+    ['只有空白', '   ', null],
+    ['undefined', undefined, null],
+    ['17 位', '12345678901234567', '12345678901234567'],
+    ['20 位', '12345678901234567890', '12345678901234567890'],
+    ['前後空白會 trim', '  123456789012345678  ', '123456789012345678'],
+  ])('接受：%s', (_label, raw, expected) => {
+    expect(validateOwnerDiscordId(raw)).toEqual({ ok: true, value: expected })
+  })
+
+  it.each([
+    ['16 位', '1234567890123456'],
+    ['21 位', '123456789012345678901'],
+    ['含非數字', '12345678901234567a'],
+    ['含 @ 與角括號', '<@123456789012345678>'],
+    ['中間空白', '12345678901 2345678'],
+  ])('拒絕：%s', (_label, raw) => {
+    const result = validateOwnerDiscordId(raw)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors[0]).toMatch(/Discord/)
+  })
+
+  it('validateServiceRegistration 帶入並驗證 ownerDiscordId', () => {
+    const ok = validateServiceRegistration({
+      name: 'svc-x',
+      description: DESC,
+      ownerDiscordId: ' 123456789012345678 ',
+    })
+    expect(ok).toEqual({
+      ok: true,
+      value: { name: 'svc-x', description: DESC, ownerDiscordId: '123456789012345678' },
+    })
+    expect(validateServiceRegistration({ name: 'svc-x', description: DESC }).ok).toBe(true)
+    expect(
+      validateServiceRegistration({ name: 'svc-x', description: DESC, ownerDiscordId: 'abc' }).ok,
+    ).toBe(false)
   })
 })

@@ -17,6 +17,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
   description: null,
+  ownerDiscordId: null,
 }
 
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({
@@ -57,6 +58,18 @@ describe('processAndNotify', () => {
     expect(result.notifyReason).toBe('first')
     expect(sent).toHaveLength(1)
     expect(sent[0].message.embeds[0].color).toBe(0x95a5a6)
+  })
+
+  it('服務有負責人：送出的 message tag 該負責人；無則不 tag', async () => {
+    store.seedService({ ...svc, id: 's-9', name: 'svc-owner', ownerDiscordId: '123456789012345678' })
+    const { deps, sent } = fakeSender()
+    await processAndNotify(store, deps, event({ serviceId: 's-9', fingerprint: 'fp-9' }), now)
+    expect(sent[0].message.content).toBe('<@123456789012345678>')
+    expect(sent[0].message.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] })
+
+    await processAndNotify(store, deps, event(), now)
+    expect(sent[1].message.content).toBeUndefined()
+    expect(sent[1].message.allowed_mentions).toEqual({ parse: [] })
   })
 
   it('顏色與紀錄取 event severity', async () => {

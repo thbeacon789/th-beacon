@@ -8,6 +8,7 @@ import {
   AddHeartbeatForm,
   RotateSecretForm,
   EditDescriptionForm,
+  EditOwnerForm,
 } from './registration-ui'
 
 export const dynamic = 'force-dynamic'
@@ -136,6 +137,15 @@ BEACON_SERVICE=<服務名稱> BEACON_SECRET=<金鑰> \\
                   serviceId={service.id}
                   serviceName={service.name}
                   description={service.description}
+                />
+              </section>
+
+              <section className="reg-section">
+                <h4 className="reg-section-title">負責人（Discord）</h4>
+                <EditOwnerForm
+                  serviceId={service.id}
+                  serviceName={service.name}
+                  ownerDiscordId={service.ownerDiscordId}
                 />
               </section>
 

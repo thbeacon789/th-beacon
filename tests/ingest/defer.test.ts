@@ -20,6 +20,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
   description: null,
+  ownerDiscordId: null,
 }
 
 const sign = (raw: string) =>

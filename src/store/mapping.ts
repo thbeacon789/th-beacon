@@ -67,6 +67,7 @@ export function rowToService(row: ServiceRow): ServiceRecord {
     healthStatus: narrowHealthStatus(row.health_status),
     discordWebhookUrl: row.discord_webhook_url,
     description: row.description,
+    ownerDiscordId: row.owner_discord_id,
     poll:
       row.poll_health_url === null
         ? null

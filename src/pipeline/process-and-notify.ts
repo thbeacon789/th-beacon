@@ -228,6 +228,7 @@ async function notifyStage(
 
   const message = buildDiscordMessage({
     serviceName: service.name,
+    ownerDiscordId: service.ownerDiscordId,
     severity,
     errorType: result.issue.errorType,
     message: result.issue.message,

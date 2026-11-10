@@ -313,6 +313,7 @@ export type Database = {
           last_poll_at: string | null
           last_poll_healthy: boolean | null
           name: string
+          owner_discord_id: string | null
           poll_consecutive_failures: number
           poll_cursor: string | null
           poll_error_url: string | null
@@ -334,6 +335,7 @@ export type Database = {
           last_poll_at?: string | null
           last_poll_healthy?: boolean | null
           name: string
+          owner_discord_id?: string | null
           poll_consecutive_failures?: number
           poll_cursor?: string | null
           poll_error_url?: string | null
@@ -355,6 +357,7 @@ export type Database = {
           last_poll_at?: string | null
           last_poll_healthy?: boolean | null
           name?: string
+          owner_discord_id?: string | null
           poll_consecutive_failures?: number
           poll_cursor?: string | null
           poll_error_url?: string | null
