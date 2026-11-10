@@ -12,6 +12,8 @@ export interface ProcessResult {
   duplicate: boolean
   previousSeverity: Severity | null
   health: HealthStatus
+  /** 本 event 讓已解決的 issue 復發（開新事故） */
+  reopened: boolean
 }
 
 export async function processEvent(
@@ -46,6 +48,7 @@ export async function applyTriage(
       duplicate: true,
       previousSeverity: issue.severity,
       health: service.healthStatus,
+      reopened: false,
     }
   }
 
@@ -54,10 +57,17 @@ export async function applyTriage(
   let tags: string[]
   if (event.severity) {
     // Ratchet（已拍板）：severity 只升不降——避免 P0↔P2 震盪讓「升級才追發」的通知洗版。
-    final = SEVERITY_RANK[event.severity] > SEVERITY_RANK[issue.severity] ? event.severity : issue.severity
+    // 復發＝新事故，重新判級（不 ratchet 回歷史等級）
+    final =
+      reopened || SEVERITY_RANK[event.severity] > SEVERITY_RANK[issue.severity]
+        ? event.severity
+        : issue.severity
     tags = issue.tags
   } else {
-    const rule = evaluateSeverity(issue, await store.loadRules(event.serviceId))
+    const rule = evaluateSeverity(
+      { ...issue, count: issue.incidentCount, firstSeen: issue.incidentFirstSeen },
+      await store.loadRules(event.serviceId),
+    )
     final = resolveSeverity({
       current: issue.severity,
       ai,
@@ -89,7 +99,7 @@ export async function applyTriage(
     await store.updateServiceHealth(event.serviceId, health)
   }
 
-  return { issue: triaged, created, duplicate: false, previousSeverity, health }
+  return { issue: triaged, created, duplicate: false, previousSeverity, health, reopened }
 }
 
 function sameTags(a: string[], b: string[]): boolean {

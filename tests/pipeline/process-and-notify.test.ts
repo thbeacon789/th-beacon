@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { processAndNotify } from '@/pipeline/process-and-notify'
 import { InMemoryStore } from '@/store/memory'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
-import type { DiscordMessage } from '@/notify/message'
+import type { DiscordMessage, DiscordOutgoing } from '@/notify/message'
+import type { DiscordBot, BotPostResult } from '@/notify/discord-bot'
 import type { ServiceRecord } from '@/store/contracts'
 import type { CanonicalEvent } from '@/core/types'
 
@@ -187,5 +188,149 @@ describe('processAndNotify', () => {
     expect(result.notified).toBe(false)
     expect(result.notifyReason).toBe('notify_error')
     expect(sent).toHaveLength(0)
+  })
+})
+
+function fakeBot(opts: { postFail?: boolean; editFail?: boolean } = {}) {
+  const posts: DiscordOutgoing[] = []
+  const edits: Array<{ channelId: string; messageId: string; message: DiscordOutgoing }> = []
+  const bot: DiscordBot = {
+    post: async (message): Promise<BotPostResult> => {
+      if (opts.postFail) return { ok: false, reason: 'http 500' }
+      posts.push(message)
+      return { ok: true, channelId: 'c1', messageId: `m${posts.length}` }
+    },
+    edit: async (channelId, messageId, message) => {
+      edits.push({ channelId, messageId, message })
+      return opts.editFail ? { ok: false, reason: 'http 500' } : { ok: true }
+    },
+  }
+  const { deps, sent } = fakeSender()
+  return { deps: { ...deps, bot } as NotifyDeps, bot, posts, edits, sent }
+}
+
+describe('processAndNotify（bot 模式）', () => {
+  let store: InMemoryStore
+  const min = (n: number) => new Date(now.getTime() + n * 60_000)
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService({ ...svc, ownerDiscordId: '123456789012345678' })
+  })
+
+  it('首次告警帶按鈕並記 message id 與 payload', async () => {
+    const { deps, posts, sent } = fakeBot()
+    const r = await processAndNotify(store, deps, event(), now)
+    expect(r.notified).toBe(true)
+    expect(sent).toHaveLength(0)
+    expect((posts[0] as DiscordMessage).components).toBeDefined()
+    const n = store.listNotifications()[0]
+    expect(n.discordMessageId).toBe('m1')
+    expect(n.discordChannelId).toBe('c1')
+    expect(n.payload?.components).toBeDefined()
+    expect(n.payload).not.toHaveProperty('message_reference')
+  })
+
+  it('bot 不需要 webhook url', async () => {
+    store.seedService({ ...svc, id: 's-2', discordWebhookUrl: null })
+    const { deps, posts } = fakeBot()
+    const r = await processAndNotify(store, deps, event({ serviceId: 's-2', fingerprint: 'x' }), now)
+    expect(r.notified).toBe(true)
+    expect(posts).toHaveLength(1)
+  })
+
+  it('同事故升級發 reply、有 tag、無按鈕', async () => {
+    const { deps, posts } = fakeBot()
+    await processAndNotify(store, deps, event(), now)
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P0', match: {} })
+    await processAndNotify(store, deps, event({ severity: 'P0' }), min(1))
+    const m = posts[1] as DiscordMessage
+    expect(m.message_reference?.message_id).toBe('m1')
+    expect(m.content).toContain('<@123456789012345678>')
+    expect(m.components).toBeUndefined()
+    const n = store.listNotifications()[1]
+    expect(n.payload).not.toHaveProperty('message_reference')
+  })
+
+  it('確認後冷卻到期只編輯計數、不 post；30 分鐘內不再 edit', async () => {
+    const { deps, posts, edits } = fakeBot()
+    const first = await processAndNotify(store, deps, event(), now)
+    await store.transitionIssueStatus(first.issue.id, 'acknowledged', ['open'], 'alice', now.toISOString())
+    const r = await processAndNotify(store, deps, event(), min(31))
+    expect(r.notified).toBe(false)
+    expect(r.notifyReason).toBe('acknowledged_silent')
+    expect(posts).toHaveLength(1)
+    expect(edits).toHaveLength(1)
+    expect(edits[0].messageId).toBe('m1')
+    const edited = edits[0].message as DiscordMessage
+    const fields = edited.embeds[0].fields
+    expect(fields.find((f) => f.name === '次數')?.value).toBe('2')
+    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    expect(JSON.stringify(edited.components)).not.toContain('ack')
+    const rec = store.listNotifications().find((n) => n.kind === 'count_edit')
+    expect(rec?.status).toBe('sent')
+    expect(rec?.payload).toBeNull()
+    expect(rec?.discordMessageId).toBe('m1')
+
+    await processAndNotify(store, deps, event(), min(40))
+    expect(edits).toHaveLength(1)
+  })
+
+  it('確認後升級仍 post 並 tag', async () => {
+    const { deps, posts } = fakeBot()
+    const first = await processAndNotify(store, deps, event(), now)
+    await store.transitionIssueStatus(first.issue.id, 'acknowledged', ['open'], 'alice', now.toISOString())
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P0', match: {} })
+    const r = await processAndNotify(store, deps, event(), min(1))
+    expect(r.notifyReason).toBe('escalation')
+    expect(posts).toHaveLength(2)
+    expect((posts[1] as DiscordMessage).content).toContain('<@123456789012345678>')
+  })
+
+  it('復發：新告警 reply 到上一事故根訊息、上一則被編輯為已復發、冷卻從零', async () => {
+    const { deps, posts, edits } = fakeBot()
+    const first = await processAndNotify(store, deps, event(), now)
+    store.setIssueStatus(first.issue.id, 'resolved')
+    const r = await processAndNotify(store, deps, event(), min(1))
+    expect(r.reopened).toBe(true)
+    expect(r.notifyReason).toBe('first')
+    const m = posts[1] as DiscordMessage
+    expect(m.message_reference?.message_id).toBe('m1')
+    expect(m.components).toBeDefined()
+    expect(edits).toHaveLength(1)
+    expect(edits[0].messageId).toBe('m1')
+    const prev = edits[0].message as DiscordMessage
+    expect(prev.embeds[0].fields.some((f) => f.name === '🔁 已復發')).toBe(true)
+    expect(prev.components).toBeUndefined()
+    const n = store.listNotifications()[1]
+    expect(n.incidentSeq).toBe(1)
+    expect(n.payload).not.toHaveProperty('message_reference')
+  })
+
+  it('編輯上一則失敗不阻止新告警寫入紀錄', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { deps } = fakeBot({ editFail: true })
+    const first = await processAndNotify(store, deps, event(), now)
+    store.setIssueStatus(first.issue.id, 'resolved')
+    const r = await processAndNotify(store, deps, event(), min(1))
+    expect(r.notified).toBe(true)
+    expect(store.listNotifications()).toHaveLength(2)
+    err.mockRestore()
+  })
+
+  it('post 失敗：記 failed、message id 為 null', async () => {
+    const { deps } = fakeBot({ postFail: true })
+    const r = await processAndNotify(store, deps, event(), now)
+    expect(r.notified).toBe(false)
+    const n = store.listNotifications()[0]
+    expect(n.status).toBe('failed')
+    expect(n.discordMessageId).toBeNull()
+  })
+
+  it('bot 為 null：送出的 message 無 components、走 sender(webhookUrl)', async () => {
+    store.seedService(svc)
+    const { deps, sent } = fakeSender()
+    await processAndNotify(store, { ...deps, bot: null }, event(), now)
+    expect(sent[0].url).toBe('https://discord/webhook')
+    expect(sent[0].message.components).toBeUndefined()
   })
 })

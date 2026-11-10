@@ -10,7 +10,13 @@ import {
 import { DIAGNOSIS_ERROR_LIMIT, truncateText } from '@/core/heartbeat'
 import type { Triager, TriageCallResult } from '@/triage/claude'
 import { shouldNotify } from '@/notify/decision'
-import { buildDiscordMessage, extractNotifyDetails } from '@/notify/message'
+import { buildDiscordMessage, extractNotifyDetails, type DiscordMessage } from '@/notify/message'
+import {
+  applyAcknowledged,
+  applyCount,
+  applyReopened,
+  buildFollowUpAlert,
+} from '@/notify/lifecycle-message'
 import type { DiscordSender } from '@/notify/discord'
 import type { DiscordBot } from '@/notify/discord-bot'
 import type { CanonicalEvent, IssueAiTriage, Severity } from '@/core/types'
@@ -228,37 +234,125 @@ async function notifyStage(
   if (!decision.notify) return { notified: false, notifyReason: decision.reason }
 
   const service = await store.getService(event.serviceId)
+  const bot = deps.bot ?? null
   const webhookUrl = service?.discordWebhookUrl ?? deps.fallbackWebhookUrl
-  if (service === null || webhookUrl === null) {
+  if (service === null || (bot === null && webhookUrl === null)) {
     return { notified: false, notifyReason: 'no_webhook' }
   }
 
-  const message = buildDiscordMessage({
+  const { issue } = result
+  const seq = issue.reopenCount
+  const baseRecord = {
+    issueId: issue.id,
+    serviceId: event.serviceId,
+    fingerprint: issue.fingerprint,
+    severity,
+    countAtSend: issue.count,
+    sentAt: now.toISOString(),
+    incidentSeq: seq,
+  }
+
+  if (bot !== null && issue.status === 'acknowledged' && decision.reason === 'cooldown_expired') {
+    await editAcknowledgedCount(store, bot, result, baseRecord)
+    return { notified: false, notifyReason: 'acknowledged_silent' }
+  }
+
+  const root = bot !== null ? await store.getIncidentRoot(issue.id, seq) : null
+  const built = buildDiscordMessage({
     serviceName: service.name,
     ownerDiscordId: service.ownerDiscordId,
     severity,
-    errorType: result.issue.errorType,
-    message: result.issue.message,
-    count: result.issue.count,
-    firstSeen: result.issue.firstSeen,
-    lastSeen: result.issue.lastSeen,
+    errorType: issue.errorType,
+    message: issue.message,
+    count: issue.count,
+    firstSeen: issue.firstSeen,
+    lastSeen: issue.lastSeen,
     ...(deps.dashboardUrl !== undefined ? { dashboardUrl: deps.dashboardUrl } : {}),
     details: extractNotifyDetails(event.metadata),
+    ...(bot !== null && root === null ? { buttons: { issueId: issue.id, incidentSeq: seq } } : {}),
   })
-  const sendResult = await deps.sender(webhookUrl, message)
+
+  if (bot === null) {
+    const sendResult = await deps.sender(webhookUrl as string, built)
+    await store.recordNotification({
+      ...baseRecord,
+      status: sendResult.ok ? 'sent' : 'failed',
+      kind: 'alert',
+      discordChannelId: null,
+      discordMessageId: null,
+      payload: null,
+    })
+    return { notified: sendResult.ok, notifyReason: decision.reason }
+  }
+
+  let outgoing: DiscordMessage = built
+  if (root !== null) {
+    outgoing = buildFollowUpAlert(built, root.messageId)
+  } else if (result.reopened && seq > 0) {
+    const prev = await store.getIncidentRoot(issue.id, seq - 1)
+    if (prev !== null) {
+      outgoing = {
+        ...built,
+        message_reference: { message_id: prev.messageId, fail_if_not_exists: false },
+      }
+      try {
+        const edited = await bot.edit(prev.channelId, prev.messageId, applyReopened(prev.payload, seq))
+        if (!edited.ok) console.error('mark previous incident reopened failed:', edited.reason)
+      } catch (error) {
+        console.error('mark previous incident reopened failed:', error)
+      }
+    }
+  }
+
+  const post = await bot.post(outgoing)
+  const { message_reference: _ref, ...stored } = outgoing
   await store.recordNotification({
-    issueId: result.issue.id,
-    serviceId: event.serviceId,
-    fingerprint: result.issue.fingerprint,
-    severity,
-    status: sendResult.ok ? 'sent' : 'failed',
-    countAtSend: result.issue.count,
-    sentAt: now.toISOString(),
+    ...baseRecord,
+    status: post.ok ? 'sent' : 'failed',
     kind: 'alert',
-    incidentSeq: result.issue.reopenCount,
-    discordChannelId: null,
-    discordMessageId: null,
+    discordChannelId: post.ok ? post.channelId : null,
+    discordMessageId: post.ok ? post.messageId : null,
+    payload: stored,
+  })
+  return { notified: post.ok, notifyReason: decision.reason }
+}
+
+/** 已確認 issue 冷卻到期：不再 post，只靜默更新根訊息的計數（保留「已確認」與按鈕狀態）。 */
+async function editAcknowledgedCount(
+  store: Store,
+  bot: DiscordBot,
+  result: ProcessResult,
+  base: {
+    issueId: string
+    serviceId: string
+    fingerprint: string
+    severity: Severity
+    countAtSend: number
+    sentAt: string
+    incidentSeq: number
+  },
+): Promise<void> {
+  const { issue } = result
+  const root = await store.getIncidentRoot(issue.id, base.incidentSeq)
+  if (root === null) return
+  const acked =
+    issue.acknowledgedBy !== null && issue.acknowledgedAt !== null
+      ? applyAcknowledged(root.payload, issue.acknowledgedBy, issue.acknowledgedAt, issue.id, base.incidentSeq)
+      : root.payload
+  let ok = false
+  try {
+    const edited = await bot.edit(root.channelId, root.messageId, applyCount(acked, issue.count, issue.lastSeen))
+    ok = edited.ok
+    if (!edited.ok) console.error('count edit failed:', edited.reason)
+  } catch (error) {
+    console.error('count edit failed:', error)
+  }
+  await store.recordNotification({
+    ...base,
+    status: ok ? 'sent' : 'failed',
+    kind: 'count_edit',
+    discordChannelId: root.channelId,
+    discordMessageId: root.messageId,
     payload: null,
   })
-  return { notified: sendResult.ok, notifyReason: decision.reason }
 }

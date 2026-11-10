@@ -158,4 +158,32 @@ describe('processEvent', () => {
     expect(result.issue.severity).toBe('P2')
     expect(result.issue.tags).toEqual(['noise'])
   })
+
+  it('復發且 event 自帶 P2、歷史 P0：final 為 P2（不 ratchet）', async () => {
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P0', match: {} })
+    const first = await processEvent(store, event(), now)
+    expect(first.issue.severity).toBe('P0')
+    store.setIssueStatus(first.issue.id, 'resolved')
+    const again = await processEvent(store, event({ severity: 'P2' }), now)
+    expect(again.reopened).toBe(true)
+    expect(again.issue.severity).toBe('P2')
+  })
+
+  it('頻率規則以 incidentCount／incidentFirstSeen 評估（復發後不被歷史累計誤觸）', async () => {
+    store.seedRule(null, {
+      id: 'freq',
+      priority: 10,
+      severity: 'P0',
+      match: { minCountInWindow: 3, windowMinutes: 60 },
+    })
+    await processEvent(store, event(), now)
+    const second = await processEvent(store, event({ occurredAt: '2026-07-27T10:09:10.000Z' }), now)
+    expect(second.issue.severity).toBe('P2')
+    store.setIssueStatus(second.issue.id, 'resolved')
+    // 復發：累計 count=3 達門檻，但本事故 incidentCount=1 → 不該升 P0
+    const again = await processEvent(store, event({ occurredAt: '2026-07-27T10:09:30.000Z' }), now)
+    expect(again.reopened).toBe(true)
+    expect(again.issue.count).toBe(3)
+    expect(again.issue.severity).toBe('P2')
+  })
 })
