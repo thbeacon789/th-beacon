@@ -28,12 +28,14 @@ export function createServerNotifyDeps(opts: { budget?: { remaining: number } | 
   const dashboardUrl = envOrNull('APP_URL')
   const botToken = envOrNull('DISCORD_BOT_TOKEN')
   const alertChannelId = envOrNull('DISCORD_ALERT_CHANNEL_ID')
+  // 四個變數任一缺 -> bot 模式關閉（否則按鈕會因互動端點缺 key 而成死按鈕）
+  const botEnabled = botToken !== null && alertChannelId !== null && getDiscordInteractionConfig() !== null
   return {
     triage: { triager: createServerTriager(), budget: opts.budget ?? null },
     sender: sendDiscordWebhook,
     fallbackWebhookUrl: envOrNull('DISCORD_WEBHOOK_URL'),
     bot:
-      botToken !== null && alertChannelId !== null
+      botEnabled && botToken !== null && alertChannelId !== null
         ? createDiscordBot({ token: botToken, channelId: alertChannelId })
         : null,
     ...(dashboardUrl !== null ? { dashboardUrl } : {}),
