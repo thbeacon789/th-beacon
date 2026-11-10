@@ -265,3 +265,17 @@ describe('buildDiscordMessage diagnosis', () => {
     ])
   })
 })
+
+describe('buildDiscordMessage buttons', () => {
+  const uuid = '123e4567-e89b-42d3-a456-426614174000'
+  it('帶 buttons 有確認與已解決按鈕', () => {
+    const msg = buildDiscordMessage({ ...base, buttons: { issueId: uuid, incidentSeq: 2 } })
+    expect(msg.components?.[0].components.map((c) => c.custom_id)).toEqual([
+      `ack:${uuid}:2`,
+      `resolve:${uuid}:2`,
+    ])
+  })
+  it('不帶 buttons 無 components 欄位', () => {
+    expect('components' in buildDiscordMessage(base)).toBe(false)
+  })
+})

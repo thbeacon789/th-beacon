@@ -1,10 +1,24 @@
 import type { Severity } from '@/core/types'
 import { isSafeRunUrl, type DiagnosisCategory } from '@/core/heartbeat'
+import { withAlertButtons } from './lifecycle-message'
 
 export interface DiscordEmbedField {
   name: string
   value: string
   inline: boolean
+}
+
+export interface DiscordButton {
+  type: 2
+  /** 2 = secondary、3 = success */
+  style: 2 | 3
+  label: string
+  custom_id: string
+}
+
+export interface DiscordActionRow {
+  type: 1
+  components: DiscordButton[]
 }
 
 export interface DiscordMessage {
@@ -13,6 +27,10 @@ export interface DiscordMessage {
   content?: string
   /** 一律帶上：外部錯誤內文若含 @everyone／@role 也不會被解析 */
   allowed_mentions: { parse: []; users?: [string] }
+  /** 只有 bot 發送的訊息才帶（webhook 不支援互動按鈕） */
+  components?: DiscordActionRow[]
+  /** 以回覆形式掛在既有訊息下 */
+  message_reference?: { message_id: string; fail_if_not_exists: false }
   embeds: [
     {
       title: string
@@ -104,6 +122,7 @@ export function buildDiscordMessage(params: {
   dashboardUrl?: string
   details?: NotifyDetails
   ownerDiscordId?: string | null
+  buttons?: { issueId: string; incidentSeq: number }
 }): DiscordMessage {
   const description =
     params.message.length > DESCRIPTION_LIMIT
@@ -131,7 +150,7 @@ export function buildDiscordMessage(params: {
     })
   }
   const owner = params.ownerDiscordId ?? null
-  return {
+  const message: DiscordMessage = {
     username: 'th-beacon',
     ...(owner !== null ? { content: `<@${owner}>` } : {}),
     allowed_mentions: owner !== null ? { parse: [], users: [owner] } : { parse: [] },
@@ -154,4 +173,7 @@ export function buildDiscordMessage(params: {
       },
     ],
   }
+  return params.buttons !== undefined
+    ? withAlertButtons(message, params.buttons.issueId, params.buttons.incidentSeq, ['ack', 'resolve'])
+    : message
 }
