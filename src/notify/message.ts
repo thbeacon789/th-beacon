@@ -42,6 +42,16 @@ export interface DiscordMessage {
   ]
 }
 
+/** 純文字回覆（無 embeds、無 components），掛在既有訊息下 */
+export interface DiscordReplyMessage {
+  username: string
+  content: string
+  allowed_mentions: { parse: [] }
+  message_reference: { message_id: string; fail_if_not_exists: false }
+}
+
+export type DiscordOutgoing = DiscordMessage | DiscordReplyMessage
+
 const SEVERITY_COLOR: Record<Severity, number> = {
   P0: 0xe74c3c,
   P1: 0xe67e22,

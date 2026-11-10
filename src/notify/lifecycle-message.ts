@@ -1,5 +1,5 @@
 import { displayActor, encodeButtonId, type ButtonAction } from '@/core/lifecycle'
-import type { DiscordEmbedField, DiscordMessage } from './message'
+import type { DiscordEmbedField, DiscordMessage, DiscordReplyMessage } from './message'
 
 const GREEN = 0x2ecc71
 const GREY = 0x95a5a6
@@ -115,13 +115,13 @@ export function applyCount(msg: DiscordMessage, count: number, lastSeen: string)
   return m
 }
 
-export function buildResolveReply(source: Source, replyToMessageId: string): DiscordMessage {
+export function buildResolveReply(source: Source, replyToMessageId: string): DiscordReplyMessage {
   return {
     username: 'th-beacon',
     content: source === 'manual' ? '✅ 已解決' : '✅ 已自動恢復',
     allowed_mentions: { parse: [] },
     message_reference: { message_id: replyToMessageId, fail_if_not_exists: false },
-  } as DiscordMessage
+  }
 }
 
 export function buildFollowUpAlert(alert: DiscordMessage, replyToMessageId: string): DiscordMessage {
