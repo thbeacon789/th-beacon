@@ -172,6 +172,8 @@ export type Database = {
       }
       issues: {
         Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
           ai_category: string | null
           ai_error: string | null
           ai_judged_at: string | null
@@ -185,9 +187,14 @@ export type Database = {
           fingerprint: string
           first_seen: string
           id: string
+          incident_count: number
+          incident_first_seen: string
           last_seen: string
           level: string
           message: string
+          reopen_count: number
+          resolved_at: string | null
+          resolved_by: string | null
           service_id: string
           severity: string
           status: string
@@ -195,6 +202,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           ai_category?: string | null
           ai_error?: string | null
           ai_judged_at?: string | null
@@ -208,9 +217,14 @@ export type Database = {
           fingerprint: string
           first_seen: string
           id?: string
+          incident_count?: number
+          incident_first_seen: string
           last_seen: string
           level: string
           message: string
+          reopen_count?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
           service_id: string
           severity?: string
           status?: string
@@ -218,6 +232,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           ai_category?: string | null
           ai_error?: string | null
           ai_judged_at?: string | null
@@ -231,9 +247,14 @@ export type Database = {
           fingerprint?: string
           first_seen?: string
           id?: string
+          incident_count?: number
+          incident_first_seen?: string
           last_seen?: string
           level?: string
           message?: string
+          reopen_count?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
           service_id?: string
           severity?: string
           status?: string
@@ -254,9 +275,14 @@ export type Database = {
         Row: {
           channel: string
           count_at_send: number
+          discord_channel_id: string | null
+          discord_message_id: string | null
           fingerprint: string
           id: string
+          incident_seq: number
           issue_id: string | null
+          kind: string
+          payload: Json | null
           sent_at: string
           service_id: string
           severity: string
@@ -265,9 +291,14 @@ export type Database = {
         Insert: {
           channel?: string
           count_at_send: number
+          discord_channel_id?: string | null
+          discord_message_id?: string | null
           fingerprint: string
           id?: string
+          incident_seq?: number
           issue_id?: string | null
+          kind?: string
+          payload?: Json | null
           sent_at?: string
           service_id: string
           severity: string
@@ -276,9 +307,14 @@ export type Database = {
         Update: {
           channel?: string
           count_at_send?: number
+          discord_channel_id?: string | null
+          discord_message_id?: string | null
           fingerprint?: string
           id?: string
+          incident_seq?: number
           issue_id?: string | null
+          kind?: string
+          payload?: Json | null
           sent_at?: string
           service_id?: string
           severity?: string

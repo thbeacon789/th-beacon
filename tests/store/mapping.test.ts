@@ -34,6 +34,13 @@ const issueRow: IssueRow = {
   ai_model: null,
   ai_judged_at: null,
   ai_error: null,
+  acknowledged_at: null,
+  acknowledged_by: null,
+  resolved_at: null,
+  resolved_by: null,
+  reopen_count: 0,
+  incident_first_seen: '2026-07-27T10:00:00+00:00',
+  incident_count: 3,
   created_at: '2026-07-27T10:00:00+00:00',
   updated_at: '2026-07-27T10:05:00+00:00',
 }

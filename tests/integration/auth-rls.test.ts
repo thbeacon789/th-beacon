@@ -53,6 +53,7 @@ beforeEach(async () => {
     service_id: serviceId,
     fingerprint: 'fp-rls',
     first_seen: '2026-07-28T10:00:00.000Z',
+    incident_first_seen: '2026-07-28T10:00:00.000Z',
     last_seen: '2026-07-28T10:00:00.000Z',
     level: 'error',
     error_type: 'X',
