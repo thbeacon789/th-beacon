@@ -15,7 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **服務登記已自助化**：`/services` 頁面（登入後）可直接登記服務、產生／輪替 HMAC 金鑰、登記心跳名稱，不必再手寫 SQL。寫入路徑只有 server action（`app/services/actions.ts`），一律經 `requireUser()` 白名單把關；輸入驗證是純函式 `src/core/registration.ts`。金鑰產生後只回傳一次（DB 仍存明文，但頁面刻意不回讀），忘了就用「重新產生」輪替。名稱重複交給 DB 的 unique 約束判定（`23505` → 回 `null`），不做 check-then-insert。
 
-**未完事項**：reopen 復發語意與恢復通知另案（Plan 6 交接）；per-service `discord_webhook_url` 目前四個服務都未設，通知全走全域 `DISCORD_WEBHOOK_URL` fallback。部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md`。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
+**告警生命週期（Discord bot）已完成**：issue 狀態轉換的唯一出口是 `src/pipeline/transition-issue.ts` 的 `transitionIssue`（dashboard、Discord 按鈕、輪詢／心跳自動恢復皆經它）。bot 模式需 `DISCORD_BOT_TOKEN`、`DISCORD_ALERT_CHANNEL_ID`、`DISCORD_PUBLIC_KEY`、`DISCORD_APPLICATION_ID` 四個變數齊全，否則退回 webhook；按鈕回呼端點 `/api/discord/interactions`（Ed25519 驗簽，設定見 `docs/api.md` §6）。Spec：`docs/superpowers/specs/2026-11-10-alert-lifecycle-design.md`。
+
+**未完事項**：reopen 復發語意與恢復通知已隨告警生命週期完成；per-service `discord_webhook_url` 目前四個服務都未設，通知全走全域 `DISCORD_WEBHOOK_URL` fallback。部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md`。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
 

@@ -147,6 +147,8 @@ export interface Store {
     fingerprint: string,
     incidentSeq: number,
   ): Promise<LatestNotification | null>
+  /** 依 id 取單一 issue；不存在回 null */
+  getIssue(issueId: string): Promise<StoredIssue | null>
   /** 該 issue、該事故序號中 sent_at 最早、kind='alert'、status='sent' 且有 messageId 的通知 */
   getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null>
   /**

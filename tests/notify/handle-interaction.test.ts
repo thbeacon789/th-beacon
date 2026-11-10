@@ -1,0 +1,192 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto'
+import { handleInteraction } from '@/notify/handle-interaction'
+import { processEvent } from '@/pipeline/process-event'
+import { InMemoryStore } from '@/store/memory'
+import type { ServiceRecord } from '@/store/contracts'
+import type { CanonicalEvent } from '@/core/types'
+import type { DiscordBot } from '@/notify/discord-bot'
+import { buildDiscordMessage } from '@/notify/message'
+import { withAlertButtons } from '@/notify/lifecycle-message'
+
+const now = new Date('2026-07-28T10:10:00.000Z')
+const svc: ServiceRecord = {
+  id: 's-1',
+  name: 'svc-a',
+  healthWindowMinutes: 15,
+  healthFailureThreshold: 2,
+  healthStatus: 'healthy',
+  poll: null,
+  discordWebhookUrl: null,
+  description: null,
+  ownerDiscordId: null,
+}
+const event: CanonicalEvent = {
+  serviceId: 's-1',
+  source: 'push',
+  level: 'error',
+  errorType: 'X',
+  message: 'x',
+  fingerprint: 'fp',
+  occurredAt: '2026-07-28T10:09:00.000Z',
+  metadata: {},
+}
+
+const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+const publicKeyHex = Buffer.from(publicKey.export({ format: 'jwk' }).x as string, 'base64url').toString('hex')
+const config = { publicKey: publicKeyHex }
+const TS = '1700000000'
+
+function signed(body: unknown, key: KeyObject = privateKey) {
+  const rawBody = JSON.stringify(body)
+  return { rawBody, timestamp: TS, signature: sign(null, Buffer.from(TS + rawBody), key).toString('hex') }
+}
+
+function fakeBot(): DiscordBot {
+  return {
+    async post() {
+      return { ok: true, channelId: 'ch-1', messageId: 'reply-1' }
+    },
+    async edit() {
+      return { ok: true }
+    },
+  }
+}
+
+describe('handleInteraction', () => {
+  let store: InMemoryStore
+  let issueId: string
+  beforeEach(async () => {
+    store = new InMemoryStore()
+    store.seedService(svc)
+    store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { issue } = await processEvent(store, event, now)
+    issueId = issue.id
+    const base = buildDiscordMessage({
+      serviceName: 'svc-a',
+      severity: issue.severity,
+      errorType: 'X',
+      message: 'x',
+      count: 1,
+      firstSeen: event.occurredAt,
+      lastSeen: event.occurredAt,
+    })
+    await store.recordNotification({
+      issueId,
+      serviceId: 's-1',
+      fingerprint: issue.fingerprint,
+      severity: issue.severity,
+      status: 'sent',
+      countAtSend: 1,
+      sentAt: '2026-07-28T10:09:30.000Z',
+      kind: 'alert',
+      incidentSeq: issue.reopenCount,
+      discordChannelId: 'ch-1',
+      discordMessageId: 'm-1',
+      payload: withAlertButtons(base, issue.id, issue.reopenCount, ['ack', 'resolve']),
+    })
+  })
+
+  const click = (customId: string, userId = '111', shape: 'member' | 'user' = 'member') => ({
+    type: 3,
+    data: { custom_id: customId },
+    ...(shape === 'member' ? { member: { user: { id: userId } } } : { user: { id: userId } }),
+  })
+  const run = (body: unknown, bot: DiscordBot | null = fakeBot()) =>
+    handleInteraction(store, bot, config, signed(body), now)
+
+  it('缺簽章 header 回 401', async () => {
+    const r = await handleInteraction(store, null, config, { rawBody: '{}', signature: null, timestamp: null }, now)
+    expect(r.status).toBe(401)
+  })
+
+  it('簽章錯誤回 401', async () => {
+    const other = generateKeyPairSync('ed25519').privateKey
+    const r = await handleInteraction(store, null, config, signed({ type: 1 }, other), now)
+    expect(r.status).toBe(401)
+  })
+
+  it('PING 回 type 1', async () => {
+    const r = await run({ type: 1 })
+    expect(r.status).toBe(200)
+    expect(r.body).toEqual({ type: 1 })
+  })
+
+  it('ack 按鈕 -> type 7、DB acknowledged、有 after', async () => {
+    const r = await run(click(`ack:${issueId}:0`))
+    expect(r.status).toBe(200)
+    expect((r.body as { type: number }).type).toBe(7)
+    expect((r.body as { data: { allowed_mentions: unknown } }).data.allowed_mentions).toEqual({ parse: [] })
+    expect(r.after).toBeTypeOf('function')
+    const issue = await store.getIssue(issueId)
+    expect(issue?.status).toBe('acknowledged')
+    expect(issue?.acknowledgedBy).toBe('discord:111')
+  })
+
+  it('第二次 ack -> ephemeral 已由 <@111> 確認', async () => {
+    await run(click(`ack:${issueId}:0`))
+    const r = await run(click(`ack:${issueId}:0`, '222'))
+    const body = r.body as { type: number; data: { content: string; flags: number } }
+    expect(body.type).toBe(4)
+    expect(body.data.flags).toBe(64)
+    expect(body.data.content).toBe('已由 <@111> 確認')
+  })
+
+  it('resolve 後再按 resolve -> 此問題已解決', async () => {
+    await run(click(`resolve:${issueId}:0`))
+    const r = await run(click(`resolve:${issueId}:0`))
+    expect((r.body as { data: { content: string } }).data.content).toBe('此問題已解決')
+  })
+
+  it('incidentSeq 不符 -> 過期 ephemeral 且 DB 不變', async () => {
+    const r = await run(click(`ack:${issueId}:5`))
+    expect((r.body as { data: { content: string } }).data.content).toBe('此告警已過期，請看最新一則')
+    expect((await store.getIssue(issueId))?.status).toBe('open')
+  })
+
+  it('找不到 issue -> 找不到此問題', async () => {
+    const r = await run(click('ack:00000000-0000-4000-8000-000000000000:0'))
+    expect((r.body as { data: { content: string } }).data.content).toBe('找不到此問題')
+  })
+
+  it('custom_id 亂碼 -> 無法辨識的按鈕', async () => {
+    const r = await run(click('garbage'))
+    const body = r.body as { type: number; data: { content: string; flags: number } }
+    expect(body.type).toBe(4)
+    expect(body.data.content).toBe('無法辨識的按鈕')
+    expect(body.data.flags).toBe(64)
+  })
+
+  it('DM 形式（user.id）也能取到點擊者', async () => {
+    await run(click(`ack:${issueId}:0`, '333', 'user'))
+    expect((await store.getIssue(issueId))?.acknowledgedBy).toBe('discord:333')
+  })
+
+  it('沒有根訊息紀錄時以 interaction.message 為底回 type 7', async () => {
+    const bare = new InMemoryStore()
+    bare.seedService(svc)
+    bare.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { issue } = await processEvent(bare, event, now)
+    const msg = withAlertButtons(
+      buildDiscordMessage({
+        serviceName: 'svc-a', severity: issue.severity, errorType: 'X', message: 'x', count: 1,
+        firstSeen: event.occurredAt, lastSeen: event.occurredAt,
+      }),
+      issue.id, 0, ['ack', 'resolve'],
+    )
+    const body = { ...click(`ack:${issue.id}:0`), message: { embeds: msg.embeds, components: msg.components } }
+    const r = await handleInteraction(bare, fakeBot(), config, signed(body), now)
+    const out = r.body as { type: number; data: { embeds: unknown[] } }
+    expect(out.type).toBe(7)
+    expect(JSON.stringify(out.data.embeds)).toContain('已確認')
+  })
+
+  it('沒有根訊息也沒有 interaction.message -> type 6', async () => {
+    const bare = new InMemoryStore()
+    bare.seedService(svc)
+    bare.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
+    const { issue } = await processEvent(bare, event, now)
+    const r = await handleInteraction(bare, fakeBot(), config, signed(click(`ack:${issue.id}:0`)), now)
+    expect((r.body as { type: number }).type).toBe(6)
+  })
+})

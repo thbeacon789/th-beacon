@@ -297,3 +297,31 @@ CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分
 | 一直 404（heartbeat） | 名稱沒登記，或與 `heartbeats.name` 不完全相符 |
 | issue 每天長一筆新的 | 變動值（次數、時間）寫進了 `message`，導致 fingerprint 每次都不同 |
 | heartbeat 回 200 但沒建 issue / 沒通知 | 該心跳 `enabled = false`——run 有記錄，但刻意不建 issue、不通知（回應會帶 `suppressed`） |
+
+## 6. `POST /api/discord/interactions` — Discord 按鈕回呼（內部）
+
+告警訊息上的「✋ 確認」「✅ 已解決」按鈕被按下時，Discord 會 POST 到此端點。**接入的服務不需要呼叫它**；本節只說明部署時如何設定。
+
+### 驗證與回應
+
+- 以 Discord 的 Ed25519 簽章驗證（`x-signature-ed25519`、`x-signature-timestamp`，對 `timestamp + 原始 body` 驗簽，公鑰為 `DISCORD_PUBLIC_KEY`），**不走** HMAC、也不走 dashboard 登入。安全邊界就是 Discord 簽章；任何看得到告警頻道的人都能按按鈕。
+- 缺 header 或驗簽失敗回 `401`；`DISCORD_PUBLIC_KEY`／`DISCORD_APPLICATION_ID` 未設回 `503`。
+- Discord 要求 3 秒內回應：狀態轉換（寫 DB）同步完成並以「更新原訊息」回應，健康度重算與解決回覆在回應後執行。
+
+### 環境變數（四個須齊全才啟用 bot 模式）
+
+| 變數 | 用途 |
+| --- | --- |
+| `DISCORD_BOT_TOKEN` | bot 發送／編輯告警訊息 |
+| `DISCORD_ALERT_CHANNEL_ID` | 告警發送的頻道 |
+| `DISCORD_PUBLIC_KEY` | Application 的 Public Key（hex），驗 Interactions 簽章 |
+| `DISCORD_APPLICATION_ID` | Application ID |
+
+任一未設定時，通知退回既有的 `DISCORD_WEBHOOK_URL` webhook 模式（沒有按鈕、不編輯訊息）。
+
+### Discord 後台設定
+
+1. 到 Discord Developer Portal 建立 Application，記下 Application ID 與 Public Key。
+2. 在 Bot 頁籤建立 Bot 並取得 token。
+3. 用 OAuth2 URL 將 Bot 加入伺服器，頻道權限需有 `VIEW_CHANNEL`、`SEND_MESSAGES`、`READ_MESSAGE_HISTORY`。
+4. 在 General Information 的 **Interactions Endpoint URL** 填 `https://<部署網域>/api/discord/interactions`。儲存時 Discord 會送 PING 與無效簽章測試，端點需已部署且四個環境變數已設好才會通過。

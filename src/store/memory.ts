@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
@@ -85,7 +86,7 @@ export class InMemoryStore implements Store {
 
     if (existing === undefined) {
       issue = {
-        id: `issue-${this.nextId++}`,
+        id: randomUUID(),
         serviceId: event.serviceId,
         fingerprint: event.fingerprint,
         severity: 'P2',
@@ -241,6 +242,13 @@ export class InMemoryStore implements Store {
       )
       .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
     return sent.length === 0 ? null : { severity: sent[0].severity, sentAt: sent[0].sentAt }
+  }
+
+  async getIssue(issueId: string): Promise<StoredIssue | null> {
+    for (const issue of this.issues.values()) {
+      if (issue.id === issueId) return this.defensiveCopy(issue)
+    }
+    return null
   }
 
   async getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null> {

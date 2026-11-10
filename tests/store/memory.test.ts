@@ -267,6 +267,12 @@ describe('InMemoryStore', () => {
     }
     const msg = { content: 'x', embeds: [] } as unknown as import('@/notify/message').DiscordMessage
 
+    it('getIssue 依 id 取回 issue，不存在回 null', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      expect((await store.getIssue(issue.id))?.id).toBe(issue.id)
+      expect(await store.getIssue('nope')).toBeNull()
+    })
+
     it('transitionIssueStatus ack 從 open 成功並記 actor', async () => {
       const { issue } = await store.upsertIssueWithEvent(event())
       const r = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'discord:111', '2026-07-28T00:00:00.000Z')

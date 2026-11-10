@@ -194,6 +194,12 @@ export class SupabaseStore implements Store {
     return data === null ? null : { severity: narrowSeverity(data.severity), sentAt: data.sent_at }
   }
 
+  async getIssue(issueId: string): Promise<StoredIssue | null> {
+    const { data, error } = await this.client.from('issues').select('*').eq('id', issueId).maybeSingle()
+    if (error) throw new Error(`getIssue failed: ${error.message}`)
+    return data === null ? null : rowToIssue(data)
+  }
+
   async getIncidentRoot(issueId: string, incidentSeq: number): Promise<IncidentRoot | null> {
     const { data, error } = await this.client
       .from('notifications')

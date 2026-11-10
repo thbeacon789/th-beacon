@@ -32,7 +32,7 @@ function sourceOf(actor: IssueActor): Source {
   return actor.kind === 'system' ? actor.source : 'manual'
 }
 
-function transformRoot(
+export function transformRoot(
   payload: DiscordMessage,
   to: IssueStatus,
   issue: StoredIssue,
