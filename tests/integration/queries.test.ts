@@ -48,7 +48,7 @@ describe('getServicesOverview', () => {
 
   it('excludes resolved/ignored from counts', async () => {
     const issues = await listIssues(client, { serviceId: svcA, severity: 'P1' })
-    await store.updateIssueStatus(issues[0].id, 'resolved')
+    await store.transitionIssueStatus(issues[0].id, 'resolved', ['open', 'acknowledged'], null, '2026-07-28T00:00:00.000Z')
     const overview = await getServicesOverview(client, now)
     expect(overview[0].openCounts).toEqual({ P0: 0, P1: 0, P2: 1 })
   })
@@ -77,7 +77,7 @@ describe('listIssues', () => {
     expect(await listIssues(client, { serviceId: svcB })).toHaveLength(0)
     const p1 = (await listIssues(client, { severity: 'P1' }))[0]
     expect(p1.serviceName).toBe('svc-a')
-    await store.updateIssueStatus(p1.id, 'acknowledged')
+    await store.transitionIssueStatus(p1.id, 'acknowledged', ['open'], null, '2026-07-28T00:00:00.000Z')
     expect(await listIssues(client, { status: 'acknowledged' })).toHaveLength(1)
   })
 })

@@ -228,17 +228,6 @@ describe('SupabaseStore poll extensions', () => {
       store.updatePollState(ghost, { lastPollAt: '2026-07-28T10:00:00.000Z', healthy: null, consecutiveFailures: 0 }),
     ).rejects.toThrow(/unknown service/)
   })
-
-  it('resolveHealthCheckIssue resolves health issues only', async () => {
-    await store.upsertIssueWithEvent(event({ errorType: 'health_check_failed', fingerprint: 'fp-h', source: 'poll' }))
-    await store.upsertIssueWithEvent(event({ fingerprint: 'fp-o' }))
-    expect(await store.resolveHealthCheckIssue(serviceId)).toBe(true)
-    expect(await store.resolveHealthCheckIssue(serviceId)).toBe(false)
-    const { data } = await client.from('issues').select('error_type,status').eq('service_id', serviceId)
-    const byType = Object.fromEntries(data!.map((r) => [r.error_type, r.status]))
-    expect(byType.health_check_failed).toBe('resolved')
-    expect(byType.TypeError).toBe('open')
-  })
 })
 
 describe('SupabaseStore notifications', () => {
@@ -255,20 +244,15 @@ describe('SupabaseStore notifications', () => {
   })
 })
 
-describe('SupabaseStore.updateIssueStatus', () => {
-  it('updates status, returns mapped issue, rejects unknown id', async () => {
-    const { issue } = await store.upsertIssueWithEvent(event())
-    const updated = await store.updateIssueStatus(issue.id, 'resolved')
-    expect(updated.status).toBe('resolved')
-    expect(updated.id).toBe(issue.id)
-    const { data } = await client.from('issues').select('status').eq('id', issue.id).single()
-    expect(data?.status).toBe('resolved')
-    await expect(
-      store.updateIssueStatus('00000000-0000-0000-0000-000000000001', 'resolved'),
-    ).rejects.toThrow(/unknown issue/)
+describe('SupabaseStore.findActiveIssueIds', () => {
+  it('依 errorType 只回未解的 health_check_failed issue', async () => {
+    const h = await store.upsertIssueWithEvent(event({ errorType: 'health_check_failed', fingerprint: 'fp-h', source: 'poll' }))
+    await store.upsertIssueWithEvent(event({ fingerprint: 'fp-o' }))
+    expect(await store.findActiveIssueIds(serviceId, { errorType: 'health_check_failed' })).toEqual([h.issue.id])
+    await store.transitionIssueStatus(h.issue.id, 'resolved', ['open', 'acknowledged'], null, '2026-07-28T00:00:00.000Z')
+    expect(await store.findActiveIssueIds(serviceId, { errorType: 'health_check_failed' })).toEqual([])
   })
 })
-
 describe('SupabaseStore 登記（後台）', () => {
   it('createService 建立服務並寫入金鑰', async () => {
     const created = await store.createService('svc-registered', 'secret-abc', null)
@@ -342,9 +326,9 @@ describe('SupabaseStore AI 判定與說明', () => {
     const first = await store.upsertIssueWithEvent(event())
     expect(first.reopened).toBe(false)
     expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
-    await store.updateIssueStatus(first.issue.id, 'acknowledged')
+    await store.transitionIssueStatus(first.issue.id, 'acknowledged', ['open'], null, '2026-07-28T00:00:00.000Z')
     expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
-    await store.updateIssueStatus(first.issue.id, 'resolved')
+    await store.transitionIssueStatus(first.issue.id, 'resolved', ['open', 'acknowledged'], null, '2026-07-28T00:00:00.000Z')
     const again = await store.upsertIssueWithEvent(event())
     expect(again.reopened).toBe(true)
     expect(again.issue.status).toBe('open')

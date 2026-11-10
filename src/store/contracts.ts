@@ -133,7 +133,6 @@ export interface Store {
   upsertIssueWithEvent(event: CanonicalEvent): Promise<UpsertOutcome>
   loadRules(serviceId: string): Promise<TriageRule[]>
   updateIssueTriage(issueId: string, severity: Severity, tags: string[]): Promise<void>
-  updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue>
   listOpenIssues(serviceId: string): Promise<OpenIssue[]>
   // 該服務 lastSeen >= sinceIso 的所有 issue（任何狀態），供 AI 判級的統計用。
   listRecentIssues(
@@ -143,7 +142,6 @@ export interface Store {
   updateServiceHealth(serviceId: string, health: HealthStatus): Promise<void>
   listPollableServices(): Promise<PollableService[]>
   updatePollState(serviceId: string, state: PollStateUpdate): Promise<void>
-  resolveHealthCheckIssue(serviceId: string): Promise<boolean>
   getLatestSentNotification(
     serviceId: string,
     fingerprint: string,
@@ -169,7 +167,6 @@ export interface Store {
   recordNotification(record: NotificationRecord): Promise<void>
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
-  resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean>
   recordIssueAiTriage(issueId: string, triage: IssueAiTriage): Promise<void>
 
   // ---- 後台登記（Plan 9）：唯一寫入路徑是登入後的 server action ----

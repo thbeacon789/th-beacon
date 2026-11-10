@@ -2,6 +2,7 @@ import { synthesizeHealthCheckFailedEvent, normalizePolledError } from '@/core/n
 import { processAndNotify } from '@/pipeline/process-and-notify'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
+import { transitionIssue } from '@/pipeline/transition-issue'
 import { isPollDue } from '@/poll/due'
 import { parsePolledErrors } from '@/poll/parse'
 import type { PollableService, Store } from '@/store/contracts'
@@ -54,7 +55,19 @@ export async function pollService(
         healthy: true,
         consecutiveFailures,
       })
-      outcome.healthIssueResolved = await store.resolveHealthCheckIssue(service.id)
+      const activeIds = await store.findActiveIssueIds(service.id, { errorType: 'health_check_failed' })
+      for (const id of activeIds) {
+        const r = await transitionIssue(
+          store,
+          deps.bot ?? null,
+          id,
+          'resolved',
+          { kind: 'system', source: 'poll' },
+          now,
+          { refreshHealth: false },
+        )
+        if (r.outcome === 'changed') outcome.healthIssueResolved = true
+      }
       await refreshServiceHealth(store, service.id, now)
     } else {
       consecutiveFailures += 1

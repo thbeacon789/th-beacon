@@ -107,7 +107,7 @@ describe('pipeline AI 判級', () => {
   it('resolved 後再來一筆：reopened、呼叫、AI 判低 → 降級', async () => {
     const h = setup([ok('P0'), ok('P2')])
     const first = await processAndNotify(store, h.deps, event(), t0)
-    await store.updateIssueStatus(first.issue.id, 'resolved')
+    await store.transitionIssueStatus(first.issue.id, 'resolved', ['open', 'acknowledged'], null, t0.toISOString())
     const r = await processAndNotify(store, h.deps, event(), after(5))
     expect(h.calls()).toBe(2)
     expect(r.issue.severity).toBe('P2')

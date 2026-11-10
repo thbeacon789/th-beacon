@@ -144,14 +144,18 @@ describe('handleHeartbeat', () => {
     )
     expect(await store.listOpenIssues('s-1')).toHaveLength(1)
 
+    const missedFp0 = heartbeatFingerprint('s-1', 'heartbeat_missed', 'daily-test')
+    const [missedId] = await store.findActiveIssueIds('s-1', { fingerprint: missedFp0 })
     const body = '{"name":"daily-test","status":"fail"}'
     await handleHeartbeat(store, noopDeps, request(body), now)
+    const resolved = await store.transitionIssueStatus(missedId, 'resolved', [], null, now.toISOString())
+    expect(resolved?.issue).toMatchObject({ status: 'resolved', resolvedBy: null })
 
     const missedFp = heartbeatFingerprint('s-1', 'heartbeat_missed', 'daily-test')
     const stillOpen = await store.listOpenIssues('s-1')
     // heartbeat_missed 已被 resolve，只剩 fail 產生的 test_failure
     expect(stillOpen).toHaveLength(1)
-    expect(await store.resolveIssueByFingerprint('s-1', missedFp)).toBe(false)
+    expect(await store.findActiveIssueIds('s-1', { fingerprint: missedFp })).toEqual([])
   })
 
   it('enabled=false 的心跳回報 fail 時，last_run_at 有更新但不建立 issue、不通知', async () => {

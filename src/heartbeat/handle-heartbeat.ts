@@ -11,7 +11,24 @@ import { processWithOptionalDefer } from '@/pipeline/defer'
 import type { Defer } from '@/pipeline/defer'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
+import { transitionIssue } from '@/pipeline/transition-issue'
 import type { Store } from '@/store/contracts'
+
+/** 關掉指定指紋的未解 issue（來源 heartbeat）；健康度由呼叫端統一重算。 */
+async function resolveByFingerprint(
+  store: Store,
+  deps: NotifyDeps,
+  serviceId: string,
+  fingerprint: string,
+  now: Date,
+): Promise<void> {
+  const ids = await store.findActiveIssueIds(serviceId, { fingerprint })
+  for (const id of ids) {
+    await transitionIssue(store, deps.bot ?? null, id, 'resolved', { kind: 'system', source: 'heartbeat' }, now, {
+      refreshHealth: false,
+    })
+  }
+}
 
 const UNAUTHORIZED: IngestResponse = { status: 401, body: { error: 'unauthorized' } }
 
@@ -60,9 +77,12 @@ export async function handleHeartbeat(
   if (heartbeat === null) return { status: 404, body: { error: 'unknown heartbeat' } }
 
   // 只要有回報就證明排程還活著——pass 與 fail 都關掉逾期 issue。
-  await store.resolveIssueByFingerprint(
+  await resolveByFingerprint(
+    store,
+    deps,
     serviceId,
     heartbeatFingerprint(serviceId, 'heartbeat_missed', report.name),
+    now,
   )
 
   const body: Record<string, unknown> = {
@@ -101,14 +121,8 @@ export async function handleHeartbeat(
     }
   } else {
     // 測試修好了，關掉先前的失敗 issue
-    await store.resolveIssueByFingerprint(
-      serviceId,
-      heartbeatFingerprint(serviceId, 'test_failure', report.name),
-    )
-    await store.resolveIssueByFingerprint(
-      serviceId,
-      heartbeatFingerprint(serviceId, TEST_FAILURE_ENV, report.name),
-    )
+    await resolveByFingerprint(store, deps, serviceId, heartbeatFingerprint(serviceId, 'test_failure', report.name), now)
+    await resolveByFingerprint(store, deps, serviceId, heartbeatFingerprint(serviceId, TEST_FAILURE_ENV, report.name), now)
     await refreshServiceHealth(store, serviceId, now)
   }
 

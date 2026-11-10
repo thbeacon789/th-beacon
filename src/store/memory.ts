@@ -160,17 +160,6 @@ export class InMemoryStore implements Store {
     throw new Error(`unknown issue: ${issueId}`)
   }
 
-  async updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue> {
-    for (const [key, issue] of this.issues) {
-      if (issue.id === issueId) {
-        const updated = { ...issue, status }
-        this.issues.set(key, updated)
-        return { ...updated, tags: [...updated.tags] }
-      }
-    }
-    throw new Error(`unknown issue: ${issueId}`)
-  }
-
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
     return [...this.issues.values()]
       .filter(
@@ -234,21 +223,6 @@ export class InMemoryStore implements Store {
         },
       })
     }
-  }
-
-  async resolveHealthCheckIssue(serviceId: string): Promise<boolean> {
-    let changed = false
-    for (const [key, issue] of this.issues) {
-      if (
-        issue.serviceId === serviceId &&
-        issue.errorType === 'health_check_failed' &&
-        (issue.status === 'open' || issue.status === 'acknowledged')
-      ) {
-        this.issues.set(key, { ...issue, status: 'resolved' })
-        changed = true
-      }
-    }
-    return changed
   }
 
   async getLatestSentNotification(
@@ -336,6 +310,11 @@ export class InMemoryStore implements Store {
       .map((i) => i.id)
   }
 
+  /** 測試用：目前記錄的全部通知 */
+  listNotifications(): NotificationRecord[] {
+    return this.notifications.map((n) => ({ ...n }))
+  }
+
   async recordNotification(record: NotificationRecord): Promise<void> {
     this.notifications.push({ ...record })
   }
@@ -363,21 +342,6 @@ export class InMemoryStore implements Store {
     }
     this.heartbeats[index] = updated
     return { ...updated }
-  }
-
-  async resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean> {
-    let changed = false
-    for (const [key, issue] of this.issues) {
-      if (
-        issue.serviceId === serviceId &&
-        issue.fingerprint === fingerprint &&
-        (issue.status === 'open' || issue.status === 'acknowledged')
-      ) {
-        this.issues.set(key, { ...issue, status: 'resolved' })
-        changed = true
-      }
-    }
-    return changed
   }
 
   // ---- 後台登記 ----

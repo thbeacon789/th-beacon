@@ -224,17 +224,6 @@ describe('InMemoryStore', () => {
     ).rejects.toThrow(/unknown service/)
   })
 
-  it('resolveHealthCheckIssue resolves only health_check_failed open issues', async () => {
-    const health = await store.upsertIssueWithEvent(event({ errorType: 'health_check_failed', fingerprint: 'fp-h' }))
-    const other = await store.upsertIssueWithEvent(event({ fingerprint: 'fp-o' }))
-    expect(await store.resolveHealthCheckIssue('s-1')).toBe(true)
-    expect(await store.resolveHealthCheckIssue('s-1')).toBe(false) // 已無可 resolve
-    const open = await store.listOpenIssues('s-1')
-    expect(open).toHaveLength(1) // 只剩 other
-    void health
-    void other
-  })
-
   it('records notifications and returns latest sent only', async () => {
     const base = {
       issueId: 'i-1',
@@ -366,13 +355,14 @@ describe('InMemoryStore', () => {
     })
   })
 
-  it('updateIssueStatus returns updated copy and rejects unknown id', async () => {
+  it('transitionIssueStatus returns updated copy', async () => {
     const { issue } = await store.upsertIssueWithEvent(event())
-    const updated = await store.updateIssueStatus(issue.id, 'acknowledged')
-    expect(updated.status).toBe('acknowledged')
-    updated.tags.push('mutate') // 呼叫端改動不得污染 store
+    const r = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], null, '2026-07-28T00:00:00.000Z')
+    expect(r?.issue.status).toBe('acknowledged')
+    r?.issue.tags.push('mutate') // 呼叫端改動不得污染 store
     expect((await store.listOpenIssues('s-1'))[0].status).toBe('acknowledged')
-    await expect(store.updateIssueStatus('nope', 'resolved')).rejects.toThrow(/unknown issue/)
+    const again = await store.transitionIssueStatus(issue.id, 'acknowledged', [], null, '2026-07-28T00:00:00.000Z')
+    expect(again?.issue.tags).not.toContain('mutate')
   })
 })
 
@@ -474,33 +464,6 @@ describe('InMemoryStore 心跳', () => {
     expect(list.map((h) => h.name)).toEqual(['daily-test'])
   })
 
-  it('resolveIssueByFingerprint 只關掉指定指紋的未解 issue', async () => {
-    await store.upsertIssueWithEvent({
-      serviceId: 's-1',
-      source: 'poll',
-      level: 'error',
-      errorType: 'heartbeat_missed',
-      message: 'Heartbeat missed: daily-test',
-      fingerprint: 'fp-a',
-      occurredAt: '2026-07-29T01:00:00.000Z',
-      metadata: {},
-    })
-    await store.upsertIssueWithEvent({
-      serviceId: 's-1',
-      source: 'push',
-      level: 'error',
-      errorType: 'other',
-      message: 'unrelated',
-      fingerprint: 'fp-b',
-      occurredAt: '2026-07-29T01:00:00.000Z',
-      metadata: {},
-    })
-
-    expect(await store.resolveIssueByFingerprint('s-1', 'fp-a')).toBe(true)
-    const open = await store.listOpenIssues('s-1')
-    expect(open).toHaveLength(1)
-    expect(await store.resolveIssueByFingerprint('s-1', 'fp-a')).toBe(false)
-  })
 })
 
 describe('InMemoryStore 登記', () => {
@@ -580,9 +543,9 @@ describe('InMemoryStore AI 判定與說明', () => {
     const first = await store.upsertIssueWithEvent(event())
     expect(first.reopened).toBe(false)
     expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
-    await store.updateIssueStatus(first.issue.id, 'acknowledged')
+    await store.transitionIssueStatus(first.issue.id, 'acknowledged', ['open'], null, '2026-07-28T00:00:00.000Z')
     expect((await store.upsertIssueWithEvent(event())).reopened).toBe(false)
-    await store.updateIssueStatus(first.issue.id, 'resolved')
+    await store.transitionIssueStatus(first.issue.id, 'resolved', ['open', 'acknowledged'], null, '2026-07-28T00:01:00.000Z')
     const again = await store.upsertIssueWithEvent(event())
     expect(again.reopened).toBe(true)
     expect(again.issue.status).toBe('open')

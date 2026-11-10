@@ -102,17 +102,6 @@ export class SupabaseStore implements Store {
     if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
   }
 
-  async updateIssueStatus(issueId: string, status: IssueStatus): Promise<StoredIssue> {
-    const { data, error } = await this.client
-      .from('issues')
-      .update({ status })
-      .eq('id', issueId)
-      .select('*')
-    if (error) throw new Error(`updateIssueStatus failed: ${error.message}`)
-    if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
-    return rowToIssue(data[0])
-  }
-
   async listOpenIssues(serviceId: string): Promise<OpenIssue[]> {
     const { data, error } = await this.client
       .from('issues')
@@ -183,18 +172,6 @@ export class SupabaseStore implements Store {
       .select('id')
     if (error) throw new Error(`updatePollState failed: ${error.message}`)
     if (data.length === 0) throw new Error(`unknown service: ${serviceId}`)
-  }
-
-  async resolveHealthCheckIssue(serviceId: string): Promise<boolean> {
-    const { data, error } = await this.client
-      .from('issues')
-      .update({ status: 'resolved' })
-      .eq('service_id', serviceId)
-      .eq('error_type', 'health_check_failed')
-      .in('status', ['open', 'acknowledged'])
-      .select('id')
-    if (error) throw new Error(`resolveHealthCheckIssue failed: ${error.message}`)
-    return data.length > 0
   }
 
   async getLatestSentNotification(
@@ -338,18 +315,6 @@ export class SupabaseStore implements Store {
       .select('*')
     if (error) throw new Error(`recordHeartbeatRun failed: ${error.message}`)
     return data.length === 0 ? null : rowToHeartbeat(data[0])
-  }
-
-  async resolveIssueByFingerprint(serviceId: string, fingerprint: string): Promise<boolean> {
-    const { data, error } = await this.client
-      .from('issues')
-      .update({ status: 'resolved' })
-      .eq('service_id', serviceId)
-      .eq('fingerprint', fingerprint)
-      .in('status', ['open', 'acknowledged'])
-      .select('id')
-    if (error) throw new Error(`resolveIssueByFingerprint failed: ${error.message}`)
-    return data.length > 0
   }
 
   // ---- 後台登記 ----

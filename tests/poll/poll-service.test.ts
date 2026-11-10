@@ -87,10 +87,13 @@ describe('pollService — health', () => {
     await pollService(store, bad.http, noopDeps, await currentPollable(), now)
     expect((await store.getService('s-1'))?.healthStatus).toBe('down')
 
+    const [healthIssueId] = await store.findActiveIssueIds('s-1', { errorType: 'health_check_failed' })
     const good = fakeHttp({ 'https://a/health': { ok: true, status: 200, bodyText: 'ok' } })
     const outcome = await pollService(store, good.http, noopDeps, await currentPollable(), now)
     expect(outcome.healthy).toBe(true)
     expect(outcome.healthIssueResolved).toBe(true)
+    const after = await store.transitionIssueStatus(healthIssueId, 'resolved', [], null, now.toISOString())
+    expect(after?.issue).toMatchObject({ status: 'resolved', resolvedBy: null })
     expect((await store.getService('s-1'))?.poll?.consecutiveFailures).toBe(0)
     expect((await store.getService('s-1'))?.healthStatus).toBe('healthy')
     expect(await store.listOpenIssues('s-1')).toHaveLength(0)
