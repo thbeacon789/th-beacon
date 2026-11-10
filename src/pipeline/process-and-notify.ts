@@ -12,6 +12,7 @@ import type { Triager, TriageCallResult } from '@/triage/claude'
 import { shouldNotify } from '@/notify/decision'
 import { buildDiscordMessage, extractNotifyDetails } from '@/notify/message'
 import type { DiscordSender } from '@/notify/discord'
+import type { DiscordBot } from '@/notify/discord-bot'
 import type { CanonicalEvent, IssueAiTriage, Severity } from '@/core/types'
 import type { ServiceRecord, Store, UpsertOutcome } from '@/store/contracts'
 
@@ -25,6 +26,8 @@ export interface NotifyDeps {
   sender: DiscordSender
   fallbackWebhookUrl: string | null
   dashboardUrl?: string
+  /** 有值 = 告警改由 Bot 發到指定頻道；null／未提供 = 沿用 webhook */
+  bot?: DiscordBot | null
   /** 未提供 = 停用 AI 判級（行為同未導入前） */
   triage?: TriageDeps
 }

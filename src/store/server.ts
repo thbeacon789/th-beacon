@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/db/database.types'
 import { SupabaseStore } from '@/store/supabase'
 import { sendDiscordWebhook } from '@/notify/discord'
+import { createDiscordBot } from '@/notify/discord-bot'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import Anthropic from '@anthropic-ai/sdk'
 import { oidcFederationProvider } from '@anthropic-ai/sdk/lib/credentials/oidc-federation'
@@ -25,12 +26,25 @@ function envOrNull(name: string): string | null {
 
 export function createServerNotifyDeps(opts: { budget?: { remaining: number } | null } = {}): NotifyDeps {
   const dashboardUrl = envOrNull('APP_URL')
+  const botToken = envOrNull('DISCORD_BOT_TOKEN')
+  const alertChannelId = envOrNull('DISCORD_ALERT_CHANNEL_ID')
   return {
     triage: { triager: createServerTriager(), budget: opts.budget ?? null },
     sender: sendDiscordWebhook,
     fallbackWebhookUrl: envOrNull('DISCORD_WEBHOOK_URL'),
+    bot:
+      botToken !== null && alertChannelId !== null
+        ? createDiscordBot({ token: botToken, channelId: alertChannelId })
+        : null,
     ...(dashboardUrl !== null ? { dashboardUrl } : {}),
   }
+}
+
+/** Discord Interactions 驗簽用設定；兩者皆有才回，否則 null（端點應拒絕服務） */
+export function getDiscordInteractionConfig(): { publicKey: string; applicationId: string } | null {
+  const publicKey = envOrNull('DISCORD_PUBLIC_KEY')
+  const applicationId = envOrNull('DISCORD_APPLICATION_ID')
+  return publicKey !== null && applicationId !== null ? { publicKey, applicationId } : null
 }
 
 export function getCronSecret(): string {
