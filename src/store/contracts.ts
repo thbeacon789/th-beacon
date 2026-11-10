@@ -161,6 +161,8 @@ export interface Store {
     allowedFrom: readonly IssueStatus[],
     actor: string | null,
     nowIso: string,
+    /** 有值時 reopen_count 必須相符才轉換（防止舊事故的按鈕作用到新事故） */
+    expectedReopenCount?: number,
   ): Promise<{ issue: StoredIssue; changed: boolean } | null>
   findActiveIssueIds(
     serviceId: string,

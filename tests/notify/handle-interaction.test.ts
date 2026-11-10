@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto'
 import { handleInteraction } from '@/notify/handle-interaction'
 import { processEvent } from '@/pipeline/process-event'
@@ -117,6 +117,7 @@ describe('handleInteraction', () => {
     expect(r.status).toBe(200)
     expect((r.body as { type: number }).type).toBe(7)
     expect((r.body as { data: { allowed_mentions: unknown } }).data.allowed_mentions).toEqual({ parse: [] })
+    expect((r.body as { data: object }).data).not.toHaveProperty('username')
     expect(r.after).toBeTypeOf('function')
     const issue = await store.getIssue(issueId)
     expect(issue?.status).toBe('acknowledged')
@@ -188,5 +189,29 @@ describe('handleInteraction', () => {
     const { issue } = await processEvent(bare, event, now)
     const r = await handleInteraction(bare, fakeBot(), config, signed(click(`ack:${issue.id}:0`)), now)
     expect((r.body as { type: number }).type).toBe(6)
+  })
+
+  it('預檢通過後事故被 reopen（TOCTOU）：不確認新事故，回已過期', async () => {
+    await store.transitionIssueStatus(issueId, 'resolved', ['open'], null, now.toISOString())
+    await processEvent(store, event, now) // reopen -> reopenCount 1
+    const real = await store.getIssue(issueId)
+    expect(real?.reopenCount).toBe(1)
+    const spy = vi.spyOn(store, 'getIssue').mockResolvedValueOnce({ ...(real as NonNullable<typeof real>), reopenCount: 0 })
+    const r = await run(click(`ack:${issueId}:0`))
+    spy.mockRestore()
+    expect((r.body as { data: { content: string } }).data.content).toBe('此告警已過期，請看最新一則')
+    expect((await store.getIssue(issueId))?.status).toBe('open')
+    expect((await store.getIssue(issueId))?.acknowledgedBy).toBeNull()
+  })
+
+  it('ack 後再 resolve：type 7 同時含已確認欄位與最新次數', async () => {
+    await run(click(`ack:${issueId}:0`))
+    await processEvent(store, event, now)
+    const r = await run(click(`resolve:${issueId}:0`, '222'))
+    const out = r.body as { type: number; data: { embeds: Array<{ fields: Array<{ name: string; value: string }> }> } }
+    expect(out.type).toBe(7)
+    const fields = out.data.embeds[0].fields
+    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    expect(fields.find((f) => f.name === '次數')?.value).toBe('2')
   })
 })

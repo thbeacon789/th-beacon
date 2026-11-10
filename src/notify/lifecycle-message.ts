@@ -1,4 +1,5 @@
 import { displayActor, encodeButtonId, type ButtonAction } from '@/core/lifecycle'
+import type { StoredIssue } from '@/store/contracts'
 import type { DiscordEmbedField, DiscordMessage, DiscordReplyMessage } from './message'
 
 const GREEN = 0x2ecc71
@@ -128,5 +129,51 @@ export function buildFollowUpAlert(alert: DiscordMessage, replyToMessageId: stri
   const m = structuredClone(alert)
   delete m.components
   m.message_reference = { message_id: replyToMessageId, fail_if_not_exists: false }
+  return m
+}
+
+/**
+ * 依 issue 現況完整重建根訊息（編輯用）：最新次數 → 已確認欄位 → 依狀態套樣式。
+ * base 為事故第一則告警原文（或 interaction.message）；輸出一律無 content、`{parse: []}`。
+ */
+export function renderRoot(
+  base: DiscordMessage,
+  issue: Pick<
+    StoredIssue,
+    'id' | 'status' | 'count' | 'lastSeen' | 'acknowledgedBy' | 'acknowledgedAt' | 'resolvedBy' | 'reopenCount'
+  >,
+  resolutionSource: Source = 'manual',
+): DiscordMessage {
+  let m = applyCount(base, issue.count, issue.lastSeen)
+  const acked = issue.acknowledgedBy !== null && issue.acknowledgedAt !== null
+  if (acked) {
+    m = applyAcknowledged(m, issue.acknowledgedBy as string, issue.acknowledgedAt as string, issue.id, issue.reopenCount)
+  }
+  switch (issue.status) {
+    case 'open':
+    case 'acknowledged': {
+      m = withAlertButtons(m, issue.id, issue.reopenCount, acked ? ['resolve'] : issue.status === 'open' ? ['ack', 'resolve'] : ['resolve'])
+      stripMentions(m)
+      return m
+    }
+    case 'resolved':
+      return applyResolved(m, { actorLabel: issue.resolvedBy, source: resolutionSource })
+    case 'ignored':
+      return applyIgnored(m)
+  }
+}
+
+/** 復發時標記上一事故的根訊息：綠色已解決、無按鈕，並指向最新回覆（resolved_* 已被 reopen 清空，故不顯示處理方式）。 */
+export function renderPreviousIncidentRoot(base: DiscordMessage, reopenCount: number): DiscordMessage {
+  const m = structuredClone(base)
+  stripMentions(m)
+  delete m.components
+  m.embeds[0].color = GREEN
+  m.embeds[0].title = prefixTitle(m.embeds[0].title, '✅ 已解決')
+  upsertField(m.embeds[0].fields, {
+    name: '🔁 已復發',
+    value: `第 ${reopenCount} 次 → 見最新回覆`,
+    inline: false,
+  })
   return m
 }

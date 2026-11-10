@@ -277,10 +277,14 @@ export class InMemoryStore implements Store {
     allowedFrom: readonly IssueStatus[],
     actor: string | null,
     nowIso: string,
+    expectedReopenCount?: number,
   ): Promise<{ issue: StoredIssue; changed: boolean } | null> {
     for (const [key, issue] of this.issues) {
       if (issue.id !== issueId) continue
-      if (!allowedFrom.includes(issue.status)) {
+      if (
+        !allowedFrom.includes(issue.status) ||
+        (expectedReopenCount !== undefined && issue.reopenCount !== expectedReopenCount)
+      ) {
         return { issue: this.defensiveCopy(issue), changed: false }
       }
       const updated: StoredIssue = { ...issue, status: to }

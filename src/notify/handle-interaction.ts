@@ -20,8 +20,10 @@ const ephemeral = (content: string): InteractionResponse => ({
   body: { type: 4, data: { content, flags: 64, allowed_mentions: { parse: [] } } },
 })
 
-function withNoMentions(m: DiscordMessage): DiscordMessage {
-  return { ...m, allowed_mentions: { parse: [] } }
+/** type 7 的 data：禁 mention，並移除 webhook 專用的 username（與 discord-bot 的 toBotBody 一致）。 */
+function toInteractionData(m: DiscordMessage): Omit<DiscordMessage, 'username'> {
+  const { username: _username, ...rest } = m
+  return { ...rest, allowed_mentions: { parse: [] } }
 }
 
 export async function handleInteraction(
@@ -65,11 +67,14 @@ export async function handleInteraction(
   const result = await transitionIssue(store, bot, parsed.issueId, to, actor, now, {
     editRoot: false,
     deferFollowUp: true,
+    expectedReopenCount: parsed.incidentSeq,
   })
 
   if (result.outcome === 'not_found' || result.issue === null) return ephemeral('找不到此問題')
 
   if (result.outcome === 'unchanged') {
+    // 預檢之後事故被 reopen：UPDATE 條件擋下，現況已是新事故
+    if (result.issue.reopenCount !== parsed.incidentSeq) return ephemeral('此告警已過期，請看最新一則')
     if (parsed.action === 'ack') {
       const by = result.issue.acknowledgedBy
       return ephemeral(by !== null ? `已由 ${displayActor(by)} 確認` : '已有人確認')
@@ -90,13 +95,13 @@ export async function handleInteraction(
         embeds: m.embeds,
         ...(Array.isArray(m.components) ? { components: m.components } : {}),
       } as unknown as DiscordMessage
-      message = transformRoot(base, to, result.issue, actor, now.toISOString())
+      message = transformRoot(base, result.issue, actor)
     }
   }
 
   const body =
     message !== null
-      ? { type: 7, data: withNoMentions(message) }
+      ? { type: 7, data: toInteractionData(message) }
       : { type: 6 } // 沒有可套用的訊息：不改畫面，DB 已更新
   return { status: 200, body, after: result.followUp }
 }

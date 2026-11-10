@@ -9,6 +9,8 @@ import {
   applyCount,
   buildResolveReply,
   buildFollowUpAlert,
+  renderRoot,
+  renderPreviousIncidentRoot,
 } from '@/notify/lifecycle-message'
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000'
@@ -150,5 +152,82 @@ describe('reply builders', () => {
     expect(m.allowed_mentions).toEqual({ parse: [], users: ['999'] })
     expect(m.message_reference?.message_id).toBe('m9')
     expect(m.components).toBeUndefined()
+  })
+})
+
+describe('renderRoot', () => {
+  const issue = {
+    id: uuid,
+    status: 'open' as const,
+    count: 12,
+    lastSeen: 'L2',
+    acknowledgedBy: null as string | null,
+    acknowledgedAt: null as string | null,
+    resolvedBy: null as string | null,
+    reopenCount: 1,
+  }
+  const names = (m: ReturnType<typeof withBtn>) => m.embeds[0].fields.map((f) => f.name)
+  const val = (m: ReturnType<typeof withBtn>, n: string) => m.embeds[0].fields.find((f) => f.name === n)?.value
+
+  it('open：帶最新次數、移除 content 與 mention、兩顆按鈕', () => {
+    const m = renderRoot(withBtn(), issue)
+    expect(val(m, '次數')).toBe('12')
+    expect(val(m, 'Last seen')).toBe('L2')
+    expect(m.content).toBeUndefined()
+    expect(m.allowed_mentions).toEqual({ parse: [] })
+    expect(ids(m)).toEqual([`ack:${uuid}:1`, `resolve:${uuid}:1`])
+  })
+
+  it('open 且已確認：只留 resolve 按鈕', () => {
+    const m = renderRoot(withBtn(), { ...issue, acknowledgedBy: 'discord:1', acknowledgedAt: 'T' })
+    expect(ids(m)).toEqual([`resolve:${uuid}:1`])
+    expect(names(m)).toContain('✋ 已確認')
+  })
+
+  it('resolved（曾確認）：綠色、保留已確認欄位、最新次數、無按鈕', () => {
+    const m = renderRoot(
+      withBtn(),
+      { ...issue, status: 'resolved', acknowledgedBy: 'discord:1', acknowledgedAt: 'T', resolvedBy: 'a@b.c' },
+      'manual',
+    )
+    expect(m.embeds[0].color).toBe(0x2ecc71)
+    expect(names(m)).toContain('✋ 已確認')
+    expect(val(m, '次數')).toBe('12')
+    expect(val(m, '處理方式')).toContain('a@b.c')
+    expect(m.components).toBeUndefined()
+    expect(m.content).toBeUndefined()
+  })
+
+  it('acknowledged：已確認欄位、僅 resolve 按鈕', () => {
+    const m = renderRoot(withBtn(), { ...issue, status: 'acknowledged', acknowledgedBy: 'discord:1', acknowledgedAt: 'T' })
+    expect(names(m)).toContain('✋ 已確認')
+    expect(ids(m)).toEqual([`resolve:${uuid}:1`])
+  })
+
+  it('ignored：灰色、無按鈕', () => {
+    const m = renderRoot(withBtn(), { ...issue, status: 'ignored' })
+    expect(m.embeds[0].color).toBe(0x95a5a6)
+    expect(m.components).toBeUndefined()
+  })
+
+  it('不改輸入', () => {
+    const src = withBtn()
+    const snap = structuredClone(src)
+    renderRoot(src, issue)
+    expect(src).toEqual(snap)
+  })
+})
+
+describe('renderPreviousIncidentRoot', () => {
+  it('綠色、已解決前綴、無按鈕與 content、帶已復發欄位、無處理方式', () => {
+    const m = renderPreviousIncidentRoot(withBtn(), 2)
+    expect(m.embeds[0].color).toBe(0x2ecc71)
+    expect(m.embeds[0].title.startsWith('✅ 已解決 ')).toBe(true)
+    expect(m.components).toBeUndefined()
+    expect(m.content).toBeUndefined()
+    expect(m.allowed_mentions).toEqual({ parse: [] })
+    const f = m.embeds[0].fields
+    expect(f.find((x) => x.name === '🔁 已復發')?.value).toBe('第 2 次 → 見最新回覆')
+    expect(f.some((x) => x.name === '處理方式')).toBe(false)
   })
 })

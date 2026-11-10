@@ -12,10 +12,9 @@ import type { Triager, TriageCallResult } from '@/triage/claude'
 import { shouldNotify } from '@/notify/decision'
 import { buildDiscordMessage, extractNotifyDetails, type DiscordMessage } from '@/notify/message'
 import {
-  applyAcknowledged,
-  applyCount,
-  applyReopened,
   buildFollowUpAlert,
+  renderPreviousIncidentRoot,
+  renderRoot,
 } from '@/notify/lifecycle-message'
 import type { DiscordSender } from '@/notify/discord'
 import type { DiscordBot } from '@/notify/discord-bot'
@@ -258,9 +257,11 @@ async function notifyStage(
   }
 
   const root = bot !== null ? await store.getIncidentRoot(issue.id, seq) : null
+  // 已確認後才發根訊息（首則失敗、之後有人確認）：不得再 tag 負責人
+  const quietRoot = bot !== null && root === null && issue.status === 'acknowledged' && decision.reason === 'first'
   const built = buildDiscordMessage({
     serviceName: service.name,
-    ownerDiscordId: service.ownerDiscordId,
+    ownerDiscordId: quietRoot ? null : service.ownerDiscordId,
     severity,
     errorType: issue.errorType,
     message: issue.message,
@@ -269,7 +270,7 @@ async function notifyStage(
     lastSeen: issue.lastSeen,
     ...(deps.dashboardUrl !== undefined ? { dashboardUrl: deps.dashboardUrl } : {}),
     details: extractNotifyDetails(event.metadata),
-    ...(bot !== null && root === null ? { buttons: { issueId: issue.id, incidentSeq: seq } } : {}),
+    ...(bot !== null && root === null && !quietRoot ? { buttons: { issueId: issue.id, incidentSeq: seq } } : {}),
   })
 
   if (bot === null) {
@@ -285,7 +286,7 @@ async function notifyStage(
     return { notified: sendResult.ok, notifyReason: decision.reason }
   }
 
-  let outgoing: DiscordMessage = built
+  let outgoing: DiscordMessage = quietRoot ? renderRoot(built, issue) : built
   let prev: Awaited<ReturnType<Store['getIncidentRoot']>> = null
   if (root !== null) {
     outgoing = buildFollowUpAlert(built, root.messageId)
@@ -294,7 +295,7 @@ async function notifyStage(
     prev = await store.getIncidentRoot(issue.id, seq - 1)
     if (prev !== null) {
       outgoing = {
-        ...built,
+        ...outgoing,
         message_reference: { message_id: prev.messageId, fail_if_not_exists: false },
       }
     }
@@ -313,7 +314,7 @@ async function notifyStage(
   if (post.ok && prev !== null) {
     // 新告警送出成功後才標記上一則已復發；失敗則留待下次重試
     try {
-      const edited = await bot.edit(prev.channelId, prev.messageId, applyReopened(prev.payload, seq))
+      const edited = await bot.edit(prev.channelId, prev.messageId, renderPreviousIncidentRoot(prev.payload, seq))
       if (!edited.ok) console.error('mark previous incident reopened failed:', edited.reason)
     } catch (error) {
       console.error('mark previous incident reopened failed:', error)
@@ -340,13 +341,9 @@ async function editAcknowledgedCount(
   const { issue } = result
   const root = await store.getIncidentRoot(issue.id, base.incidentSeq)
   if (root === null) return
-  const acked =
-    issue.acknowledgedBy !== null && issue.acknowledgedAt !== null
-      ? applyAcknowledged(root.payload, issue.acknowledgedBy, issue.acknowledgedAt, issue.id, base.incidentSeq)
-      : root.payload
   let ok = false
   try {
-    const edited = await bot.edit(root.channelId, root.messageId, applyCount(acked, issue.count, issue.lastSeen))
+    const edited = await bot.edit(root.channelId, root.messageId, renderRoot(root.payload, issue))
     ok = edited.ok
     if (!edited.ok) console.error('count edit failed:', edited.reason)
   } catch (error) {

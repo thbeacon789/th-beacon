@@ -227,6 +227,7 @@ export class SupabaseStore implements Store {
     allowedFrom: readonly IssueStatus[],
     actor: string | null,
     nowIso: string,
+    expectedReopenCount?: number,
   ): Promise<{ issue: StoredIssue; changed: boolean } | null> {
     const patch: Database['public']['Tables']['issues']['Update'] = { status: to }
     if (to === 'acknowledged') {
@@ -241,12 +242,13 @@ export class SupabaseStore implements Store {
       patch.resolved_at = null
       patch.resolved_by = null
     }
-    const { data, error } = await this.client
+    let query = this.client
       .from('issues')
       .update(patch)
       .eq('id', issueId)
       .in('status', [...allowedFrom])
-      .select('*')
+    if (expectedReopenCount !== undefined) query = query.eq('reopen_count', expectedReopenCount)
+    const { data, error } = await query.select('*')
     if (error) throw new Error(`transitionIssueStatus failed: ${error.message}`)
     if (data.length > 0) return { issue: rowToIssue(data[0]), changed: true }
     const { data: current, error: readError } = await this.client

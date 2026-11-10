@@ -275,6 +275,23 @@ describe('processAndNotify（bot 模式）', () => {
     expect(edits).toHaveLength(1)
   })
 
+  it('已確認但本事故沒有根訊息（首則送失敗）：發根訊息但不 tag、只留已解決按鈕', async () => {
+    const failing = fakeBot({ postFail: true })
+    const first = await processAndNotify(store, failing.deps, event(), now)
+    expect(first.notified).toBe(false)
+    await store.transitionIssueStatus(first.issue.id, 'acknowledged', ['open'], 'discord:7', now.toISOString())
+    const { deps, posts } = fakeBot()
+    const r = await processAndNotify(store, deps, event(), min(1))
+    expect(r.notified).toBe(true)
+    expect(posts).toHaveLength(1)
+    const m = posts[0] as DiscordMessage
+    expect(m.content).toBeUndefined()
+    expect(m.allowed_mentions).toEqual({ parse: [] })
+    expect(m.embeds[0].fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    const labels = (m.components ?? []).flatMap((row) => row.components.map((c) => c.label))
+    expect(labels).toEqual(['✅ 已解決'])
+  })
+
   it('確認後升級仍 post 並 tag', async () => {
     const { deps, posts } = fakeBot()
     const first = await processAndNotify(store, deps, event(), now)
@@ -300,6 +317,9 @@ describe('processAndNotify（bot 模式）', () => {
     expect(edits[0].messageId).toBe('m1')
     const prev = edits[0].message as DiscordMessage
     expect(prev.embeds[0].fields.some((f) => f.name === '🔁 已復發')).toBe(true)
+    expect(prev.embeds[0].color).toBe(0x2ecc71)
+    expect(prev.embeds[0].fields.some((f) => f.name === '處理方式')).toBe(false)
+    expect(prev.content).toBeUndefined()
     expect(prev.components).toBeUndefined()
     const n = store.listNotifications()[1]
     expect(n.incidentSeq).toBe(1)

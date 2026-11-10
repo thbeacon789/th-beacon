@@ -67,6 +67,7 @@ describe('transitionIssue', () => {
     if (withRoot) {
       const base = buildDiscordMessage({
         serviceName: 'svc-a',
+        ownerDiscordId: '123456789012345678',
         severity: issue.severity,
         errorType: 'X',
         message: 'x',
@@ -230,5 +231,40 @@ describe('transitionIssue', () => {
     expect((await store.getService('s-1'))?.healthStatus).toBe('healthy')
     expect(f.edits).toHaveLength(0)
     expect(f.posts).toHaveLength(0)
+  })
+
+  it('ack -> 靜默計數 -> resolve：最終根訊息同時含已確認與最新次數', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot()
+    await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
+    await processEvent(store, event, now)
+    await processEvent(store, event, now)
+    f.edits.length = 0
+    await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'dashboard', email: 'a@b.c' }, now)
+    const msg = f.edits[0].message as { embeds: Array<{ fields: Array<{ name: string; value: string }> }> }
+    const fields = msg.embeds[0].fields
+    expect(fields.some((x) => x.name === '✋ 已確認')).toBe(true)
+    expect(fields.find((x) => x.name === '次數')?.value).toBe('3')
+  })
+
+  it('dashboard 改回 open：編輯無 content、allowed_mentions 為 {parse: []}', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot()
+    const stored = await store.getIncidentRoot(issue.id, 0)
+    expect(stored?.payload.content).toContain('<@123456789012345678>')
+    await store.transitionIssueStatus(issue.id, 'resolved', ['open'], null, now.toISOString())
+    await transitionIssue(store, f.bot, issue.id, 'open', { kind: 'dashboard', email: 'a@b.c' }, now)
+    const sent = f.edits[0].message as { content?: string; allowed_mentions: unknown }
+    expect(sent.content).toBeUndefined()
+    expect(sent.allowed_mentions).toEqual({ parse: [] })
+  })
+
+  it('expectedReopenCount 不符：changed=false 且 DB 不變', async () => {
+    const issue = await setupIssue('P1', false)
+    const r = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'x', now.toISOString(), 7)
+    expect(r?.changed).toBe(false)
+    expect((await store.getIssue(issue.id))?.status).toBe('open')
+    const ok = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'x', now.toISOString(), 0)
+    expect(ok?.changed).toBe(true)
   })
 })

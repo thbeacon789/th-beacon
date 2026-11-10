@@ -2,19 +2,15 @@ import { actorLabel, allowedFrom, type IssueActor } from '@/core/lifecycle'
 import type { IssueStatus } from '@/core/types'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
 import type { DiscordBot } from '@/notify/discord-bot'
-import {
-  applyAcknowledged,
-  applyIgnored,
-  applyResolved,
-  buildResolveReply,
-  withAlertButtons,
-} from '@/notify/lifecycle-message'
+import { buildResolveReply, renderRoot } from '@/notify/lifecycle-message'
 import type { DiscordMessage } from '@/notify/message'
 import type { Store, StoredIssue } from '@/store/contracts'
 
 export interface TransitionOptions {
   refreshHealth?: boolean
   editRoot?: boolean
+  /** 僅當 issue 仍在此事故序號時才轉換（防按鈕 TOCTOU） */
+  expectedReopenCount?: number
 }
 
 export interface TransitionResult {
@@ -34,22 +30,10 @@ function sourceOf(actor: IssueActor): Source {
 
 export function transformRoot(
   payload: DiscordMessage,
-  to: IssueStatus,
   issue: StoredIssue,
   actor: IssueActor,
-  nowIso: string,
 ): DiscordMessage {
-  const label = actorLabel(actor)
-  switch (to) {
-    case 'acknowledged':
-      return applyAcknowledged(payload, label ?? '', nowIso, issue.id, issue.reopenCount)
-    case 'resolved':
-      return applyResolved(payload, { actorLabel: label, source: sourceOf(actor) })
-    case 'ignored':
-      return applyIgnored(payload)
-    case 'open':
-      return withAlertButtons(payload, issue.id, issue.reopenCount, ['ack', 'resolve'])
-  }
+  return renderRoot(payload, issue, sourceOf(actor))
 }
 
 async function safely(what: string, fn: () => Promise<unknown>): Promise<void> {
@@ -70,11 +54,11 @@ export async function transitionIssue(
   now: Date,
   options: TransitionOptions & { deferFollowUp?: boolean } = {},
 ): Promise<TransitionResult> {
-  const { refreshHealth = true, editRoot = true, deferFollowUp = false } = options
+  const { refreshHealth = true, editRoot = true, deferFollowUp = false, expectedReopenCount } = options
   const nowIso = now.toISOString()
   const noop = async (): Promise<void> => {}
 
-  const result = await store.transitionIssueStatus(issueId, to, allowedFrom(to), actorLabel(actor), nowIso)
+  const result = await store.transitionIssueStatus(issueId, to, allowedFrom(to), actorLabel(actor), nowIso, expectedReopenCount)
   if (result === null) return { outcome: 'not_found', issue: null, rootEdit: null, followUp: noop }
   if (!result.changed) return { outcome: 'unchanged', issue: result.issue, rootEdit: null, followUp: noop }
 
@@ -88,7 +72,7 @@ export async function transitionIssue(
         rootEdit = {
           channelId: root.channelId,
           messageId: root.messageId,
-          payload: transformRoot(root.payload, to, issue, actor, nowIso),
+          payload: transformRoot(root.payload, issue, actor),
         }
       }
     } catch (error) {
