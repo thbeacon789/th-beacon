@@ -40,3 +40,20 @@ export interface IssueAiTriage {
   judgedAt: string // ISO 8601
   error: string | null
 }
+
+// AI 判定準確率與花費統計
+export type AiJudgmentSource = 'server' | 'ci'
+export type AiUsageSource = 'server_triage' | 'ci_diagnosis' | 'ci_pr'
+export type Verdict = 'correct' | 'wrong'
+export interface JudgmentLabel {
+  severityVerdict: Verdict | null
+  severityCorrect: Severity | null // 僅 verdict='wrong' 時非 null
+  categoryVerdict: Verdict | null
+  categoryCorrect: DiagnosisCategory | null
+}
+export const EMPTY_LABEL: JudgmentLabel = {
+  severityVerdict: null,
+  severityCorrect: null,
+  categoryVerdict: null,
+  categoryCorrect: null,
+}
