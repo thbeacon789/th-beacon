@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -358,5 +359,107 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(r.code).toBe(0)
     expect(readOut().error).toBeDefined()
     expect(messages()).toHaveLength(0)
+  })
+  describe('選填：回報 AI 用量', () => {
+    const usageEnv = (extra: Record<string, string> = {}) =>
+      keyEnv({
+        BEACON_AI_USAGE_URL: `${server!.url}/api/ai-usage`,
+        BEACON_SERVICE: 'svc-a',
+        BEACON_SECRET: 'super-secret-value',
+        ...extra,
+      })
+    const usageReqs = () => server!.requests.filter((r) => r.path === '/api/ai-usage')
+    const route =
+      (usageStatus = 201): Handler =>
+      (req) =>
+        req.path === '/api/ai-usage' ? { status: usageStatus, json: { id: 'x' } } : { json: okMessage() }
+    const args = () => ['android', write('k.md', 'k'), out(), write('a.log', 'x')]
+
+    it('未設 BEACON_AI_USAGE_URL：不打 /api/ai-usage，輸出檔與現行相同', async () => {
+      await start(route())
+      const r = await runBash(SCRIPT, args(), keyEnv({ BEACON_SERVICE: 'svc-a', BEACON_SECRET: 's' }))
+      expect(r.code).toBe(0)
+      expect(usageReqs()).toHaveLength(0)
+      expect(readOut()).toEqual({ ...DIAG, model: 'claude-sonnet-5-5' })
+      expect(r.stdout).not.toContain('usage reported')
+    })
+
+    it.each(['BEACON_SERVICE', 'BEACON_SECRET'])('缺 %s：不發請求', async (missing) => {
+      await start(route())
+      const env = usageEnv()
+      delete (env as Record<string, string>)[missing]
+      await runBash(SCRIPT, args(), env)
+      expect(usageReqs()).toHaveLength(0)
+    })
+
+    it('三個 env 齊全：POST 正確 body 與 HMAC 簽章', async () => {
+      await start(route())
+      const r = await runBash(SCRIPT, args(), usageEnv())
+      expect(r.code).toBe(0)
+      expect(readOut()).toEqual({ ...DIAG, model: 'claude-sonnet-5-5' })
+      const [u] = usageReqs()
+      expect(u.method).toBe('POST')
+      expect(JSON.parse(u.body)).toEqual({
+        source: 'ci_diagnosis',
+        model: 'claude-sonnet-5-5',
+        inputTokens: 1,
+        outputTokens: 1,
+      })
+      expect(u.headers['x-beacon-service']).toBe('svc-a')
+      const ts = u.headers['x-beacon-timestamp'] as string
+      const sig = crypto.createHmac('sha256', 'super-secret-value').update(`${ts}.${u.body}`).digest('hex')
+      expect(u.headers['x-beacon-signature']).toBe(`sha256=${sig}`)
+      expect(r.stdout).toContain('diagnose: usage reported (HTTP 201)')
+    })
+
+    it('refusal 仍回報用量，輸出檔仍是 error', async () => {
+      await start((req) =>
+        req.path === '/api/ai-usage'
+          ? { status: 201, json: {} }
+          : { json: { ...okMessage(), stop_reason: 'refusal', usage: { input_tokens: 7, output_tokens: 3 } } },
+      )
+      await runBash(SCRIPT, args(), usageEnv())
+      expect(JSON.parse(usageReqs()[0].body)).toMatchObject({ inputTokens: 7, outputTokens: 3 })
+      expect(readOut().error).toBeDefined()
+    })
+
+    it('/api/ai-usage 回 500 → exit 0、輸出檔仍是 diagnosis、stdout 註明失敗', async () => {
+      await start(route(500))
+      const r = await runBash(SCRIPT, args(), usageEnv())
+      expect(r.code).toBe(0)
+      expect(readOut()).toEqual({ ...DIAG, model: 'claude-sonnet-5-5' })
+      expect(r.stdout).toContain('usage report failed')
+    })
+
+    it('/api/ai-usage 連不上 → exit 0、輸出檔仍是 diagnosis', async () => {
+      await start(route())
+      const r = await runBash(SCRIPT, args(), usageEnv({ BEACON_AI_USAGE_URL: 'http://127.0.0.1:1/api/ai-usage' }))
+      expect(r.code).toBe(0)
+      expect(readOut()).toEqual({ ...DIAG, model: 'claude-sonnet-5-5' })
+      expect(r.stdout).toContain('usage report failed')
+    })
+
+    it('messages 回 HTTP 500（沒有 usage）→ 不回報', async () => {
+      await start((req) => (req.path === '/api/ai-usage' ? { status: 201, json: {} } : { status: 500, raw: 'oops' }))
+      await runBash(SCRIPT, args(), usageEnv())
+      expect(usageReqs()).toHaveLength(0)
+    })
+
+    it('usage 欄位不是整數 → 不回報', async () => {
+      await start((req) =>
+        req.path === '/api/ai-usage'
+          ? { status: 201, json: {} }
+          : { json: { ...okMessage(), usage: { input_tokens: 'x' } } },
+      )
+      await runBash(SCRIPT, args(), usageEnv())
+      expect(usageReqs()).toHaveLength(0)
+    })
+
+    it('BEACON_SECRET 不出現在 stdout/stderr', async () => {
+      await start(route())
+      const r = await runBash(SCRIPT, args(), usageEnv())
+      expect(r.stdout).not.toContain('super-secret-value')
+      expect(r.stderr).not.toContain('super-secret-value')
+    })
   })
 })

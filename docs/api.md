@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | `/api/ingest` | POST | 每服務 HMAC | 推送錯誤事件 |
 | `/api/heartbeat` | POST | 每服務 HMAC | 具名心跳（CI 存活證明） |
+| `/api/ai-usage` | POST | 每服務 HMAC | 回報 AI 用量（token 或金額） |
 | `/api/poll/services` | GET | Cron Bearer token | 服務輪詢 ＋ 心跳逾期掃描（內部用） |
 
 實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/poll/services/route.ts`。
@@ -14,7 +15,7 @@
 
 ## 1. HMAC 驗證（ingest 與 heartbeat 共用）
 
-兩個推送端點的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
+三個推送端點（ingest、heartbeat、ai-usage）的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
 
 ### 必要 headers
 
@@ -325,3 +326,66 @@ CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分
 2. 在 Bot 頁籤建立 Bot 並取得 token。
 3. 用 OAuth2 URL 將 Bot 加入伺服器，頻道權限需有 `VIEW_CHANNEL`、`SEND_MESSAGES`、`READ_MESSAGE_HISTORY`。
 4. 在 General Information 的 **Interactions Endpoint URL** 填 `https://<部署網域>/api/discord/interactions`。儲存時 Discord 會送 PING 與無效簽章測試，端點需已部署且四個環境變數已設好才會通過。
+
+---
+
+## 7. `POST /api/ai-usage` — AI 用量回報
+
+CI 的 AI 診斷（`diagnose-e2e-failure.sh`）或 CI 開 PR 的 AI 呼叫，把這次用掉的 token 或金額回報給 th-beacon，供統計頁累計花費。**一次請求一筆紀錄**；不需要另外登記名稱，只要服務本身已登記且有金鑰。
+
+驗證：headers 與簽章算法同 §1。
+
+### Request body
+
+```jsonc
+{
+  "source": "ci_diagnosis",            // 必填，僅 "ci_diagnosis" | "ci_pr"
+  "model": "claude-sonnet-5-5",        // 選填，1–100 字；有登記單價的 model 才會自動換算金額
+  "inputTokens": 1234,                 // 選填，非負整數
+  "outputTokens": 321,                 // 選填，非負整數
+  "costUsd": 0.0123                    // 選填，非負數字（USD）
+}
+```
+
+**`costUsd` 或 tokens 擇一**：必須帶 `costUsd`，或同時帶 `inputTokens` 與 `outputTokens`。只帶其中一個 token 欄位會被拒絕。同時帶時以 `costUsd` 為準；只帶 tokens 時由伺服器依 `model` 單價換算，金額在寫入時算好存入（之後改價不影響歷史金額）。
+
+### 成功回應 `201`
+
+```json
+{ "id": "uuid", "costUsd": 0.0092, "priced": true }
+```
+
+`model` 未登記單價（或沒帶 `model`）且沒帶 `costUsd` 時，`costUsd` 為 `null`、`priced` 為 `false`：tokens 照常記錄，統計頁會標示「有 N 筆未定價」，不會當成 0。
+
+### 錯誤回應
+
+| 狀態 | Body | 情境 |
+| --- | --- | --- |
+| `401` | `{"error":"unauthorized"}` | 見 §1 |
+| `400` | `{"error":"invalid JSON"}` | body 不是合法 JSON |
+| `422` | `{"error":"invalid payload","details":[...]}` | 欄位驗證失敗（`source` 不合法、tokens 非整數、`costUsd` 與 tokens 都沒帶…） |
+
+### 範例
+
+`diagnose-e2e-failure.sh` 內建選填回報：三個 env 皆非空才會送，缺任一個就完全不發請求；回報失敗只在 stdout 註明，不影響診斷結果與 exit code。
+
+```bash
+BEACON_AI_USAGE_URL=https://th-beacon.vercel.app/api/ai-usage \
+BEACON_SERVICE=my-service BEACON_SECRET=xxx \
+bash scripts/diagnose-e2e-failure.sh android known-issues.md diagnosis.json e2e.log
+```
+
+手寫版本：
+
+```bash
+TS="$(date +%s)"
+BODY='{"source":"ci_pr","model":"claude-sonnet-5-5","inputTokens":1234,"outputTokens":321}'
+SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
+
+curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/ai-usage \
+  -H "Content-Type: application/json" \
+  -H "X-Beacon-Service: $BEACON_SERVICE" \
+  -H "X-Beacon-Timestamp: $TS" \
+  -H "X-Beacon-Signature: sha256=$SIG" \
+  -d "$BODY"
+```

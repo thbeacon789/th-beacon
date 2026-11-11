@@ -7,10 +7,11 @@ description: Use when connecting a service or repo to th-beacon (公司監控平
 
 ## 概觀
 
-th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.app`**。服務透過兩個端點回報，兩者都用每服務一把的 HMAC 金鑰驗證：
+th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.app`**。服務透過下列端點回報，兩者都用每服務一把的 HMAC 金鑰驗證：
 
 - `POST /api/heartbeat`：CI 每次跑完都回報 pass／fail，用來證明排程有在跑
 - `POST /api/ingest`：推送錯誤事件
+- `POST /api/ai-usage`：回報 AI 用量（token 或金額），選填
 
 **契約不要猜。** headers、簽章算法、payload、回應碼都寫在本目錄的 `api-reference.md`，簽章細節錯一點就是 401。回報用的 script 也直接複製本目錄現成的，不要自己重寫。
 
@@ -51,6 +52,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - 不要自己加重試迴圈：fail 重送會累計到同一筆 issue 的 count。
 - 第 4 參數 `summary` 選填，會出現在告警內容裡。若能從測試輸出取得失敗數（例如 `"3 of 120 failed"`），建議傳入。
 - 第 5 參數（AI 診斷 `diagnosis`）選填，使用者沒要求就不要接。要接時，用本目錄的 `scripts/diagnose-e2e-failure.sh` 產生診斷檔，**位元組一致地複製**，不要修改。它需要 Anthropic WIF 認證，所需環境變數見 script 開頭註解。
+- 要記錄 AI 花費時，diagnose 步驟另設 `BEACON_AI_USAGE_URL`（＋同一組 `BEACON_SERVICE`／`BEACON_SECRET`）；不設則不回報，不影響診斷。
 - `job.status` 為 `cancelled` 時會送出 fail。這是刻意的：nightly 被取消就代表沒有測試結果，需要人看。
 - 回報 step 失敗會讓整個 job 變紅，這也是刻意的：接線出錯必須看得見。
 - ubuntu runner 預設就有 `jq`、`openssl`、`curl`。

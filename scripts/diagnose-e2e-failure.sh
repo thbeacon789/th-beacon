@@ -7,7 +7,8 @@
 #              （選填 ANTHROPIC_WORKSPACE_ID，空字串視為未設）＋ runner 提供的
 #              ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN
 #   API key（僅限本機試跑）：ANTHROPIC_API_KEY（設了就跳過 WIF）
-# 其他：ANTHROPIC_BASE_URL、DIAGNOSE_MODEL、DIAGNOSE_MAX_BYTES、DIAGNOSE_REDACT_VARS（空白分隔的變數名）
+# 其他：ANTHROPIC_BASE_URL、DIAGNOSE_MODEL、DIAGNOSE_MAX_BYTES、DIAGNOSE_REDACT_VARS（空白分隔的變數名）、
+#       BEACON_AI_USAGE_URL／BEACON_SERVICE／BEACON_SECRET（選填，三者齊全才回報用量）
 #
 # 輸出檔：成功 {"category","severity","reason","suggestion","model"}；失敗 {"error":"..."}。一律 exit 0。
 # DIAGNOSE_DRY_RUN=1：只組 log（遮蔽＋分配預算）寫到輸出檔，不打 API——用來驗證模型實際會看到什麼。
@@ -199,6 +200,37 @@ else
   unset TOKEN
 fi
 
+# ---------- 選填：回報 AI 用量到 th-beacon ----------
+# 三個 env 皆非空才回報；任何失敗都吞掉，不影響診斷結果與 exit code。
+report_usage() {
+  if [ -z "${BEACON_AI_USAGE_URL:-}" ] || [ -z "${BEACON_SERVICE:-}" ] || [ -z "${BEACON_SECRET:-}" ]; then
+    return 0
+  fi
+  local body ts sig code
+  body="$(jq -ce --arg model "$MODEL" '
+    select((.usage.input_tokens | type == "number" and . == floor and . >= 0)
+           and (.usage.output_tokens | type == "number" and . == floor and . >= 0))
+    | {source:"ci_diagnosis", model:$model, inputTokens:.usage.input_tokens, outputTokens:.usage.output_tokens}' \
+    "$RESP" 2>/dev/null)" || body=""
+  if [ -z "$body" ]; then
+    echo "diagnose: usage report skipped"
+    return 0
+  fi
+  ts="$(date +%s)"
+  sig="$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex 2>/dev/null | sed 's/^.* //')"
+  code="$(curl -sS --max-time 10 -X POST "$BEACON_AI_USAGE_URL" \
+    -H 'Content-Type: application/json' \
+    -H "X-Beacon-Service: $BEACON_SERVICE" \
+    -H "X-Beacon-Timestamp: $ts" \
+    -H "X-Beacon-Signature: sha256=$sig" \
+    -d "$body" -o /dev/null -w '%{http_code}' 2>/dev/null)" || code="000"
+  case "$code" in
+    2??) echo "diagnose: usage reported (HTTP $code)" ;;
+    *) echo "diagnose: usage report failed (HTTP $code)" ;;
+  esac
+  return 0
+}
+
 # ---------- 呼叫 Messages API ----------
 SCHEMA='{
   "type":"object","additionalProperties":false,
@@ -227,6 +259,7 @@ code="$(curl -sS --max-time 100 -X POST -K "$HDR" \
 [ "$code" = "200" ] || fail "messages request failed: HTTP $code"
 
 jq -r '"usage: input_tokens=\(.usage.input_tokens // "?") output_tokens=\(.usage.output_tokens // "?")"' "$RESP" 2>/dev/null
+report_usage || true
 
 STOP="$(jq -r '.stop_reason // "none"' "$RESP" 2>/dev/null)" || fail "unparseable response"
 [ "$STOP" = "end_turn" ] || fail "stop_reason: $STOP"
