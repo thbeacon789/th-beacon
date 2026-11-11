@@ -36,15 +36,15 @@ function Cards({ s }: { s: AiStatsView['summary'] }) {
         {s.monthUnpricedCount > 0 && <p className="hint">另有 {s.monthUnpricedCount} 筆未定價</p>}
       </div>
       <div className="ai-stats-card">
-        <div className="ai-stats-card-label">嚴重度準確率</div>
+        <div className="ai-stats-card-label">嚴重度準確率（近 6 個月）</div>
         <div className="ai-stats-card-value">{formatRate(s.severity)}</div>
       </div>
       <div className="ai-stats-card">
-        <div className="ai-stats-card-label">類型準確率</div>
+        <div className="ai-stats-card-label">類型準確率（近 6 個月）</div>
         <div className="ai-stats-card-value">{formatRate(s.category)}</div>
       </div>
       <div className="ai-stats-card">
-        <div className="ai-stats-card-label">標記率</div>
+        <div className="ai-stats-card-label">標記率（近 6 個月）</div>
         <div className="ai-stats-card-value">
           {s.labelRate.rate === null
             ? `—（${s.labelRate.total} 筆判定）`
@@ -121,8 +121,8 @@ export default async function AiStatsPage() {
                     <th>服務</th>
                     <th>判定數</th>
                     <th>已標記</th>
-                    <th>嚴重度準確率</th>
-                    <th>類型準確率</th>
+                    <th>嚴重度準確率（近 6 個月）</th>
+                    <th>類型準確率（近 6 個月）</th>
                     <th>花費（近 {stats.windowMonths} 個月）</th>
                   </tr>
                 </thead>

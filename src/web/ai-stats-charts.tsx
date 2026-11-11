@@ -28,13 +28,14 @@ export function MonthlyTrendChart({
 
   const data = monthly.map((m) => {
     const row: Record<string, string | number | null> = { month: m.month, costUsd: m.costUsd }
-    for (const model of models) {
+    // dataKey 不含 model 名稱（Recharts 把字串中的 . 當路徑），以索引為 key
+    models.forEach((model, i) => {
       const r = m.byModel[model]
-      row[`sev:${model}`] = r?.severity.rate ?? null
-      row[`cat:${model}`] = r?.category.rate ?? null
-      row[`sevN:${model}`] = r ? `${r.severity.correct}／${r.severity.total}` : '0／0'
-      row[`catN:${model}`] = r ? `${r.category.correct}／${r.category.total}` : '0／0'
-    }
+      row[`sev_${i}`] = r?.severity.rate ?? null
+      row[`cat_${i}`] = r?.category.rate ?? null
+      row[`sevN_${i}`] = r ? `${r.severity.correct}／${r.severity.total}` : '0／0'
+      row[`catN_${i}`] = r ? `${r.category.correct}／${r.category.total}` : '0／0'
+    })
     return row
   })
 
@@ -63,8 +64,8 @@ export function MonthlyTrendChart({
             formatter={(value, name, item) => {
               const key = String(item.dataKey)
               if (key === 'costUsd') return [`$${Number(value).toFixed(2)}`, name]
-              const [kind, ...rest] = key.split(':')
-              const n = (item.payload as Record<string, string>)[`${kind}N:${rest.join(':')}`]
+              const [kind, idx] = key.split('_')
+              const n = (item.payload as Record<string, string>)[`${kind}N_${idx}`]
               return [value === null || value === undefined ? `—（${n}）` : `${pct(Number(value))}（${n}）`, name]
             }}
           />
@@ -74,9 +75,9 @@ export function MonthlyTrendChart({
             const dash = DASHES[i % DASHES.length]
             return [
               <Line
-                key={`sev:${model}`}
+                key={`sev_${i}`}
                 yAxisId="rate"
-                dataKey={`sev:${model}`}
+                dataKey={`sev_${i}`}
                 name={`嚴重度 ${model}`}
                 stroke={colors['--green']}
                 strokeDasharray={dash}
@@ -84,9 +85,9 @@ export function MonthlyTrendChart({
                 dot={{ r: 3 }}
               />,
               <Line
-                key={`cat:${model}`}
+                key={`cat_${i}`}
                 yAxisId="rate"
-                dataKey={`cat:${model}`}
+                dataKey={`cat_${i}`}
                 name={`類型 ${model}`}
                 stroke={colors['--pink']}
                 strokeDasharray={dash}

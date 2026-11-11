@@ -9,7 +9,7 @@
 | `/api/ai-usage` | POST | 每服務 HMAC | 回報 AI 用量（token 或金額） |
 | `/api/poll/services` | GET | Cron Bearer token | 服務輪詢 ＋ 心跳逾期掃描（內部用） |
 
-實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/poll/services/route.ts`。
+實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/ai-usage/route.ts`、`app/api/poll/services/route.ts`。
 
 ---
 
@@ -347,7 +347,7 @@ CI 的 AI 診斷（`diagnose-e2e-failure.sh`）或 CI 開 PR 的 AI 呼叫，把
 }
 ```
 
-**`costUsd` 或 tokens 擇一**：必須帶 `costUsd`，或同時帶 `inputTokens` 與 `outputTokens`。只帶其中一個 token 欄位會被拒絕。同時帶時以 `costUsd` 為準；只帶 tokens 時由伺服器依 `model` 單價換算，金額在寫入時算好存入（之後改價不影響歷史金額）。
+**`costUsd` 或 tokens 擇一**：必須帶 `costUsd`，或同時帶 `inputTokens` 與 `outputTokens`。沒帶 `costUsd` 時，必須同時帶 `inputTokens` 與 `outputTokens`。數值上限：`costUsd` < 1,000,000、tokens ≤ 2,147,483,647，超過回 422。同時帶時以 `costUsd` 為準；只帶 tokens 時由伺服器依 `model` 單價換算，金額在寫入時算好存入（之後改價不影響歷史金額）。
 
 ### 成功回應 `201`
 

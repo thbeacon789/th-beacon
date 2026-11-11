@@ -7,7 +7,7 @@ description: Use when connecting a service or repo to th-beacon (公司監控平
 
 ## 概觀
 
-th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.app`**。服務透過下列端點回報，兩者都用每服務一把的 HMAC 金鑰驗證：
+th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.app`**。服務透過下列端點回報，皆用每服務一把的 HMAC 金鑰驗證：
 
 - `POST /api/heartbeat`：CI 每次跑完都回報 pass／fail，用來證明排程有在跑
 - `POST /api/ingest`：推送錯誤事件

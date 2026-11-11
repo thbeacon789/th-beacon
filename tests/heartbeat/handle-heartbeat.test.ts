@@ -240,6 +240,18 @@ describe('handleHeartbeat', () => {
       expect(await store.listOpenIssues('s-1')).toHaveLength(0)
     })
 
+    it('fail 帶 diagnosis.model → 寫入一筆 source=ci 的 ai_judgments 並帶該 model', async () => {
+      await handleHeartbeat(
+        store,
+        noopDeps,
+        request(failBody({ ...diag('app', 'P1'), model: 'claude-sonnet-5-5' })),
+        now,
+      )
+      const judgments = store.listAiJudgments()
+      expect(judgments).toHaveLength(1)
+      expect(judgments[0]).toMatchObject({ source: 'ci', model: 'claude-sonnet-5-5', severity: 'P1', category: 'app' })
+    })
+
     it('不合法 diagnosis → 200 + warnings，退回 test_failure P1', async () => {
       const res = await handleHeartbeat(
         store,

@@ -10,12 +10,18 @@ type ParseResult = { ok: true; value: AiUsageReport } | { ok: false; errors: str
 
 const SOURCES = ['ci_diagnosis', 'ci_pr'] as const
 const MODEL_MAX = 100
+const TOKENS_MAX = 2_147_483_647 // int4
+const COST_MAX_EXCLUSIVE = 1_000_000 // numeric(12,6)
 
 function optionalTokens(obj: Record<string, unknown>, key: string, errors: string[]): number | null {
   const v = obj[key]
   if (v === undefined || v === null) return null
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
     errors.push(`${key} 必須是非負整數`)
+    return null
+  }
+  if (v > TOKENS_MAX) {
+    errors.push(`${key} 不可超過 ${TOKENS_MAX}`)
     return null
   }
   return v
@@ -51,6 +57,10 @@ export function parseAiUsagePayload(input: unknown): ParseResult {
       errors.push('costUsd 必須是非負有限數')
     } else {
       costUsd = obj.costUsd
+    }
+    if (typeof obj.costUsd === 'number' && obj.costUsd >= COST_MAX_EXCLUSIVE) {
+      errors.push(`costUsd 必須小於 ${COST_MAX_EXCLUSIVE}`)
+      costUsd = null
     }
   }
 

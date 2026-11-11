@@ -119,6 +119,7 @@ export default async function IssueDetailPage({
                 </li>
               </ul>
               <JudgmentLabelForm
+                key={judgment.id}
                 issueId={issue.id}
                 judgmentId={judgment.id}
                 aiSeverity={judgment.severity}

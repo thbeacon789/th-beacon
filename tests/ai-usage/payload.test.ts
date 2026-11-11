@@ -54,3 +54,16 @@ describe('parseAiUsagePayload', () => {
     }
   })
 })
+
+describe('parseAiUsagePayload 數值上限（避免 DB 溢位變 500）', () => {
+  it('costUsd >= 1_000_000 → 錯誤；剛好低於 → 合法', () => {
+    expect(parseAiUsagePayload({ source: 'ci_pr', costUsd: 1_000_000 }).ok).toBe(false)
+    expect(parseAiUsagePayload({ source: 'ci_pr', costUsd: 999_999.99 }).ok).toBe(true)
+  })
+
+  it('tokens > 2147483647 → 錯誤；等於上限合法', () => {
+    expect(parseAiUsagePayload({ source: 'ci_pr', inputTokens: 2_147_483_648, outputTokens: 1 }).ok).toBe(false)
+    expect(parseAiUsagePayload({ source: 'ci_pr', inputTokens: 1, outputTokens: 2_147_483_648 }).ok).toBe(false)
+    expect(parseAiUsagePayload({ source: 'ci_pr', inputTokens: 2_147_483_647, outputTokens: 1 }).ok).toBe(true)
+  })
+})
