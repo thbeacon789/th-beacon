@@ -13,6 +13,7 @@ import {
   ruleRowToTriageRule,
   rowToPollConfig,
   rowToHeartbeat,
+  rowToAiJudgment,
 } from '@/store/mapping'
 
 /** Postgres unique_violation。名稱重複是預期輸入，不是例外。 */
@@ -442,20 +443,60 @@ export class SupabaseStore implements Store {
     }))
   }
 
-  // Task 3 取代以下 stub
-  async recordAiJudgment(_j: NewAiJudgment): Promise<{ id: string; merged: boolean }> {
-    throw new Error('not implemented')
+  async recordAiJudgment(j: NewAiJudgment): Promise<{ id: string; merged: boolean }> {
+    const { data, error } = await this.client.rpc('record_ai_judgment', {
+      p_issue_id: j.issueId,
+      p_service_id: j.serviceId,
+      p_source: j.source,
+      p_severity: j.severity,
+      p_category: j.category,
+      p_model: j.model as string, // 生成型別未標 nullable；SQL 端 p_model 可為 null
+      p_judged_at: j.judgedAt,
+    })
+    if (error) throw new Error(`recordAiJudgment failed: ${error.message}`)
+    const row = data?.[0]
+    if (row === undefined) throw new Error('recordAiJudgment returned no row')
+    return { id: row.judgment_id, merged: row.merged }
   }
 
-  async getAiJudgment(_judgmentId: string): Promise<StoredAiJudgment | null> {
-    throw new Error('not implemented')
+  async getAiJudgment(judgmentId: string): Promise<StoredAiJudgment | null> {
+    const { data, error } = await this.client.from('ai_judgments').select('*').eq('id', judgmentId).maybeSingle()
+    if (error) throw new Error(`getAiJudgment failed: ${error.message}`)
+    return data === null ? null : rowToAiJudgment(data)
   }
 
-  async labelAiJudgment(_judgmentId: string, _label: JudgmentLabel, _labeledBy: string, _nowIso: string): Promise<boolean> {
-    throw new Error('not implemented')
+  async labelAiJudgment(judgmentId: string, label: JudgmentLabel, labeledBy: string, nowIso: string): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('ai_judgments')
+      .update({
+        severity_verdict: label.severityVerdict,
+        severity_correct: label.severityCorrect,
+        category_verdict: label.categoryVerdict,
+        category_correct: label.categoryCorrect,
+        labeled_by: labeledBy,
+        labeled_at: nowIso,
+      })
+      .eq('id', judgmentId)
+      .select('id')
+    if (error) throw new Error(`labelAiJudgment failed: ${error.message}`)
+    return data.length > 0
   }
 
-  async recordAiUsage(_u: NewAiUsage): Promise<{ id: string }> {
-    throw new Error('not implemented')
+  async recordAiUsage(u: NewAiUsage): Promise<{ id: string }> {
+    const { data, error } = await this.client
+      .from('ai_usage')
+      .insert({
+        service_id: u.serviceId,
+        source: u.source,
+        model: u.model,
+        input_tokens: u.inputTokens,
+        output_tokens: u.outputTokens,
+        cost_usd: u.costUsd,
+        occurred_at: u.occurredAt,
+      })
+      .select('id')
+      .single()
+    if (error) throw new Error(`recordAiUsage failed: ${error.message}`)
+    return { id: data.id }
   }
 }

@@ -39,6 +39,125 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_judgments: {
+        Row: {
+          category: string
+          category_correct: string | null
+          category_verdict: string | null
+          created_at: string
+          id: string
+          issue_id: string
+          judged_at: string
+          labeled_at: string | null
+          labeled_by: string | null
+          last_judged_at: string
+          merge_count: number
+          model: string | null
+          service_id: string
+          severity: string
+          severity_correct: string | null
+          severity_verdict: string | null
+          source: string
+        }
+        Insert: {
+          category: string
+          category_correct?: string | null
+          category_verdict?: string | null
+          created_at?: string
+          id?: string
+          issue_id: string
+          judged_at: string
+          labeled_at?: string | null
+          labeled_by?: string | null
+          last_judged_at: string
+          merge_count?: number
+          model?: string | null
+          service_id: string
+          severity: string
+          severity_correct?: string | null
+          severity_verdict?: string | null
+          source: string
+        }
+        Update: {
+          category?: string
+          category_correct?: string | null
+          category_verdict?: string | null
+          created_at?: string
+          id?: string
+          issue_id?: string
+          judged_at?: string
+          labeled_at?: string | null
+          labeled_by?: string | null
+          last_judged_at?: string
+          merge_count?: number
+          model?: string | null
+          service_id?: string
+          severity?: string
+          severity_correct?: string | null
+          severity_verdict?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_judgments_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_judgments_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_usage: {
+        Row: {
+          cost_usd: number | null
+          created_at: string
+          id: string
+          input_tokens: number | null
+          model: string | null
+          occurred_at: string
+          output_tokens: number | null
+          service_id: string
+          source: string
+        }
+        Insert: {
+          cost_usd?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          occurred_at: string
+          output_tokens?: number | null
+          service_id: string
+          source: string
+        }
+        Update: {
+          cost_usd?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          occurred_at?: string
+          output_tokens?: number | null
+          service_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       allowed_emails: {
         Row: {
           created_at: string
@@ -453,6 +572,21 @@ export type Database = {
     }
     Functions: {
       before_user_created_hook: { Args: { event: Json }; Returns: Json }
+      record_ai_judgment: {
+        Args: {
+          p_category: string
+          p_issue_id: string
+          p_judged_at: string
+          p_model: string
+          p_service_id: string
+          p_severity: string
+          p_source: string
+        }
+        Returns: {
+          judgment_id: string
+          merged: boolean
+        }[]
+      }
       upsert_issue_with_event: {
         Args: {
           p_error_type: string

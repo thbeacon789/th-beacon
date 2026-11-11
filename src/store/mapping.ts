@@ -1,13 +1,14 @@
 import type { Database } from '@/db/database.types'
-import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
+import type { AiJudgmentSource, AiUsageSource, EventSource, HealthStatus, IssueStatus, Severity, Verdict } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
 import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
-import type { IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat } from '@/store/contracts'
+import type { IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
 type RuleRow = Database['public']['Tables']['triage_rules']['Row']
 type HeartbeatRow = Database['public']['Tables']['heartbeats']['Row']
+type AiJudgmentRow = Database['public']['Tables']['ai_judgments']['Row']
 
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 const ISSUE_STATUSES: readonly IssueStatus[] = ['open', 'acknowledged', 'resolved', 'ignored']
@@ -151,5 +152,35 @@ export function rowToHeartbeat(row: HeartbeatRow): StoredHeartbeat {
     lastRunUrl: row.last_run_url,
     lastRunSummary: row.last_run_summary,
     createdAt: row.created_at,
+  }
+}
+
+const AI_JUDGMENT_SOURCES: readonly AiJudgmentSource[] = ['server', 'ci']
+const AI_USAGE_SOURCES: readonly AiUsageSource[] = ['server_triage', 'ci_diagnosis', 'ci_pr']
+const VERDICTS: readonly Verdict[] = ['correct', 'wrong']
+
+export const narrowAiJudgmentSource = (v: string): AiJudgmentSource => narrow(v, AI_JUDGMENT_SOURCES, 'ai judgment source')
+export const narrowAiUsageSource = (v: string): AiUsageSource => narrow(v, AI_USAGE_SOURCES, 'ai usage source')
+
+export function rowToAiJudgment(row: AiJudgmentRow): StoredAiJudgment {
+  return {
+    id: row.id,
+    issueId: row.issue_id,
+    serviceId: row.service_id,
+    source: narrowAiJudgmentSource(row.source),
+    severity: narrowSeverity(row.severity),
+    category: narrow(row.category, CATEGORIES, 'ai category'),
+    model: row.model,
+    judgedAt: row.judged_at,
+    lastJudgedAt: row.last_judged_at,
+    mergeCount: row.merge_count,
+    label: {
+      severityVerdict: row.severity_verdict === null ? null : narrow(row.severity_verdict, VERDICTS, 'severity verdict'),
+      severityCorrect: row.severity_correct === null ? null : narrowSeverity(row.severity_correct),
+      categoryVerdict: row.category_verdict === null ? null : narrow(row.category_verdict, VERDICTS, 'category verdict'),
+      categoryCorrect: row.category_correct === null ? null : narrow(row.category_correct, CATEGORIES, 'ai category'),
+    },
+    labeledBy: row.labeled_by,
+    labeledAt: row.labeled_at,
   }
 }

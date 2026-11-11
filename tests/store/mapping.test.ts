@@ -5,6 +5,8 @@ import {
   narrowHealthStatus,
   narrowEventSource,
   rowToIssue,
+  rowToAiJudgment,
+  narrowAiUsageSource,
   rowToService,
   ruleRowToTriageRule,
 } from '@/store/mapping'
@@ -187,5 +189,52 @@ describe('ruleRowToTriageRule', () => {
   it('rejects wrongly-typed match fields', () => {
     expect(() => ruleRowToTriageRule({ ...ruleRow, match: { errorType: 7 } })).toThrow(/match\.errorType/)
     expect(() => ruleRowToTriageRule({ ...ruleRow, match: { windowMinutes: 'x' } })).toThrow(/match\.windowMinutes/)
+  })
+})
+
+describe('rowToAiJudgment', () => {
+  type JRow = Database['public']['Tables']['ai_judgments']['Row']
+  const jRow: JRow = {
+    id: 'j-1',
+    issue_id: 'i-1',
+    service_id: 's-1',
+    source: 'server',
+    severity: 'P1',
+    category: 'app',
+    model: 'claude-sonnet-5-5',
+    judged_at: '2026-11-11T01:00:00+00:00',
+    last_judged_at: '2026-11-11T02:00:00+00:00',
+    merge_count: 2,
+    severity_verdict: 'wrong',
+    severity_correct: 'P0',
+    category_verdict: 'correct',
+    category_correct: null,
+    labeled_by: 'u-1',
+    labeled_at: '2026-11-11T03:00:00+00:00',
+    created_at: '2026-11-11T01:00:00+00:00',
+  }
+
+  it('轉換欄位並收斂 label', () => {
+    expect(rowToAiJudgment(jRow)).toEqual({
+      id: 'j-1',
+      issueId: 'i-1',
+      serviceId: 's-1',
+      source: 'server',
+      severity: 'P1',
+      category: 'app',
+      model: 'claude-sonnet-5-5',
+      judgedAt: '2026-11-11T01:00:00+00:00',
+      lastJudgedAt: '2026-11-11T02:00:00+00:00',
+      mergeCount: 2,
+      label: { severityVerdict: 'wrong', severityCorrect: 'P0', categoryVerdict: 'correct', categoryCorrect: null },
+      labeledBy: 'u-1',
+      labeledAt: '2026-11-11T03:00:00+00:00',
+    })
+  })
+
+  it('遇非法 source 拋錯', () => {
+    expect(() => rowToAiJudgment({ ...jRow, source: 'bogus' })).toThrow('invalid ai judgment source')
+    expect(() => narrowAiUsageSource('bogus')).toThrow('invalid ai usage source')
+    expect(narrowAiUsageSource('ci_pr')).toBe('ci_pr')
   })
 })
