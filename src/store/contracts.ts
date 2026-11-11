@@ -1,8 +1,8 @@
-import type { CanonicalEvent, HealthStatus, Issue, IssueAiTriage, IssueStatus, Severity } from '@/core/types'
+import type { AiJudgmentSource, AiUsageSource, CanonicalEvent, HealthStatus, Issue, IssueAiTriage, IssueStatus, JudgmentLabel, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
-import type { HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 
 export type { IssueAiTriage }
 
@@ -127,6 +127,35 @@ export interface NewHeartbeat {
   graceSeconds: number
 }
 
+export interface NewAiJudgment {
+  issueId: string
+  serviceId: string
+  source: AiJudgmentSource
+  severity: Severity
+  category: DiagnosisCategory
+  model: string | null
+  judgedAt: string // ISO
+}
+
+export interface StoredAiJudgment extends NewAiJudgment {
+  id: string
+  lastJudgedAt: string
+  mergeCount: number
+  label: JudgmentLabel
+  labeledBy: string | null
+  labeledAt: string | null
+}
+
+export interface NewAiUsage {
+  serviceId: string
+  source: AiUsageSource
+  model: string | null
+  inputTokens: number | null
+  outputTokens: number | null
+  costUsd: number | null
+  occurredAt: string
+}
+
 export interface Store {
   getService(serviceId: string): Promise<ServiceRecord | null>
   getServiceByName(name: string): Promise<ServiceAuth | null>
@@ -190,4 +219,12 @@ export interface Store {
   /** 服務不存在時回 false */
   rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean>
   listRegisteredServices(): Promise<RegisteredService[]>
+
+  // ---- AI 判級準確率與花費統計 ----
+  /** 與該 issue 最新一筆判定 severity＋category 皆同 → 併入（last_judged_at 更新、merge_count+1、標記不動）；否則新增。 */
+  recordAiJudgment(j: NewAiJudgment): Promise<{ id: string; merged: boolean }>
+  getAiJudgment(judgmentId: string): Promise<StoredAiJudgment | null>
+  /** 覆寫整組標記；判定不存在回 false */
+  labelAiJudgment(judgmentId: string, label: JudgmentLabel, labeledBy: string, nowIso: string): Promise<boolean>
+  recordAiUsage(u: NewAiUsage): Promise<{ id: string }>
 }

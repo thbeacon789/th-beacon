@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { InMemoryStore } from '@/store/memory'
 import type { ServiceRecord, StoredHeartbeat } from '@/store/contracts'
 import type { CanonicalEvent } from '@/core/types'
+import { EMPTY_LABEL } from '@/core/types'
 
 const svc: ServiceRecord = {
   id: 's-1',
@@ -617,5 +618,97 @@ describe('InMemoryStore AI 判定與說明', () => {
       firstSeen: '2026-07-27T10:00:00.000Z',
       lastSeen: '2026-07-27T10:00:00.000Z',
     })
+  })
+})
+
+describe('InMemoryStore ai judgments / usage', () => {
+  const judgment = (over: Partial<import('@/store/contracts').NewAiJudgment> = {}) => ({
+    issueId: 'i-1',
+    serviceId: 's-1',
+    source: 'server' as const,
+    severity: 'P1' as const,
+    category: 'app' as const,
+    model: 'claude-sonnet-5-5',
+    judgedAt: '2026-11-01T00:00:00.000Z',
+    ...over,
+  })
+
+  it('第一筆判定新增，merged=false、mergeCount=1、label=EMPTY_LABEL', async () => {
+    const store = new InMemoryStore()
+    const r = await store.recordAiJudgment(judgment())
+    expect(r.merged).toBe(false)
+    const got = await store.getAiJudgment(r.id)
+    expect(got?.mergeCount).toBe(1)
+    expect(got?.label).toEqual(EMPTY_LABEL)
+    expect(got?.lastJudgedAt).toBe('2026-11-01T00:00:00.000Z')
+    expect(got?.labeledBy).toBeNull()
+  })
+
+  it('同 issue 再來 severity＋category 相同 → 併入', async () => {
+    const store = new InMemoryStore()
+    const a = await store.recordAiJudgment(judgment())
+    const b = await store.recordAiJudgment(judgment({ judgedAt: '2026-11-02T00:00:00.000Z' }))
+    expect(b).toEqual({ id: a.id, merged: true })
+    const got = await store.getAiJudgment(a.id)
+    expect(got?.mergeCount).toBe(2)
+    expect(got?.lastJudgedAt).toBe('2026-11-02T00:00:00.000Z')
+    expect(got?.judgedAt).toBe('2026-11-01T00:00:00.000Z')
+    expect(store.listAiJudgments()).toHaveLength(1)
+  })
+
+  it('標記後再合併 → 標記保留', async () => {
+    const store = new InMemoryStore()
+    const a = await store.recordAiJudgment(judgment())
+    const label = { severityVerdict: 'wrong' as const, severityCorrect: 'P0' as const, categoryVerdict: 'correct' as const, categoryCorrect: null }
+    await store.labelAiJudgment(a.id, label, 'u@x', '2026-11-01T01:00:00.000Z')
+    await store.recordAiJudgment(judgment({ judgedAt: '2026-11-02T00:00:00.000Z' }))
+    const got = await store.getAiJudgment(a.id)
+    expect(got?.label).toEqual(label)
+    expect(got?.labeledBy).toBe('u@x')
+  })
+
+  it('A→B→A：三筆分別新增，第三筆 label 為 EMPTY_LABEL', async () => {
+    const store = new InMemoryStore()
+    const a1 = await store.recordAiJudgment(judgment())
+    const b = await store.recordAiJudgment(judgment({ severity: 'P0', judgedAt: '2026-11-02T00:00:00.000Z' }))
+    const a2 = await store.recordAiJudgment(judgment({ judgedAt: '2026-11-03T00:00:00.000Z' }))
+    expect([a1.merged, b.merged, a2.merged]).toEqual([false, false, false])
+    expect(new Set([a1.id, b.id, a2.id]).size).toBe(3)
+    expect((await store.getAiJudgment(a2.id))?.label).toEqual(EMPTY_LABEL)
+  })
+
+  it('不同 issue 互不合併', async () => {
+    const store = new InMemoryStore()
+    const a = await store.recordAiJudgment(judgment())
+    const b = await store.recordAiJudgment(judgment({ issueId: 'i-2' }))
+    expect(b.merged).toBe(false)
+    expect(b.id).not.toBe(a.id)
+  })
+
+  it('labelAiJudgment 覆寫標記與 labeledBy/labeledAt；未知 id 回 false', async () => {
+    const store = new InMemoryStore()
+    const a = await store.recordAiJudgment(judgment())
+    const l1 = { severityVerdict: 'correct' as const, severityCorrect: null, categoryVerdict: null, categoryCorrect: null }
+    const l2 = { severityVerdict: null, severityCorrect: null, categoryVerdict: 'wrong' as const, categoryCorrect: 'env' as const }
+    expect(await store.labelAiJudgment(a.id, l1, 'u1', '2026-11-01T01:00:00.000Z')).toBe(true)
+    expect(await store.labelAiJudgment(a.id, l2, 'u2', '2026-11-01T02:00:00.000Z')).toBe(true)
+    const got = await store.getAiJudgment(a.id)
+    expect(got?.label).toEqual(l2)
+    expect(got?.labeledBy).toBe('u2')
+    expect(got?.labeledAt).toBe('2026-11-01T02:00:00.000Z')
+    expect(await store.labelAiJudgment('nope', l1, 'u', '2026-11-01T01:00:00.000Z')).toBe(false)
+    expect(await store.getAiJudgment('nope')).toBeNull()
+  })
+
+  it('recordAiUsage 寫入後 listAiUsage 可見，含 costUsd null', async () => {
+    const store = new InMemoryStore()
+    const { id } = await store.recordAiUsage({
+      serviceId: 's-1', source: 'server_triage', model: 'unknown-model',
+      inputTokens: 10, outputTokens: 5, costUsd: null, occurredAt: '2026-11-01T00:00:00.000Z',
+    })
+    const list = store.listAiUsage()
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe(id)
+    expect(list[0].costUsd).toBeNull()
   })
 })

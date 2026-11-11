@@ -1,10 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/db/database.types'
-import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
+import type { CanonicalEvent, HealthStatus, IssueStatus, JudgmentLabel, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -440,5 +440,22 @@ export class SupabaseStore implements Store {
       createdAt: row.created_at,
       heartbeats: byService.get(row.id) ?? [],
     }))
+  }
+
+  // Task 3 取代以下 stub
+  async recordAiJudgment(_j: NewAiJudgment): Promise<{ id: string; merged: boolean }> {
+    throw new Error('not implemented')
+  }
+
+  async getAiJudgment(_judgmentId: string): Promise<StoredAiJudgment | null> {
+    throw new Error('not implemented')
+  }
+
+  async labelAiJudgment(_judgmentId: string, _label: JudgmentLabel, _labeledBy: string, _nowIso: string): Promise<boolean> {
+    throw new Error('not implemented')
+  }
+
+  async recordAiUsage(_u: NewAiUsage): Promise<{ id: string }> {
+    throw new Error('not implemented')
   }
 }

@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { CanonicalEvent, HealthStatus, IssueStatus, Severity } from '@/core/types'
+import type { CanonicalEvent, HealthStatus, IssueStatus, JudgmentLabel, Severity } from '@/core/types'
+import { EMPTY_LABEL } from '@/core/types'
+import { isSameJudgment } from '@/core/ai-judgment'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -20,6 +22,8 @@ export class InMemoryStore implements Store {
   private notifications: NotificationRecord[] = []
   private heartbeats: StoredHeartbeat[] = []
   private createdAts = new Map<string, string>() // serviceId → created_at（僅登記頁需要）
+  private aiJudgments: StoredAiJudgment[] = []
+  private aiUsages: Array<NewAiUsage & { id: string }> = []
   private nextId = 1
 
   seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
@@ -454,6 +458,72 @@ export class InMemoryStore implements Store {
           .map((h) => ({ ...h }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       }))
+  }
+
+  // ---- AI 判級準確率與花費統計 ----
+
+  /** 測試用：目前記錄的全部 AI 判定 */
+  listAiJudgments(): StoredAiJudgment[] {
+    return this.aiJudgments.map((j) => this.copyJudgment(j))
+  }
+
+  /** 測試用：目前記錄的全部 AI 用量 */
+  listAiUsage(): Array<NewAiUsage & { id: string }> {
+    return this.aiUsages.map((u) => ({ ...u }))
+  }
+
+  async recordAiJudgment(j: NewAiJudgment): Promise<{ id: string; merged: boolean }> {
+    // 最新一筆 = 該 issue 中 judgedAt 最晚者（同時間取後寫入者）
+    let latest: StoredAiJudgment | undefined
+    for (const existing of this.aiJudgments) {
+      if (existing.issueId !== j.issueId) continue
+      if (latest === undefined || existing.judgedAt >= latest.judgedAt) latest = existing
+    }
+    if (latest !== undefined && isSameJudgment(latest, j)) {
+      latest.lastJudgedAt = j.judgedAt
+      latest.mergeCount += 1
+      return { id: latest.id, merged: true }
+    }
+    const created: StoredAiJudgment = {
+      ...j,
+      id: randomUUID(),
+      lastJudgedAt: j.judgedAt,
+      mergeCount: 1,
+      label: { ...EMPTY_LABEL },
+      labeledBy: null,
+      labeledAt: null,
+    }
+    this.aiJudgments.push(created)
+    return { id: created.id, merged: false }
+  }
+
+  async getAiJudgment(judgmentId: string): Promise<StoredAiJudgment | null> {
+    const found = this.aiJudgments.find((j) => j.id === judgmentId)
+    return found === undefined ? null : this.copyJudgment(found)
+  }
+
+  async labelAiJudgment(
+    judgmentId: string,
+    label: JudgmentLabel,
+    labeledBy: string,
+    nowIso: string,
+  ): Promise<boolean> {
+    const found = this.aiJudgments.find((j) => j.id === judgmentId)
+    if (found === undefined) return false
+    found.label = { ...label }
+    found.labeledBy = labeledBy
+    found.labeledAt = nowIso
+    return true
+  }
+
+  async recordAiUsage(u: NewAiUsage): Promise<{ id: string }> {
+    const id = randomUUID()
+    this.aiUsages.push({ ...u, id })
+    return { id }
+  }
+
+  private copyJudgment(j: StoredAiJudgment): StoredAiJudgment {
+    return { ...j, label: { ...j.label } }
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {
