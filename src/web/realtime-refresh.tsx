@@ -14,11 +14,24 @@ export function RealtimeRefresh() {
   useEffect(() => {
     if (pathname.startsWith('/login')) return
 
+    const isVisible = () => document.visibilityState === 'visible'
+
+    // 背景分頁不打 server：期間的變更只記一筆 stale，回到前景時補一次 refresh
+    let stale = false
+    const refresh = () => {
+      if (!isVisible()) {
+        stale = true
+        return
+      }
+      stale = false
+      router.refresh()
+    }
+
     // 事件風暴時 trailing debounce，避免每筆 issues 變更都整頁 refresh
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (debounceTimer !== null) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => router.refresh(), DEBOUNCE_MS)
+      debounceTimer = setTimeout(refresh, DEBOUNCE_MS)
     }
 
     const supabase = createBrowserSupabase()
@@ -29,11 +42,17 @@ export function RealtimeRefresh() {
 
     // services.health_status 不在 realtime publication（secrets 不出伺服器的取捨）；
     // 低頻 interval 當 backstop，涵蓋「燈號恢復但無 issues 變更」的路徑
-    const backstop = setInterval(() => router.refresh(), BACKSTOP_INTERVAL_MS)
+    const backstop = setInterval(refresh, BACKSTOP_INTERVAL_MS)
+
+    const onVisibilityChange = () => {
+      if (isVisible() && stale) refresh()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       if (debounceTimer !== null) clearTimeout(debounceTimer)
       clearInterval(backstop)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       void supabase.removeChannel(channel)
     }
   }, [router, pathname])
