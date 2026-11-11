@@ -49,7 +49,7 @@ describe('handleHeartbeat 延後 AI 判級', () => {
     return {
       ok: true,
       diagnosis: { category: 'app', severity: 'P0', reason: '使用者受影響', suggestion: '重啟' },
-      usage: { inputTokens: 1, outputTokens: 1 },
+      usage: { inputTokens: 1, outputTokens: 1, model: 'claude-sonnet-5-5' },
     }
   }
   const failBody = JSON.stringify({ name: 'daily-test', status: 'fail' })

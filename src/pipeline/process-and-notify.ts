@@ -7,6 +7,8 @@ import {
   summarizeServiceIssues,
   type TriageDecision,
 } from '@/core/ai-triage'
+import { computeCostUsd } from '@/core/ai-pricing'
+import { extractCiJudgment } from '@/core/ai-judgment'
 import { DIAGNOSIS_ERROR_LIMIT, truncateText } from '@/core/heartbeat'
 import type { Triager, TriageCallResult } from '@/triage/claude'
 import { shouldNotify } from '@/notify/decision'
@@ -90,6 +92,23 @@ export async function finishEvent(
     return safeNotify(store, deps, event, result, now)
   }
 
+  if (decision.kind === 'ci') {
+    const ci = extractCiJudgment(event)
+    if (ci !== null) {
+      await recordSideEffect('recordAiJudgment(ci)', () =>
+        store.recordAiJudgment({
+          issueId: upsert.issue.id,
+          serviceId: event.serviceId,
+          source: 'ci',
+          severity: ci.severity,
+          category: ci.category,
+          model: ci.model,
+          judgedAt: now.toISOString(),
+        }),
+      )
+    }
+  }
+
   let ai: Severity | null = null
   let notifyEvent = event
   let record: IssueAiTriage | null = null
@@ -117,6 +136,15 @@ export async function processAndNotify(
   now: Date,
 ): Promise<ProcessAndNotifyResult> {
   return finishEvent(store, deps, await stageEvent(store, deps, event, now), now)
+}
+
+/** 判定／用量紀錄是旁路：失敗只 log，不得影響判級、通知或回應。 */
+async function recordSideEffect(label: string, task: () => Promise<unknown>): Promise<void> {
+  try {
+    await task()
+  } catch (error) {
+    console.error(`${label} failed:`, error)
+  }
 }
 
 // 通知區塊標題已是「AI 判讀失敗」，內容不再加前綴；略過是例外，需自說明。
@@ -175,6 +203,34 @@ async function runTriager(
   }
 
   const judgedAt = now.toISOString()
+  if (call.usage !== undefined) {
+    const { usage } = call
+    await recordSideEffect('recordAiUsage', () =>
+      store.recordAiUsage({
+        serviceId: event.serviceId,
+        source: 'server_triage',
+        model: usage.model,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        costUsd: computeCostUsd(usage.model, usage.inputTokens, usage.outputTokens),
+        occurredAt: judgedAt,
+      }),
+    )
+  }
+  if (call.ok) {
+    const { diagnosis } = call
+    await recordSideEffect('recordAiJudgment', () =>
+      store.recordAiJudgment({
+        issueId: upsert.issue.id,
+        serviceId: event.serviceId,
+        source: 'server',
+        severity: diagnosis.severity,
+        category: diagnosis.category,
+        model: diagnosis.model ?? AI_TRIAGE_MODEL,
+        judgedAt,
+      }),
+    )
+  }
   const record: IssueAiTriage = call.ok
     ? {
         severity: call.diagnosis.severity,

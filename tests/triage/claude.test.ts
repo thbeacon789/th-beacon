@@ -56,7 +56,7 @@ describe('createClaudeTriager', () => {
     expect(r).toEqual({
       ok: true,
       diagnosis: { category: 'app', severity: 'P1', reason: '原因', suggestion: '建議', model: AI_TRIAGE_MODEL },
-      usage: { inputTokens: 123, outputTokens: 45 },
+      usage: { inputTokens: 123, outputTokens: 45, model: 'claude-sonnet-5-5' },
     })
     expect(log).toHaveBeenCalledTimes(1)
     log.mockRestore()
@@ -113,5 +113,35 @@ describe('createClaudeTriager', () => {
     )
     const r = await triage(PROMPT)
     expect(r.ok).toBe(false)
+  })
+
+  it('ok 結果的 usage 帶 model = AI_TRIAGE_MODEL', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { triage } = setup(() => jsonResponse(messageBody()))
+    const r = await triage(PROMPT)
+    expect(r.ok && r.usage).toEqual({ inputTokens: 123, outputTokens: 45, model: AI_TRIAGE_MODEL })
+    log.mockRestore()
+  })
+
+  it.each([
+    ['stop_reason max_tokens', { stop_reason: 'max_tokens' }],
+    ['輸出非 JSON', { content: [{ type: 'text', text: 'not json' }] }],
+    ['schema 不合', { content: [{ type: 'text', text: '{"severity":"P9"}' }] }],
+  ])('%s → ok:false 且帶 usage', async (_label, over) => {
+    const { triage } = setup(() => jsonResponse(messageBody(over)))
+    const r = await triage(PROMPT)
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.usage).toEqual({ inputTokens: 123, outputTokens: 45, model: AI_TRIAGE_MODEL })
+  })
+
+  it('HTTP 錯誤或逾時 → ok:false 且無 usage', async () => {
+    const http = setup(() => jsonResponse({ type: 'error', error: { type: 'api_error', message: 'x' } }, 500))
+    const r1 = await http.triage(PROMPT)
+    expect(r1.ok).toBe(false)
+    expect(!r1.ok && r1.usage).toBeUndefined()
+    const slow = setup(() => new Promise<Response>(() => {}), 50)
+    const r2 = await slow.triage(PROMPT)
+    expect(r2.ok).toBe(false)
+    expect(!r2.ok && r2.usage).toBeUndefined()
   })
 })

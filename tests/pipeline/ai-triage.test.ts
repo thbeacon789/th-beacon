@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { processAndNotify, stageEvent, finishEvent } from '@/pipeline/process-and-notify'
 import type { NotifyDeps, TriageDeps } from '@/pipeline/process-and-notify'
 import { InMemoryStore } from '@/store/memory'
+import type { NewAiJudgment, NewAiUsage } from '@/store/contracts'
 import type { DiscordMessage } from '@/notify/message'
 import type { ServiceRecord } from '@/store/contracts'
 import type { CanonicalEvent, Severity } from '@/core/types'
@@ -37,7 +38,7 @@ const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({
 const ok = (severity: Severity, reason = '有使用者受影響'): TriageCallResult => ({
   ok: true,
   diagnosis: { category: 'app', severity, reason, suggestion: '重啟服務' },
-  usage: { inputTokens: 1, outputTokens: 1 },
+  usage: { inputTokens: 1, outputTokens: 1, model: 'claude-sonnet-5-5' },
 })
 
 function setup(
@@ -270,5 +271,149 @@ describe('cron 預算（逐筆 stage→finish）', () => {
     expect(h.calls()).toBe(5)
     expect(decisions).toEqual(['call', 'call', 'call', 'call', 'call', 'skip_budget', 'skip_budget'])
     expect(h.deps.triage?.budget?.remaining).toBe(0)
+  })
+})
+
+describe('旁路寫入 AI 判定與用量', () => {
+  let store: InMemoryStore
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService(svc)
+  })
+  const okWithModel = (severity: Severity): TriageCallResult => ({
+    ok: true,
+    diagnosis: { category: 'app', severity, reason: 'r', suggestion: 's', model: 'claude-sonnet-5-5' },
+    usage: { inputTokens: 1000, outputTokens: 200, model: 'claude-sonnet-5-5' },
+  })
+  const ciEvent = (over: Partial<CanonicalEvent> = {}) =>
+    event({
+      severity: 'P1',
+      metadata: { diagnosis: { severity: 'P1', category: 'env', model: 'ci-model' } },
+      ...over,
+    })
+
+  it('伺服器判級成功：寫一筆 source=server 判定與一筆 server_triage 用量', async () => {
+    const h = setup([okWithModel('P0')])
+    const r = await processAndNotify(store, h.deps, event(), t0)
+    const js = store.listAiJudgments()
+    expect(js).toHaveLength(1)
+    expect(js[0]).toMatchObject({
+      issueId: r.issue.id,
+      serviceId: 's-1',
+      source: 'server',
+      severity: 'P0',
+      category: 'app',
+      model: 'claude-sonnet-5-5',
+      judgedAt: t0.toISOString(),
+    })
+    const us = store.listAiUsage()
+    expect(us).toHaveLength(1)
+    expect(us[0]).toMatchObject({
+      serviceId: 's-1',
+      source: 'server_triage',
+      model: 'claude-sonnet-5-5',
+      inputTokens: 1000,
+      outputTokens: 200,
+      occurredAt: t0.toISOString(),
+    })
+    expect(us[0]!.costUsd).toBeCloseTo((1000 * 2 + 200 * 10) / 1_000_000, 10)
+  })
+
+  it('10 分內 reuse：不新增判定、不新增用量', async () => {
+    const h = setup([okWithModel('P1')])
+    await processAndNotify(store, h.deps, event(), t0)
+    await processAndNotify(store, h.deps, event(), after(10))
+    expect(store.listAiJudgments()).toHaveLength(1)
+    expect(store.listAiUsage()).toHaveLength(1)
+  })
+
+  it('31 分後重判結果相同 → 判定 mergeCount=2；用量新增第二筆', async () => {
+    const h = setup([okWithModel('P1')])
+    await processAndNotify(store, h.deps, event(), t0)
+    await processAndNotify(store, h.deps, event(), after(31))
+    const js = store.listAiJudgments()
+    expect(js).toHaveLength(1)
+    expect(js[0]!.mergeCount).toBe(2)
+    expect(store.listAiUsage()).toHaveLength(2)
+  })
+
+  it('triager ok:false 帶 usage → 不寫判定、寫用量；無 usage → 兩者皆不寫', async () => {
+    const withUsage = setup([
+      { ok: false, error: 'bad', usage: { inputTokens: 10, outputTokens: 5, model: 'claude-sonnet-5-5' } },
+    ])
+    await processAndNotify(store, withUsage.deps, event({ fingerprint: 'a' }), t0)
+    expect(store.listAiJudgments()).toHaveLength(0)
+    expect(store.listAiUsage()).toHaveLength(1)
+    const without = setup([{ ok: false, error: 'timeout' }])
+    await processAndNotify(store, without.deps, event({ fingerprint: 'b' }), t0)
+    expect(store.listAiJudgments()).toHaveLength(0)
+    expect(store.listAiUsage()).toHaveLength(1)
+  })
+
+  it('recordAiUsage 與 recordAiJudgment 拋錯 → 判級結果、通知照常', async () => {
+    class Throwing extends InMemoryStore {
+      override async recordAiJudgment(_j: NewAiJudgment): Promise<{ id: string; merged: boolean }> {
+        throw new Error('judgment down')
+      }
+      override async recordAiUsage(_u: NewAiUsage): Promise<{ id: string }> {
+        throw new Error('usage down')
+      }
+    }
+    const bad = new Throwing()
+    bad.seedService(svc)
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const h = setup([okWithModel('P0')])
+    const r = await processAndNotify(bad, h.deps, event(), t0)
+    expect(r.issue.severity).toBe('P0')
+    expect(r.notified).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(2)
+    spy.mockRestore()
+  })
+
+  it('CI 診斷 → 寫一筆 source=ci 判定，model 取 diagnosis.model；不呼叫 triager、不寫用量', async () => {
+    const h = setup([okWithModel('P0')])
+    const r = await processAndNotify(store, h.deps, ciEvent(), t0)
+    expect(h.calls()).toBe(0)
+    expect(store.listAiUsage()).toHaveLength(0)
+    const js = store.listAiJudgments()
+    expect(js).toHaveLength(1)
+    expect(js[0]).toMatchObject({
+      issueId: r.issue.id,
+      source: 'ci',
+      severity: 'P1',
+      category: 'env',
+      model: 'ci-model',
+      judgedAt: t0.toISOString(),
+    })
+  })
+
+  it('CI 只帶 ciDiagnosisError → 不寫判定', async () => {
+    const h = setup([okWithModel('P1')], { triager: null })
+    await processAndNotify(store, h.deps, event({ metadata: { ciDiagnosisError: 'x' } }), t0)
+    expect(store.listAiJudgments()).toHaveLength(0)
+  })
+
+  it('event 自帶 severity 但無 diagnosis → 不寫判定', async () => {
+    const h = setup([okWithModel('P1')])
+    await processAndNotify(store, h.deps, event({ severity: 'P1' }), t0)
+    expect(store.listAiJudgments()).toHaveLength(0)
+  })
+
+  it('duplicate event（externalId 重送）→ 不寫判定', async () => {
+    const h = setup([okWithModel('P1')])
+    const ev = ciEvent({ metadata: { externalId: 'run-1', diagnosis: { severity: 'P1', category: 'env' } } })
+    await processAndNotify(store, h.deps, ev, t0)
+    await processAndNotify(store, h.deps, ev, after(1))
+    expect(store.listAiJudgments()).toHaveLength(1)
+    expect(store.listAiJudgments()[0]!.mergeCount).toBe(1)
+  })
+
+  it('同一 CI 測試連兩天同判定 → 一筆判定 mergeCount=2', async () => {
+    const h = setup([okWithModel('P1')])
+    await processAndNotify(store, h.deps, ciEvent(), t0)
+    await processAndNotify(store, h.deps, ciEvent({ occurredAt: '2026-10-28T09:59:00.000Z' }), after(24 * 60))
+    const js = store.listAiJudgments()
+    expect(js).toHaveLength(1)
+    expect(js[0]!.mergeCount).toBe(2)
   })
 })

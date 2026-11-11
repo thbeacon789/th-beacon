@@ -2,17 +2,23 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { AI_TRIAGE_MODEL, TRIAGE_OUTPUT_SCHEMA, parseTriageOutput } from '@/core/ai-triage'
 import { DIAGNOSIS_ERROR_LIMIT, truncateText, type HeartbeatDiagnosis } from '@/core/heartbeat'
 
+export interface TriageUsage {
+  inputTokens: number
+  outputTokens: number
+  model: string
+}
+
 export type TriageCallResult =
-  | { ok: true; diagnosis: HeartbeatDiagnosis; usage: { inputTokens: number; outputTokens: number } }
-  | { ok: false; error: string }
+  | { ok: true; diagnosis: HeartbeatDiagnosis; usage: TriageUsage }
+  | { ok: false; error: string; usage?: TriageUsage } // 有收到 API 回應（已計費）但輸出不合格時帶 usage
 
 export type Triager = (prompt: { system: string; user: string }) => Promise<TriageCallResult>
 
 const DEFAULT_TIMEOUT_MS = 25_000
 const MAX_TOKENS = 1024
 
-function fail(message: string): TriageCallResult {
-  return { ok: false, error: truncateText(message, DIAGNOSIS_ERROR_LIMIT) }
+function fail(message: string, usage?: TriageUsage): TriageCallResult {
+  return { ok: false, error: truncateText(message, DIAGNOSIS_ERROR_LIMIT), ...(usage !== undefined ? { usage } : {}) }
 }
 
 /** 錯誤訊息只取 name + HTTP status + 截斷 message，並遮蔽疑似金鑰／token 的字串（避免寫進 DB／Discord）。 */
@@ -55,20 +61,24 @@ export function createClaudeTriager(client: Anthropic, opts: { timeoutMs?: numbe
         ),
         timeout,
       ])
+      const usage: TriageUsage = {
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        model: AI_TRIAGE_MODEL,
+      }
       if (message.stop_reason === 'refusal' || message.stop_reason === 'max_tokens') {
-        return fail(`stop_reason ${message.stop_reason}`)
+        return fail(`stop_reason ${message.stop_reason}`, usage)
       }
       const block = message.content.find((b) => b.type === 'text')
-      if (block === undefined || block.type !== 'text') return fail('no text block in response')
+      if (block === undefined || block.type !== 'text') return fail('no text block in response', usage)
       let json: unknown
       try {
         json = JSON.parse(block.text)
       } catch {
-        return fail('response is not valid JSON')
+        return fail('response is not valid JSON', usage)
       }
       const parsed = parseTriageOutput(json)
-      if (!parsed.ok) return fail(`invalid output: ${parsed.reason}`)
-      const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens }
+      if (!parsed.ok) return fail(`invalid output: ${parsed.reason}`, usage)
       console.log(`[ai-triage] usage input=${usage.inputTokens} output=${usage.outputTokens} model=${AI_TRIAGE_MODEL}`)
       return { ok: true, diagnosis: { ...parsed.value, model: AI_TRIAGE_MODEL }, usage }
     } catch (err) {
