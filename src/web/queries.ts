@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/db/database.types'
-import type { EventSource, HealthStatus, IssueStatus, Severity } from '@/core/types'
-import type { IssueAiTriage, StoredIssue } from '@/store/contracts'
+import type { EventSource, HealthStatus, IssueStatus, JudgmentLabel, Severity, Verdict } from '@/core/types'
+import type { IssueAiTriage, StoredAiJudgment, StoredIssue } from '@/store/contracts'
 import {
   narrowEventSource,
   narrowHealthStatus,
@@ -9,6 +9,7 @@ import {
   narrowSeverity,
   rowToIssue,
   rowToAiTriage,
+  rowToAiJudgment,
   rowToHeartbeat,
 } from '@/store/mapping'
 import { isHeartbeatOverdue, isSafeRunUrl, type HeartbeatRunStatus } from '@/core/heartbeat'
@@ -200,6 +201,7 @@ export async function listIssues(client: Client, filters: IssueListFilters): Pro
 export interface IssueDetail {
   issue: StoredIssue
   ai: IssueAiTriage | null
+  judgment: StoredAiJudgment | null
   serviceName: string
   events: Array<{
     id: string
@@ -215,7 +217,7 @@ export async function getIssueDetail(client: Client, issueId: string): Promise<I
   if (!isUuid(issueId)) return null
   // events 只以 issueId 過濾，不需要等 issue 那筆回來——並行省一次跨區往返。
   // issue 不存在時多查一次 events（結果為空）即丟棄，代價遠低於一次序列往返。
-  const [issueRes, eventsRes] = await Promise.all([
+  const [issueRes, eventsRes, judgmentRes] = await Promise.all([
     client.from('issues').select('*,services(name)').eq('id', issueId).maybeSingle(),
     client
       .from('events')
@@ -223,16 +225,26 @@ export async function getIssueDetail(client: Client, issueId: string): Promise<I
       .eq('issue_id', issueId)
       .order('occurred_at', { ascending: false })
       .limit(50),
+    client
+      .from('ai_judgments')
+      .select('*')
+      .eq('issue_id', issueId)
+      .order('judged_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
   if (issueRes.error) throw new Error(`getIssueDetail failed: ${issueRes.error.message}`)
   if (issueRes.data === null) return null
   if (eventsRes.error) throw new Error(`getIssueDetail events failed: ${eventsRes.error.message}`)
+  if (judgmentRes.error) throw new Error(`getIssueDetail judgment failed: ${judgmentRes.error.message}`)
   const events = eventsRes.data
 
   const { services, ...bareIssue } = issueRes.data
   return {
     issue: rowToIssue(bareIssue),
     ai: rowToAiTriage(bareIssue),
+    judgment: judgmentRes.data === null ? null : rowToAiJudgment(judgmentRes.data),
     serviceName: services?.name ?? '(unknown)',
     events: events.map((event) => ({
       id: event.id,
@@ -251,4 +263,21 @@ export function extractRunUrl(metadata: unknown): string | null {
   if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null
   const value = (metadata as Record<string, unknown>).runUrl
   return isSafeRunUrl(value) ? value : null
+}
+
+function describeVerdict(verdict: Verdict | null, correct: string | null): string {
+  if (verdict === null) return '尚未標記'
+  if (verdict === 'correct') return '判對'
+  return `判錯，應為 ${correct ?? '?'}`
+}
+
+/** 目前標記的人話描述（詳情頁顯示用） */
+export function describeLabel(label: JudgmentLabel): { severity: string; category: string } {
+  return {
+    severity: describeVerdict(label.severityVerdict, label.severityCorrect),
+    category: describeVerdict(
+      label.categoryVerdict,
+      label.categoryCorrect === null ? null : label.categoryCorrect === 'env' ? '環境問題' : 'app 問題',
+    ),
+  }
 }

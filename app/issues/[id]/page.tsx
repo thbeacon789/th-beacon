@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { getIssueDetail, extractRunUrl } from '@/web/queries'
+import { getIssueDetail, extractRunUrl, describeLabel } from '@/web/queries'
 import { SubmitButton } from '@/web/submit-button'
+import { JudgmentLabelForm } from '@/web/judgment-label-form'
 import { ExternalLinkIcon } from '@/web/icons'
 import { formatDateTime, formatDateTimeSeconds } from '@/web/format'
 import { allowedFrom } from '@/core/lifecycle'
@@ -24,7 +25,7 @@ export default async function IssueDetailPage({
     getIssueDetail(createServerStore().rawClient(), id),
   ])
   if (detail === null) notFound()
-  const { issue, ai, serviceName, events } = detail
+  const { issue, ai, judgment, serviceName, events } = detail
 
   return (
     <main>
@@ -35,9 +36,10 @@ export default async function IssueDetailPage({
         </h1>
       </div>
       <p className="detail-message">{issue.message}</p>
-      {ai !== null && (
+      {(ai !== null || judgment !== null) && (
         <section aria-labelledby="ai-triage-title">
           <h2 id="ai-triage-title">AI 判定</h2>
+          {ai !== null && (
           <ul className="meta">
             {ai.severity !== null && (
               <li>
@@ -79,6 +81,52 @@ export default async function IssueDetailPage({
               </li>
             )}
           </ul>
+          )}
+          {judgment !== null && (
+            <div className="judgment-label">
+              <h3>判定標記</h3>
+              <ul className="meta">
+                <li>
+                  <span className="meta-key">來源</span>
+                  <span className="meta-val">{judgment.source === 'server' ? '伺服器判級' : 'CI 診斷'}</span>
+                </li>
+                <li>
+                  <span className="meta-key">AI 嚴重度</span>
+                  <span className="meta-val">
+                    <span className={`badge badge-${judgment.severity}`}>{judgment.severity}</span>
+                  </span>
+                </li>
+                <li>
+                  <span className="meta-key">AI 類型</span>
+                  <span className="meta-val">{judgment.category === 'env' ? '環境問題' : 'app 問題'}</span>
+                </li>
+                <li>
+                  <span className="meta-key">model</span>
+                  <span className="meta-val">{judgment.model ?? '未知 model'}</span>
+                </li>
+                <li>
+                  <span className="meta-key">判定時間</span>
+                  <span className="meta-val">
+                    {formatDateTime(judgment.judgedAt)}
+                    {judgment.mergeCount > 1 && ` · 已合併 ${judgment.mergeCount} 次相同判定`}
+                  </span>
+                </li>
+                <li>
+                  <span className="meta-key">目前標記</span>
+                  <span className="meta-val">
+                    嚴重度：{describeLabel(judgment.label).severity}；類型：{describeLabel(judgment.label).category}
+                  </span>
+                </li>
+              </ul>
+              <JudgmentLabelForm
+                issueId={issue.id}
+                judgmentId={judgment.id}
+                aiSeverity={judgment.severity}
+                aiCategory={judgment.category}
+                label={judgment.label}
+              />
+            </div>
+          )}
         </section>
       )}
       <ul className="meta">
