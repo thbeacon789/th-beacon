@@ -3,7 +3,7 @@ import { isPublicPath } from '@/web/paths'
 
 describe('isPublicPath', () => {
   it('login and self-authenticating APIs are public', () => {
-    for (const p of ['/login', '/auth/callback', '/api/ingest', '/api/poll/services', '/api/heartbeat']) {
+    for (const p of ['/login', '/auth/callback', '/api/ingest', '/api/poll/services', '/api/heartbeat', '/api/discord/interactions']) {
       expect(isPublicPath(p)).toBe(true)
     }
   })
@@ -13,7 +13,7 @@ describe('isPublicPath', () => {
     }
   })
   it('does not treat prefix-lookalikes as public', () => {
-    for (const p of ['/api/ingest2', '/api/pollx', '/loginx']) {
+    for (const p of ['/api/ingest2', '/api/pollx', '/loginx', '/api/discord', '/api/discord/interactionsx']) {
       expect(isPublicPath(p)).toBe(false)
     }
   })
