@@ -1464,3 +1464,67 @@ tbody tr:last-child td {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   AI Stats
+   ============================================================ */
+.ai-stats-section {
+  margin-top: var(--space-6);
+}
+.ai-stats-section > h2 {
+  margin-bottom: var(--space-3);
+}
+.ai-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.ai-stats-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: var(--space-4);
+  min-width: 0;
+}
+.ai-stats-card-label {
+  color: var(--gold);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+}
+.ai-stats-card-value {
+  margin-top: var(--space-2);
+  font-size: 1.5rem;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.ai-stats-card .hint {
+  margin-top: var(--space-1);
+}
+.ai-stats-chart {
+  height: 20rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: var(--space-3);
+}
+.ai-stats-matrix {
+  min-width: 0;
+  text-align: center;
+}
+.ai-stats-matrix th,
+.ai-stats-matrix td {
+  text-align: center;
+}
+.ai-stats-miss {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin-top: var(--space-3);
+  color: var(--fg-muted);
+}
+.ai-stats-table {
+  min-width: 36rem;
+}
+@media (max-width: 40rem) {
+  .ai-stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

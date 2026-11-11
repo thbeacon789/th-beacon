@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/', label: 'Overview' },
   { href: '/issues', label: 'Issues' },
   { href: '/services', label: 'Services' },
+  { href: '/ai-stats', label: 'AI Stats' },
   { href: '/docs', label: 'Docs' },
 ] as const
 
