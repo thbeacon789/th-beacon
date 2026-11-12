@@ -1,9 +1,9 @@
 import { actorLabel, allowedFrom, type IssueActor } from '@/core/lifecycle'
 import type { IssueStatus } from '@/core/types'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
-import type { DiscordBot } from '@/notify/discord-bot'
+import { THREAD_NAME_MAX, type DiscordBot, type BotPostResult } from '@/notify/discord-bot'
 import { buildAckReply, buildResolveReply, renderRoot } from '@/notify/lifecycle-message'
-import type { DiscordMessage } from '@/notify/message'
+import type { DiscordMessage, DiscordReplyMessage } from '@/notify/message'
 import type { Store, StoredIssue } from '@/store/contracts'
 
 export interface TransitionOptions {
@@ -38,6 +38,31 @@ async function safely(what: string, fn: () => Promise<unknown>): Promise<void> {
   } catch (error) {
     console.error(`transitionIssue: ${what} failed`, error)
   }
+}
+
+/**
+ * 把確認／解決訊息發到以根訊息開出的討論串（thread id = 根訊息 id，Discord 文件載明，故不必另存）。
+ * 流程：直接發到 thread → 失敗則開 thread（已存在時 Discord 回 400，忽略）再發一次 →
+ * 仍失敗退回在頻道以回覆（message_reference）發送，確保訊息不遺失。永不 throw。
+ */
+async function postInThread(
+  bot: DiscordBot,
+  root: { channelId: string; messageId: string; payload: DiscordMessage },
+  build: (replyTo?: string) => DiscordReplyMessage,
+): Promise<BotPostResult> {
+  const inThread = build()
+  let result = await bot.postTo(root.messageId, inThread)
+  if (!result.ok) {
+    const title = root.payload.embeds[0]?.title ?? ''
+    const started = await bot.startThread(root.channelId, root.messageId, title.slice(0, THREAD_NAME_MAX))
+    if (!started.ok) console.error(`transitionIssue: start thread failed: ${started.reason}`)
+    result = await bot.postTo(root.messageId, inThread)
+  }
+  if (!result.ok) {
+    console.error(`transitionIssue: thread post failed (${result.reason}), fallback to channel reply`)
+    result = await bot.postTo(root.channelId, build(root.messageId))
+  }
+  return result
 }
 
 /** issue 狀態轉移的單一出口：寫 DB（含誰／何時）→ 重算健康度 → 更新 Discord 根訊息與解決回覆。 */
@@ -85,18 +110,18 @@ export async function transitionIssue(
     if (editRoot) {
       await safely('edit root', () => bot.edit(rootEdit.channelId, rootEdit.messageId, rootEdit.payload))
     }
-    // 確認／解決改為另發一則回覆（不改原告警內容）。確認回覆不寫 notifications：
+    // 確認／解決改為在根訊息的討論串內另發一則（不改原告警內容）。確認回覆不寫 notifications：
     // kind 受 DB check constraint 限制（不新增 migration），且沒有任何判斷需要它。
     if (to === 'acknowledged') {
       await safely('ack reply', async () => {
-        await bot.post(buildAckReply(actorLabel(actor) ?? '', nowIso, rootEdit.messageId))
+        await postInThread(bot, rootEdit, (replyTo) => buildAckReply(actorLabel(actor) ?? '', nowIso, replyTo))
       })
     }
     if (to === 'resolved') {
       await safely('resolve reply', async () => {
         const label = actorLabel(actor)
-        const reply = await bot.post(
-          buildResolveReply(sourceOf(actor), rootEdit.messageId, label !== null ? { actorLabel: label, atIso: nowIso } : undefined),
+        const reply = await postInThread(bot, rootEdit, (replyTo) =>
+          buildResolveReply(sourceOf(actor), replyTo, label !== null ? { actorLabel: label, atIso: nowIso } : undefined),
         )
         await store.recordNotification({
           issueId: issue.id,

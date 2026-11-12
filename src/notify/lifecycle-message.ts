@@ -86,24 +86,22 @@ export function applyCount(msg: DiscordMessage, count: number, lastSeen: string)
   return m
 }
 
-function reply(content: string, replyToMessageId: string): DiscordReplyMessage {
-  return {
-    username: 'th-beacon',
-    content,
-    allowed_mentions: { parse: [] },
-    message_reference: { message_id: replyToMessageId, fail_if_not_exists: false },
-  }
+/** replyToMessageId 省略＝不帶 message_reference（討論串內發送） */
+function reply(content: string, replyToMessageId?: string): DiscordReplyMessage {
+  const m: DiscordReplyMessage = { username: 'th-beacon', content, allowed_mentions: { parse: [] } }
+  if (replyToMessageId !== undefined) m.message_reference = { message_id: replyToMessageId, fail_if_not_exists: false }
+  return m
 }
 
 /** 確認回覆：另發一則（不改告警原文）；不 tag 任何人。 */
-export function buildAckReply(actorLabel: string, atIso: string, replyToMessageId: string): DiscordReplyMessage {
+export function buildAckReply(actorLabel: string, atIso: string, replyToMessageId?: string): DiscordReplyMessage {
   return reply(`✋ 已由 ${displayActor(actorLabel)} 確認（${formatAlertTime(atIso)}）`, replyToMessageId)
 }
 
 /** 解決回覆：手動帶出是誰與時間；自動恢復維持固定文字。不 tag。 */
 export function buildResolveReply(
   source: Source,
-  replyToMessageId: string,
+  replyToMessageId?: string,
   manual?: { actorLabel: string; atIso: string },
 ): DiscordReplyMessage {
   if (source !== 'manual') return reply('✅ 已自動恢復', replyToMessageId)

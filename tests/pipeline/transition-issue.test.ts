@@ -34,13 +34,31 @@ const event: CanonicalEvent = {
   metadata: {},
 }
 
-function fakeBot(opts: { editRejects?: boolean } = {}) {
+function fakeBot(opts: { editRejects?: boolean; threadPostFails?: number; startFails?: boolean; channelPostFails?: boolean } = {}) {
   const posts: DiscordOutgoing[] = []
+  const postTos: Array<{ channelId: string; message: DiscordOutgoing }> = []
+  const threads: Array<{ channelId: string; messageId: string; name: string }> = []
+  let threadFailsLeft = opts.threadPostFails ?? 0
   const edits: Array<{ channelId: string; messageId: string; message: DiscordOutgoing }> = []
   const bot: DiscordBot = {
     async post(message) {
       posts.push(message)
       return { ok: true, channelId: 'ch-1', messageId: 'reply-1' }
+    },
+    async postTo(channelId, message) {
+      postTos.push({ channelId, message })
+      const isThread = channelId === 'm-1'
+      if (isThread && threadFailsLeft > 0) {
+        threadFailsLeft--
+        return { ok: false, reason: 'http 404' }
+      }
+      if (!isThread && opts.channelPostFails) return { ok: false, reason: 'http 500' }
+      posts.push(message)
+      return { ok: true, channelId, messageId: 'reply-1' }
+    },
+    async startThread(channelId, messageId, name) {
+      threads.push({ channelId, messageId, name })
+      return opts.startFails ? { ok: false, reason: 'http 403' } : { ok: true }
     },
     async edit(channelId, messageId, message) {
       edits.push({ channelId, messageId, message })
@@ -48,7 +66,7 @@ function fakeBot(opts: { editRejects?: boolean } = {}) {
       return { ok: true }
     },
   }
-  return { bot, posts, edits }
+  return { bot, posts, postTos, threads, edits }
 }
 
 const text = (m: unknown): string => JSON.stringify(m)
@@ -135,7 +153,11 @@ describe('transitionIssue', () => {
     const reply = f.posts[0] as { content: string; allowed_mentions: unknown; message_reference: unknown }
     expect(reply.content).toBe('✋ 已由 <@111> 確認（18:10）')
     expect(reply.allowed_mentions).toEqual({ parse: [] })
-    expect(reply.message_reference).toEqual({ message_id: 'm-1', fail_if_not_exists: false })
+    // 發在討論串內（thread id = 根訊息 id），不帶 message_reference，也不需先開 thread
+    expect(reply.message_reference).toBeUndefined()
+    expect(f.postTos).toHaveLength(1)
+    expect(f.postTos[0].channelId).toBe('m-1')
+    expect(f.threads).toHaveLength(0)
     // 確認回覆不寫 notifications
     expect(store.listNotifications().filter((n) => n.kind === 'resolve_reply')).toHaveLength(0)
   })
@@ -159,7 +181,7 @@ describe('transitionIssue', () => {
   it('確認回覆 post reject：轉換仍 changed', async () => {
     const issue = await setupIssue()
     const f = fakeBot()
-    f.bot.post = async () => {
+    f.bot.postTo = async () => {
       throw new Error('boom')
     }
     const r = await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '1' }, now)
@@ -194,17 +216,56 @@ describe('transitionIssue', () => {
     expect(text(f.edits[0].message)).not.toContain('自動恢復')
     expect(f.posts).toHaveLength(1)
     expect(text(f.posts[0])).toContain('✅ 已自動恢復')
-    expect(text(f.posts[0])).toContain('m-1')
+    expect(f.postTos[0].channelId).toBe('m-1')
     const replies = store.listNotifications().filter((n) => n.kind === 'resolve_reply')
     expect(replies).toHaveLength(1)
     expect(replies[0]).toMatchObject({
       status: 'sent',
-      discordChannelId: 'ch-1',
+      discordChannelId: 'm-1',
       discordMessageId: 'reply-1',
       payload: null,
       incidentSeq: 0,
       issueId: issue.id,
     })
+  })
+
+  it('第一次發送：thread 尚不存在 → 開 thread（名稱=根訊息標題、截 100）後再發到 thread', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot({ threadPostFails: 1 })
+    await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
+    expect(f.threads).toHaveLength(1)
+    const root = await store.getIncidentRoot(issue.id, 0)
+    const title = (root?.payload as { embeds: Array<{ title: string }> }).embeds[0].title
+    expect(f.threads[0]).toEqual({ channelId: 'ch-1', messageId: 'm-1', name: title.slice(0, 100) })
+    expect(f.postTos.map((p) => p.channelId)).toEqual(['m-1', 'm-1'])
+    expect((f.postTos[1].message as { message_reference?: unknown }).message_reference).toBeUndefined()
+  })
+
+  it('開 thread 失敗（例如 thread 已存在回 400）仍重試發 thread；兩次都失敗才退回頻道回覆', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot({ threadPostFails: 2, startFails: true })
+    await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
+    expect(f.postTos.map((p) => p.channelId)).toEqual(['m-1', 'm-1', 'ch-1'])
+    const fb = f.postTos[2].message as { content: string; message_reference: unknown }
+    expect(fb.content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(fb.message_reference).toEqual({ message_id: 'm-1', fail_if_not_exists: false })
+  })
+
+  it('解決：退回頻道回覆時 resolve_reply 記實際發送的 channel', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot({ threadPostFails: 2, startFails: true })
+    await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'system', source: 'poll' }, now)
+    const replies = store.listNotifications().filter((n) => n.kind === 'resolve_reply')
+    expect(replies[0]).toMatchObject({ status: 'sent', discordChannelId: 'ch-1' })
+  })
+
+  it('thread 與頻道都失敗：不 throw、轉換 changed、resolve_reply 記 failed', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot({ threadPostFails: 2, startFails: true, channelPostFails: true })
+    const r = await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'system', source: 'poll' }, now)
+    expect(r.outcome).toBe('changed')
+    const replies = store.listNotifications().filter((n) => n.kind === 'resolve_reply')
+    expect(replies[0]).toMatchObject({ status: 'failed', discordChannelId: null })
   })
 
   it('手動 resolved：回覆帶出是誰與時間，不 tag', async () => {

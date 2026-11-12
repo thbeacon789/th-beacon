@@ -48,6 +48,39 @@ describe('createDiscordBot', () => {
     expect(r).toEqual({ ok: true })
   })
 
+  it('postTo 打指定 channel（thread id）並回傳該 channelId', async () => {
+    const f = fakeFetch()
+    const r = await createDiscordBot(config, f as unknown as typeof fetch).postTo('t9', message)
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://discord.com/api/v10/channels/t9/messages')
+    expect(init.method).toBe('POST')
+    expect(r).toEqual({ ok: true, channelId: 't9', messageId: 'm1' })
+  })
+
+  it('startThread：POST /channels/{c}/messages/{m}/threads，body 僅 name＋auto_archive_duration，名稱截 100', async () => {
+    const f = fakeFetch(201, { id: 'm9' })
+    const r = await createDiscordBot(config, f as unknown as typeof fetch).startThread('c9', 'm9', 'x'.repeat(150))
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://discord.com/api/v10/channels/c9/messages/m9/threads')
+    expect(init.method).toBe('POST')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bot tok')
+    const body = JSON.parse(init.body as string)
+    expect(body).toEqual({ name: 'x'.repeat(100), auto_archive_duration: 10080 })
+    expect(r).toEqual({ ok: true })
+  })
+
+  it('startThread 400（已有 thread）／throw 回 ok:false 不 throw', async () => {
+    const bot400 = createDiscordBot(config, fakeFetch(400, {}) as unknown as typeof fetch)
+    expect(await bot400.startThread('c', 'm', 'n')).toEqual({ ok: false, reason: 'http 400' })
+    const boom = vi.fn(async () => {
+      throw new TypeError('x')
+    })
+    expect(await createDiscordBot(config, boom as unknown as typeof fetch).startThread('c', 'm', 'n')).toEqual({
+      ok: false,
+      reason: 'TypeError',
+    })
+  })
+
   it('http 500 回 ok:false reason http 500', async () => {
     const bot = createDiscordBot(config, fakeFetch(500, {}) as unknown as typeof fetch)
     expect(await bot.post(message)).toEqual({ ok: false, reason: 'http 500' })

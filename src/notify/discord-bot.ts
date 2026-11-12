@@ -6,7 +6,15 @@ export type BotPostResult = { ok: true; channelId: string; messageId: string } |
 export interface DiscordBot {
   post(message: DiscordOutgoing): Promise<BotPostResult>
   edit(channelId: string, messageId: string, message: DiscordOutgoing): Promise<SendResult>
+  /** 發到指定 channel（含 thread：thread 本身就是 channel，id 與起始訊息相同） */
+  postTo(channelId: string, message: DiscordOutgoing): Promise<BotPostResult>
+  /** 以既有訊息開討論串（thread id = 該訊息 id）；該訊息已有討論串時 Discord 回 400，視為失敗但呼叫端可忽略 */
+  startThread(channelId: string, messageId: string, name: string): Promise<SendResult>
 }
+
+/** Start Thread from Message：name 1–100 字元；auto_archive_duration 僅 60／1440／4320／10080 */
+export const THREAD_NAME_MAX = 100
+export const THREAD_AUTO_ARCHIVE_MINUTES = 10080
 
 const API_BASE = 'https://discord.com/api/v10'
 const SEND_TIMEOUT_MS = 5000
@@ -21,26 +29,43 @@ export function createDiscordBot(
   config: { token: string; channelId: string },
   fetchImpl: typeof fetch = fetch,
 ): DiscordBot {
-  const request = async (method: 'POST' | 'PATCH', url: string, message: DiscordOutgoing): Promise<Response> =>
+  const requestRaw = async (method: 'POST' | 'PATCH', url: string, body: string): Promise<Response> =>
     fetchImpl(url, {
       method,
       headers: { Authorization: `Bot ${config.token}`, 'content-type': 'application/json' },
-      body: toBotBody(message),
+      body,
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     })
+  const request = (method: 'POST' | 'PATCH', url: string, message: DiscordOutgoing): Promise<Response> =>
+    requestRaw(method, url, toBotBody(message))
+  const postToChannel = async (channelId: string, message: DiscordOutgoing): Promise<BotPostResult> => {
+    try {
+      const response = await request('POST', `${API_BASE}/channels/${channelId}/messages`, message)
+      if (!isOk(response)) {
+        await response.arrayBuffer().catch(() => undefined)
+        return { ok: false, reason: `http ${response.status}` }
+      }
+      const json = (await response.json().catch(() => null)) as { id?: unknown } | null
+      if (typeof json?.id !== 'string') return { ok: false, reason: 'bad_response' }
+      return { ok: true, channelId, messageId: json.id }
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.name : 'fetch_failed' }
+    }
+  }
   const isOk = (response: Response): boolean => response.status >= 200 && response.status < 300
 
   return {
-    async post(message) {
+    post: (message) => postToChannel(config.channelId, message),
+    postTo: postToChannel,
+    async startThread(channelId, messageId, name) {
       try {
-        const response = await request('POST', `${API_BASE}/channels/${config.channelId}/messages`, message)
-        if (!isOk(response)) {
-          await response.arrayBuffer().catch(() => undefined)
-          return { ok: false, reason: `http ${response.status}` }
-        }
-        const json = (await response.json().catch(() => null)) as { id?: unknown } | null
-        if (typeof json?.id !== 'string') return { ok: false, reason: 'bad_response' }
-        return { ok: true, channelId: config.channelId, messageId: json.id }
+        const body = JSON.stringify({
+          name: name.slice(0, THREAD_NAME_MAX) || 'th-beacon',
+          auto_archive_duration: THREAD_AUTO_ARCHIVE_MINUTES,
+        })
+        const response = await requestRaw('POST', `${API_BASE}/channels/${channelId}/messages/${messageId}/threads`, body)
+        await response.arrayBuffer().catch(() => undefined)
+        return isOk(response) ? { ok: true } : { ok: false, reason: `http ${response.status}` }
       } catch (error) {
         return { ok: false, reason: error instanceof Error ? error.name : 'fetch_failed' }
       }

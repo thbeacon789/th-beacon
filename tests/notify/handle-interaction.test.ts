@@ -66,6 +66,13 @@ function fakeBot(): DiscordBot {
       botPosts.push(m)
       return { ok: true, channelId: 'ch-1', messageId: 'reply-1' }
     },
+    async postTo(_channelId, m) {
+      botPosts.push(m)
+      return { ok: true, channelId: 'thread-1', messageId: 'reply-1' }
+    },
+    async startThread() {
+      return { ok: true }
+    },
     async edit() {
       return { ok: true }
     },
@@ -186,7 +193,7 @@ describe('handleInteraction', () => {
     expect(botPosts).toHaveLength(1)
     expect(botPosts[0].content).toBe('✋ 已由 <@111> 確認（18:10）')
     expect(botPosts[0].allowed_mentions).toEqual({ parse: [] })
-    expect(botPosts[0].message_reference.message_id).toBe('m-1')
+    expect(botPosts[0].message_reference).toBeUndefined()
     const issue = await store.getIssue(issueId)
     expect(issue?.status).toBe('acknowledged')
     expect(issue?.acknowledgedBy).toBe('discord:111')

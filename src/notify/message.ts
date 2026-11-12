@@ -62,7 +62,8 @@ export interface DiscordReplyMessage {
   username: string
   content: string
   allowed_mentions: { parse: [] }
-  message_reference: { message_id: string; fail_if_not_exists: false }
+  /** 在討論串內發送時省略 */
+  message_reference?: { message_id: string; fail_if_not_exists: false }
 }
 
 export type DiscordOutgoing = DiscordMessage | DiscordReplyMessage

@@ -307,7 +307,7 @@ CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分
 
 - 以 Discord 的 Ed25519 簽章驗證（`x-signature-ed25519`、`x-signature-timestamp`，對 `timestamp + 原始 body` 驗簽，公鑰為 `DISCORD_PUBLIC_KEY`），**不走** HMAC、也不走 dashboard 登入。安全邊界就是 Discord 簽章；任何看得到告警頻道的人都能按按鈕。
 - 缺 header 或驗簽失敗回 `401`；`DISCORD_PUBLIC_KEY`／`DISCORD_APPLICATION_ID` 未設回 `503`。
-- Discord 要求 3 秒內回應：驗簽並解析 JSON 後**不碰 DB**，立即回 `{type: 6}`（DEFERRED_UPDATE_MESSAGE）。其餘全在回應後（Next `after`）執行：查 issue、狀態轉換、再以 interaction token 呼叫 `PATCH /webhooks/{application_id}/{token}/messages/@original` 更新原訊息的按鈕（內容不改；確認／解決改由另發的回覆呈現），或 `POST /webhooks/{application_id}/{token}` 發 ephemeral follow-up（已解決、已過期、找不到等提示），最後做健康度重算與解決回覆。這兩個 webhook 端點以 interaction token 驗證（有效 15 分鐘），不需 bot Authorization。背景處理失敗會記 log 並盡量回「處理失敗，請稍後再試」。PING 同步回 `{type: 1}`；無法解析的按鈕（不碰 DB）同步回 ephemeral type 4。
+- Discord 要求 3 秒內回應：驗簽並解析 JSON 後**不碰 DB**，立即回 `{type: 6}`（DEFERRED_UPDATE_MESSAGE）。其餘全在回應後（Next `after`）執行：查 issue、狀態轉換、再以 interaction token 呼叫 `PATCH /webhooks/{application_id}/{token}/messages/@original` 更新原訊息的按鈕（內容不改；確認／解決改由根訊息討論串內另發的訊息呈現），或 `POST /webhooks/{application_id}/{token}` 發 ephemeral follow-up（已解決、已過期、找不到等提示），最後做健康度重算與討論串訊息。這兩個 webhook 端點以 interaction token 驗證（有效 15 分鐘），不需 bot Authorization。背景處理失敗會記 log 並盡量回「處理失敗，請稍後再試」。PING 同步回 `{type: 1}`；無法解析的按鈕（不碰 DB）同步回 ephemeral type 4。
 
 ### 環境變數（四個須齊全才啟用 bot 模式）
 
@@ -324,7 +324,7 @@ CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分
 
 1. 到 Discord Developer Portal 建立 Application，記下 Application ID 與 Public Key。
 2. 在 Bot 頁籤建立 Bot 並取得 token。
-3. 用 OAuth2 URL 將 Bot 加入伺服器，頻道權限需有 `VIEW_CHANNEL`、`SEND_MESSAGES`、`READ_MESSAGE_HISTORY`。
+3. 用 OAuth2 URL 將 Bot 加入伺服器，頻道權限需有 `VIEW_CHANNEL`、`SEND_MESSAGES`、`READ_MESSAGE_HISTORY`、`CREATE_PUBLIC_THREADS`、`SEND_MESSAGES_IN_THREADS`（確認／已解決訊息發在以告警開出的討論串內；缺 thread 權限時退回在頻道回覆）。
 4. 在 General Information 的 **Interactions Endpoint URL** 填 `https://<部署網域>/api/discord/interactions`。儲存時 Discord 會送 PING 與無效簽章測試，端點需已部署且四個環境變數已設好才會通過。
 
 ---

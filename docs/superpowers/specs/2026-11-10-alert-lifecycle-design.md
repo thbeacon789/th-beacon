@@ -133,7 +133,7 @@
 
 覆蓋 §2（確認）、§3（解決）中「編輯原告警訊息內容」的描述：
 
-- 確認與解決改為**另發一則回覆**（`message_reference` 指向該事故根訊息，`allowed_mentions: {parse: []}`，不 tag）。確認：`✋ 已由 <@user|email> 確認（HH:mm）`；手動解決：`✅ 已由 <@user|email> 標記解決（HH:mm）`；自動恢復維持 `✅ 已自動恢復`。時間為台北 24 小時制（`formatAlertTime`）。Discord 按鈕與 dashboard 共用 `transitionIssue` 的 followUp 發送，互動端不重複發。
+- 確認與解決改為**另發一則訊息**，發在**以該事故根訊息開出的討論串（thread）**內（`POST /channels/{root.id}/messages/{root.id}/threads` 開串，thread id = 根訊息 id，故直接 `POST /channels/{root.id}/messages` 發送、免存 thread id；不帶 `message_reference`，`allowed_mentions: {parse: []}`，不 tag）。流程：先直接發到 thread → 失敗則開 thread（`auto_archive_duration` 10080、名稱取根訊息標題截 100）再發 → 仍失敗**退回頻道以回覆（`message_reference`）發送**，確保不遺失。其餘告警（跟進、復發）仍以頻道回覆呈現。確認：`✋ 已由 <@user|email> 確認（HH:mm）`；手動解決：`✅ 已由 <@user|email> 標記解決（HH:mm）`；自動恢復維持 `✅ 已自動恢復`。時間為台北 24 小時制（`formatAlertTime`）。Discord 按鈕與 dashboard 共用 `transitionIssue` 的 followUp 發送，互動端不重複發。
 - **原告警根訊息內容完全不改**（顏色、標題、欄位、content）：不再加「✋ 已確認」欄位，也不再套綠色／「✅ 已解決」前綴／「處理方式」欄位。只調整按鈕：open → [確認, 已解決]；acknowledged → [已解決]；resolved → 無按鈕。
 - 不變：確認後冷卻到期的靜默計數編輯（次數／Last seen）、復發時上一事故根訊息標記（`renderPreviousIncidentRoot`）、ignored（灰色、無按鈕、不發回覆）。
 - 重複按到過時按鈕（unchanged）：`editOriginal` 以現況收掉過時按鈕，並 ephemeral 提示「已由 <@x> 確認」／「此問題已解決」。

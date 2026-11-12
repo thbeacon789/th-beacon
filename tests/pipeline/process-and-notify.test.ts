@@ -206,6 +206,8 @@ function fakeBot(opts: { postFail?: boolean; editFail?: boolean } = {}) {
       posts.push(message)
       return { ok: true, channelId: 'c1', messageId: `m${posts.length}` }
     },
+    postTo: async () => ({ ok: false, reason: 'unused' }),
+    startThread: async () => ({ ok: false, reason: 'unused' }),
     edit: async (channelId, messageId, message) => {
       edits.push({ channelId, messageId, message })
       return opts.editFail ? { ok: false, reason: 'http 500' } : { ok: true }
@@ -345,6 +347,8 @@ describe('processAndNotify（bot 模式）', () => {
         posts.push(m)
         return { ok: true, channelId: 'c1', messageId: 'm9' }
       },
+      postTo: async () => ({ ok: false, reason: 'unused' }),
+      startThread: async () => ({ ok: false, reason: 'unused' }),
       edit: async (_c, messageId, message) => {
         edits.push({ messageId, message })
         return { ok: true }
