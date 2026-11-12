@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { buildDiscordMessage } from '@/notify/message'
 import {
   withAlertButtons,
-  applyAcknowledged,
-  applyResolved,
+  withoutButtons,
+  buildAckReply,
   applyIgnored,
   applyReopened,
   applyCount,
@@ -47,59 +47,16 @@ describe('withAlertButtons', () => {
   })
 })
 
-describe('applyAcknowledged', () => {
-  it('加欄位、只留 resolve 按鈕、去 content', () => {
+describe('withoutButtons', () => {
+  it('只移除按鈕，embed 與顏色完全不動', () => {
     const src = withBtn()
     const snap = structuredClone(src)
-    const m = applyAcknowledged(src, 'discord:111', '2026-11-10T00:00:00.000Z', uuid, 1)
+    const m = withoutButtons(src)
     expect(src).toEqual(snap)
-    expect(m.content).toBeUndefined()
-    expect(m.allowed_mentions).toEqual({ parse: [] })
-    expect(ids(m)).toEqual([`resolve:${uuid}:1`])
-    expect(m.embeds[0].fields).toContainEqual({
-      name: '✋ 已確認',
-      value: '<@111>（08:00）',
-      inline: false,
-    })
-  })
-  it('email 原樣顯示', () => {
-    const m = applyAcknowledged(withBtn(), 'a@b.c', 'T', uuid, 1)
-    expect(m.embeds[0].fields.find((f) => f.name === '✋ 已確認')?.value).toBe('a@b.c（T）')
-  })
-})
-
-describe('applyResolved', () => {
-  it('poll 自動恢復', () => {
-    const m = applyResolved(withBtn(), { actorLabel: null, source: 'poll' })
-    expect(m.embeds[0].color).toBe(0x2ecc71)
-    expect(m.embeds[0].title.startsWith('✅ 已解決 ')).toBe(true)
-    expect(m.embeds[0].fields.find((f) => f.name === '處理方式')?.value).toBe('自動恢復（輪詢）')
     expect(m.components).toBeUndefined()
     expect(m.content).toBeUndefined()
     expect(m.allowed_mentions).toEqual({ parse: [] })
-  })
-  it('heartbeat／manual', () => {
-    expect(
-      applyResolved(withBtn(), { actorLabel: 'x@y.z', source: 'heartbeat' }).embeds[0].fields.find(
-        (f) => f.name === '處理方式',
-      )?.value,
-    ).toBe('自動恢復（心跳）')
-    expect(
-      applyResolved(withBtn(), { actorLabel: 'discord:5', source: 'manual' }).embeds[0].fields.find(
-        (f) => f.name === '處理方式',
-      )?.value,
-    ).toBe('手動：<@5>')
-    expect(
-      applyResolved(withBtn(), { actorLabel: 'a@b.c', source: 'manual' }).embeds[0].fields.find(
-        (f) => f.name === '處理方式',
-      )?.value,
-    ).toBe('手動：a@b.c')
-  })
-  it('重複套用不疊加前綴與欄位', () => {
-    const once = applyResolved(withBtn(), { actorLabel: null, source: 'poll' })
-    const twice = applyResolved(once, { actorLabel: null, source: 'poll' })
-    expect(twice.embeds[0].title).toBe('✅ 已解決 [P0] svc — TypeError')
-    expect(twice.embeds[0].fields.filter((f) => f.name === '處理方式')).toHaveLength(1)
+    expect(m.embeds).toEqual(src.embeds)
   })
 })
 
@@ -138,12 +95,25 @@ describe('applyCount', () => {
 })
 
 describe('reply builders', () => {
-  it('buildResolveReply', () => {
+  it('buildResolveReply：自動恢復固定文字、手動帶人名與時間、不 tag', () => {
     const m = buildResolveReply('heartbeat', 'm1')
     expect(m.content).toBe('✅ 已自動恢復')
     expect(m.allowed_mentions).toEqual({ parse: [] })
     expect(m.message_reference).toEqual({ message_id: 'm1', fail_if_not_exists: false })
+    expect(buildResolveReply('poll', 'm1', { actorLabel: 'discord:5', atIso: 'T' }).content).toBe('✅ 已自動恢復')
     expect(buildResolveReply('manual', 'm1').content).toBe('✅ 已解決')
+    const d = buildResolveReply('manual', 'm1', { actorLabel: 'discord:5', atIso: '2026-11-10T00:00:00.000Z' })
+    expect(d.content).toBe('✅ 已由 <@5> 標記解決（08:00）')
+    expect(d.allowed_mentions).toEqual({ parse: [] })
+    expect(d.message_reference).toEqual({ message_id: 'm1', fail_if_not_exists: false })
+    expect(buildResolveReply('manual', 'm1', { actorLabel: 'a@b.c', atIso: 'T' }).content).toBe('✅ 已由 a@b.c 標記解決（T）')
+  })
+  it('buildAckReply：Discord 用 mention 文字、dashboard 顯示 email，皆不 tag、指向根訊息', () => {
+    const d = buildAckReply('discord:111', '2026-11-10T00:00:00.000Z', 'm1')
+    expect(d.content).toBe('✋ 已由 <@111> 確認（08:00）')
+    expect(d.allowed_mentions).toEqual({ parse: [] })
+    expect(d.message_reference).toEqual({ message_id: 'm1', fail_if_not_exists: false })
+    expect(buildAckReply('a@b.c', 'T', 'm1').content).toBe('✋ 已由 a@b.c 確認（T）')
   })
   it('buildFollowUpAlert 保留 tag、移除 components', () => {
     const alert = withBtn()
@@ -178,29 +148,34 @@ describe('renderRoot', () => {
     expect(ids(m)).toEqual([`ack:${uuid}:1`, `resolve:${uuid}:1`])
   })
 
-  it('open 且已確認：只留 resolve 按鈕', () => {
+  it('open 且已確認：只留 resolve 按鈕，內容不加欄位', () => {
     const m = renderRoot(withBtn(), { ...issue, acknowledgedBy: 'discord:1', acknowledgedAt: 'T' })
     expect(ids(m)).toEqual([`resolve:${uuid}:1`])
-    expect(names(m)).toContain('✋ 已確認')
+    expect(names(m)).not.toContain('✋ 已確認')
   })
 
-  it('resolved（曾確認）：綠色、保留已確認欄位、最新次數、無按鈕', () => {
-    const m = renderRoot(
-      withBtn(),
-      { ...issue, status: 'resolved', acknowledgedBy: 'discord:1', acknowledgedAt: 'T', resolvedBy: 'a@b.c' },
-      'manual',
-    )
-    expect(m.embeds[0].color).toBe(0x2ecc71)
-    expect(names(m)).toContain('✋ 已確認')
+  it('resolved（曾確認）：embed 顏色／標題／欄位與原文相同（除次數），無按鈕', () => {
+    const src = withBtn()
+    const m = renderRoot(src, {
+      ...issue,
+      status: 'resolved',
+      acknowledgedBy: 'discord:1',
+      acknowledgedAt: 'T',
+    })
+    expect(m.embeds[0].color).toBe(src.embeds[0].color)
+    expect(m.embeds[0].title).toBe(src.embeds[0].title)
+    expect(names(m)).toEqual(names(src))
     expect(val(m, '次數')).toBe('12')
-    expect(val(m, '處理方式')).toContain('a@b.c')
     expect(m.components).toBeUndefined()
     expect(m.content).toBeUndefined()
   })
 
-  it('acknowledged：已確認欄位、僅 resolve 按鈕', () => {
-    const m = renderRoot(withBtn(), { ...issue, status: 'acknowledged', acknowledgedBy: 'discord:1', acknowledgedAt: 'T' })
-    expect(names(m)).toContain('✋ 已確認')
+  it('acknowledged：embed 與原文相同（除次數／Last seen）、僅 resolve 按鈕', () => {
+    const src = withBtn()
+    const m = renderRoot(src, { ...issue, status: 'acknowledged', acknowledgedBy: 'discord:1', acknowledgedAt: 'T' })
+    expect(names(m)).toEqual(names(src))
+    expect(m.embeds[0].color).toBe(src.embeds[0].color)
+    expect(m.embeds[0].title).toBe(src.embeds[0].title)
     expect(ids(m)).toEqual([`resolve:${uuid}:1`])
   })
 

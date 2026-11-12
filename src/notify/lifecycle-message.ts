@@ -48,41 +48,11 @@ export function withAlertButtons(
   return m
 }
 
-export function applyAcknowledged(
-  msg: DiscordMessage,
-  actorLabel: string,
-  atIso: string,
-  issueId: string,
-  incidentSeq: number,
-): DiscordMessage {
-  const m = structuredClone(msg)
-  stripMentions(m)
-  upsertField(m.embeds[0].fields, {
-    name: '✋ 已確認',
-    value: `${displayActor(actorLabel)}（${formatAlertTime(atIso)}）`,
-    inline: false,
-  })
-  m.components = [buttonRow(issueId, incidentSeq, ['resolve'])]
-  return m
-}
-
-export function applyResolved(
-  msg: DiscordMessage,
-  resolution: { actorLabel: string | null; source: Source },
-): DiscordMessage {
+/** 只移除按鈕，內容（embed／欄位／顏色）完全不動。 */
+export function withoutButtons(msg: DiscordMessage): DiscordMessage {
   const m = structuredClone(msg)
   stripMentions(m)
   delete m.components
-  const e = m.embeds[0]
-  e.color = GREEN
-  e.title = prefixTitle(e.title, '✅ 已解決')
-  const how =
-    resolution.source === 'manual'
-      ? `手動：${displayActor(resolution.actorLabel ?? '')}`
-      : resolution.source === 'poll'
-        ? '自動恢復（輪詢）'
-        : '自動恢復（心跳）'
-  upsertField(e.fields, { name: '處理方式', value: how, inline: false })
   return m
 }
 
@@ -116,13 +86,33 @@ export function applyCount(msg: DiscordMessage, count: number, lastSeen: string)
   return m
 }
 
-export function buildResolveReply(source: Source, replyToMessageId: string): DiscordReplyMessage {
+function reply(content: string, replyToMessageId: string): DiscordReplyMessage {
   return {
     username: 'th-beacon',
-    content: source === 'manual' ? '✅ 已解決' : '✅ 已自動恢復',
+    content,
     allowed_mentions: { parse: [] },
     message_reference: { message_id: replyToMessageId, fail_if_not_exists: false },
   }
+}
+
+/** 確認回覆：另發一則（不改告警原文）；不 tag 任何人。 */
+export function buildAckReply(actorLabel: string, atIso: string, replyToMessageId: string): DiscordReplyMessage {
+  return reply(`✋ 已由 ${displayActor(actorLabel)} 確認（${formatAlertTime(atIso)}）`, replyToMessageId)
+}
+
+/** 解決回覆：手動帶出是誰與時間；自動恢復維持固定文字。不 tag。 */
+export function buildResolveReply(
+  source: Source,
+  replyToMessageId: string,
+  manual?: { actorLabel: string; atIso: string },
+): DiscordReplyMessage {
+  if (source !== 'manual') return reply('✅ 已自動恢復', replyToMessageId)
+  return reply(
+    manual !== undefined
+      ? `✅ 已由 ${displayActor(manual.actorLabel)} 標記解決（${formatAlertTime(manual.atIso)}）`
+      : '✅ 已解決',
+    replyToMessageId,
+  )
 }
 
 export function buildFollowUpAlert(alert: DiscordMessage, replyToMessageId: string): DiscordMessage {
@@ -133,31 +123,25 @@ export function buildFollowUpAlert(alert: DiscordMessage, replyToMessageId: stri
 }
 
 /**
- * 依 issue 現況完整重建根訊息（編輯用）：最新次數 → 已確認欄位 → 依狀態套樣式。
+ * 依 issue 現況重建根訊息（編輯用）：只更新最新次數／Last seen 與按鈕，其餘內容不動
+ * （確認／解決改以另發回覆呈現，見 spec 2026-11-12 修訂）。
  * base 為事故第一則告警原文（或 interaction.message）；輸出一律無 content、`{parse: []}`。
  */
 export function renderRoot(
   base: DiscordMessage,
-  issue: Pick<
-    StoredIssue,
-    'id' | 'status' | 'count' | 'lastSeen' | 'acknowledgedBy' | 'acknowledgedAt' | 'resolvedBy' | 'reopenCount'
-  >,
-  resolutionSource: Source = 'manual',
+  issue: Pick<StoredIssue, 'id' | 'status' | 'count' | 'lastSeen' | 'acknowledgedBy' | 'acknowledgedAt' | 'reopenCount'>,
 ): DiscordMessage {
-  let m = applyCount(base, issue.count, issue.lastSeen)
-  const acked = issue.acknowledgedBy !== null && issue.acknowledgedAt !== null
-  if (acked) {
-    m = applyAcknowledged(m, issue.acknowledgedBy as string, issue.acknowledgedAt as string, issue.id, issue.reopenCount)
-  }
+  const m = applyCount(base, issue.count, issue.lastSeen)
   switch (issue.status) {
     case 'open':
     case 'acknowledged': {
-      m = withAlertButtons(m, issue.id, issue.reopenCount, acked ? ['resolve'] : issue.status === 'open' ? ['ack', 'resolve'] : ['resolve'])
-      stripMentions(m)
-      return m
+      const acked = issue.status === 'acknowledged' || issue.acknowledgedBy !== null
+      const out = withAlertButtons(m, issue.id, issue.reopenCount, acked ? ['resolve'] : ['ack', 'resolve'])
+      stripMentions(out)
+      return out
     }
     case 'resolved':
-      return applyResolved(m, { actorLabel: issue.resolvedBy, source: resolutionSource })
+      return withoutButtons(m)
     case 'ignored':
       return applyIgnored(m)
   }

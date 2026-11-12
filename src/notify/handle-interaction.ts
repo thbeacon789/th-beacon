@@ -1,4 +1,4 @@
-import { displayActor, parseButtonId, type IssueActor } from '@/core/lifecycle'
+import { displayActor, parseButtonId } from '@/core/lifecycle'
 import { transformRoot, transitionIssue } from '@/pipeline/transition-issue'
 import type { DiscordBot, InteractionResponder } from '@/notify/discord-bot'
 import { verifyDiscordSignature } from '@/notify/discord-signature'
@@ -69,8 +69,10 @@ export async function handleInteraction(
       const outcome = await processClick(store, bot, interaction, parsed, userId, now)
       followUp = outcome.followUp
       if (token !== null) {
-        if (outcome.kind === 'edit') await responder.editOriginal(token, outcome.data)
-        else if (outcome.kind === 'ephemeral') await responder.followUp(token, outcome.content)
+        if (outcome.kind === 'edit') {
+          await responder.editOriginal(token, outcome.data)
+          if (outcome.ephemeral !== undefined) await responder.followUp(token, outcome.ephemeral)
+        } else if (outcome.kind === 'ephemeral') await responder.followUp(token, outcome.content)
       }
     } catch (error) {
       console.error('discord interaction processing failed', error instanceof Error ? error.message : error)
@@ -88,7 +90,7 @@ export async function handleInteraction(
 }
 
 type Outcome =
-  | { kind: 'edit'; data: unknown; followUp?: () => Promise<void> }
+  | { kind: 'edit'; data: unknown; ephemeral?: string; followUp?: () => Promise<void> }
   | { kind: 'ephemeral'; content: string; followUp?: () => Promise<void> }
   | { kind: 'none'; followUp?: () => Promise<void> }
 
@@ -120,20 +122,23 @@ async function processClick(
     // 預檢之後事故被 reopen：UPDATE 條件擋下，現況已是新事故
     if (result.issue.reopenCount !== parsed.incidentSeq) return eph('此告警已過期，請看最新一則')
     // 按到過時的按鈕（例如前一次點擊 DB 已更新但 Discord 畫面沒跟上）：
-    // 直接把訊息重繪成現況，讓所有人看到誰已確認／已解決，並收掉過時按鈕。
-    // 系統自動解決（resolvedBy 為 null）分不出輪詢或心跳，維持私訊提示。
-    const synced = parsed.action === 'ack' || result.issue.resolvedBy !== null ? rebuildFromInteraction(interaction, result.issue) : null
-    if (synced !== null) return { kind: 'edit', data: toInteractionData(synced) }
-    if (parsed.action === 'ack') {
-      const by = result.issue.acknowledgedBy
-      return eph(by !== null ? `已由 ${displayActor(by)} 確認` : '已有人確認')
-    }
-    return eph('此問題已解決')
+    // editOriginal 把按鈕重繪成現況（收掉過時按鈕），並以 ephemeral 告知誰已確認／已解決。
+    const issue = result.issue
+    const hint =
+      parsed.action === 'ack' && issue.status !== 'resolved'
+        ? issue.acknowledgedBy !== null
+          ? `已由 ${displayActor(issue.acknowledgedBy)} 確認`
+          : '已有人確認'
+        : '此問題已解決'
+    const synced = rebuildFromInteraction(interaction, issue)
+    return synced !== null
+      ? { kind: 'edit', data: toInteractionData(synced), ephemeral: hint }
+      : eph(hint)
   }
 
   // changed
   const message: DiscordMessage | null =
-    result.rootEdit !== null ? result.rootEdit.payload : rebuildFromInteraction(interaction, result.issue, actor)
+    result.rootEdit !== null ? result.rootEdit.payload : rebuildFromInteraction(interaction, result.issue)
   const followUp = result.followUp
   // 沒有可套用的訊息：不改畫面，DB 已更新
   return message !== null
@@ -142,11 +147,7 @@ async function processClick(
 }
 
 /** 以按鈕所在訊息為底，依 issue 現況重建；訊息沒有 embed 時回 null。 */
-function rebuildFromInteraction(
-  interaction: InteractionPayload,
-  issue: StoredIssue,
-  actor: IssueActor = { kind: 'discord', userId: '' },
-): DiscordMessage | null {
+function rebuildFromInteraction(interaction: InteractionPayload, issue: StoredIssue): DiscordMessage | null {
   const m = interaction.message
   if (m === undefined || !Array.isArray(m.embeds) || m.embeds.length === 0) return null
   const base = {
@@ -155,5 +156,5 @@ function rebuildFromInteraction(
     embeds: m.embeds,
     ...(Array.isArray(m.components) ? { components: m.components } : {}),
   } as unknown as DiscordMessage
-  return transformRoot(base, issue, actor)
+  return transformRoot(base, issue)
 }

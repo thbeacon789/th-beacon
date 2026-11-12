@@ -118,7 +118,7 @@ describe('transitionIssue', () => {
     expect(r.issue).toBeNull()
   })
 
-  it('ack 從 open：changed、DB 記 actor、bot.edit 收到含「已確認」的 payload', async () => {
+  it('ack 從 open：changed、DB 記 actor、bot.edit 只換按鈕、另發確認回覆（指向根訊息、不 tag）', async () => {
     const issue = await setupIssue()
     const f = fakeBot()
     const r = await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
@@ -126,7 +126,44 @@ describe('transitionIssue', () => {
     expect(r.issue?.acknowledgedBy).toBe('discord:111')
     expect(f.edits).toHaveLength(1)
     expect(f.edits[0]).toMatchObject({ channelId: 'ch-1', messageId: 'm-1' })
-    expect(text(f.edits[0].message)).toContain('✋ 已確認')
+    const orig = (await store.getIncidentRoot(issue.id, 0))?.payload as { embeds: unknown[] }
+    const edited = f.edits[0].message as { embeds: unknown[]; components: Array<{ components: Array<{ custom_id: string }> }> }
+    expect(edited.embeds).toEqual(orig.embeds)
+    expect(edited.components[0].components.map((c) => c.custom_id)).toEqual([`resolve:${issue.id}:0`])
+    expect(text(edited)).not.toContain('已確認')
+    expect(f.posts).toHaveLength(1)
+    const reply = f.posts[0] as { content: string; allowed_mentions: unknown; message_reference: unknown }
+    expect(reply.content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(reply.allowed_mentions).toEqual({ parse: [] })
+    expect(reply.message_reference).toEqual({ message_id: 'm-1', fail_if_not_exists: false })
+    // 確認回覆不寫 notifications
+    expect(store.listNotifications().filter((n) => n.kind === 'resolve_reply')).toHaveLength(0)
+  })
+
+  it('dashboard 確認也發回覆（顯示 email）', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot()
+    await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'dashboard', email: 'a@b.c' }, now)
+    expect(f.posts).toHaveLength(1)
+    expect((f.posts[0] as { content: string }).content).toBe('✋ 已由 a@b.c 確認（18:10）')
+  })
+
+  it('沒有根訊息：確認不發回覆', async () => {
+    const issue = await setupIssue('P1', false)
+    const f = fakeBot()
+    await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'dashboard', email: 'a@b.c' }, now)
+    expect(f.posts).toHaveLength(0)
+    expect(f.edits).toHaveLength(0)
+  })
+
+  it('確認回覆 post reject：轉換仍 changed', async () => {
+    const issue = await setupIssue()
+    const f = fakeBot()
+    f.bot.post = async () => {
+      throw new Error('boom')
+    }
+    const r = await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '1' }, now)
+    expect(r.outcome).toBe('changed')
   })
 
   it('第二次 ack：unchanged、bot 不被呼叫', async () => {
@@ -135,6 +172,7 @@ describe('transitionIssue', () => {
     const actor = { kind: 'discord', userId: '111' } as const
     await transitionIssue(store, f.bot, issue.id, 'acknowledged', actor, now)
     f.edits.length = 0
+    f.posts.length = 0
     const r = await transitionIssue(store, f.bot, issue.id, 'acknowledged', actor, now)
     expect(r.outcome).toBe('unchanged')
     expect(r.rootEdit).toBeNull()
@@ -142,14 +180,18 @@ describe('transitionIssue', () => {
     expect(f.posts).toHaveLength(0)
   })
 
-  it('resolved（system/poll）：edit 綠色 payload、post 自動恢復回覆、寫 resolve_reply 通知', async () => {
+  it('resolved（system/poll）：edit 只移除按鈕不變色、post 自動恢復回覆、寫 resolve_reply 通知', async () => {
     const issue = await setupIssue()
     const f = fakeBot()
     const r = await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'system', source: 'poll' }, now)
     expect(r.issue?.resolvedBy).toBeNull()
     expect(f.edits).toHaveLength(1)
-    expect((f.edits[0].message as { embeds: Array<{ color: number }> }).embeds[0].color).toBe(0x2ecc71)
-    expect(text(f.edits[0].message)).toContain('自動恢復（輪詢）')
+    const orig = (await store.getIncidentRoot(issue.id, 0))?.payload as { embeds: Array<{ color: number; title: string }> }
+    const edited = f.edits[0].message as { embeds: Array<{ color: number; title: string }>; components?: unknown }
+    expect(edited.embeds[0].color).toBe(orig.embeds[0].color)
+    expect(edited.embeds[0].title).toBe(orig.embeds[0].title)
+    expect(edited.components).toBeUndefined()
+    expect(text(f.edits[0].message)).not.toContain('自動恢復')
     expect(f.posts).toHaveLength(1)
     expect(text(f.posts[0])).toContain('✅ 已自動恢復')
     expect(text(f.posts[0])).toContain('m-1')
@@ -165,12 +207,17 @@ describe('transitionIssue', () => {
     })
   })
 
-  it('手動 resolved：回覆為「✅ 已解決」', async () => {
+  it('手動 resolved：回覆帶出是誰與時間，不 tag', async () => {
     const issue = await setupIssue()
     const f = fakeBot()
     await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'dashboard', email: 'a@b.c' }, now)
-    expect(text(f.posts[0])).toContain('✅ 已解決')
-    expect(text(f.edits[0].message)).toContain('手動：a@b.c')
+    expect((f.posts[0] as { content: string }).content).toBe('✅ 已由 a@b.c 標記解決（18:10）')
+    expect((f.posts[0] as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [] })
+    expect(text(f.edits[0].message)).not.toContain('手動')
+    const d = fakeBot()
+    const issue2 = await setupIssue()
+    await transitionIssue(store, d.bot, issue2.id, 'resolved', { kind: 'discord', userId: '77' }, now)
+    expect((d.posts[0] as { content: string }).content).toBe('✅ 已由 <@77> 標記解決（18:10）')
   })
 
   it('沒有根訊息：只改 DB，bot 完全不被呼叫', async () => {
@@ -233,7 +280,7 @@ describe('transitionIssue', () => {
     expect(f.posts).toHaveLength(0)
   })
 
-  it('ack -> 靜默計數 -> resolve：最終根訊息同時含已確認與最新次數', async () => {
+  it('ack -> 靜默計數 -> resolve：最終根訊息含最新次數、不含已確認欄位', async () => {
     const issue = await setupIssue()
     const f = fakeBot()
     await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
@@ -243,7 +290,7 @@ describe('transitionIssue', () => {
     await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'dashboard', email: 'a@b.c' }, now)
     const msg = f.edits[0].message as { embeds: Array<{ fields: Array<{ name: string; value: string }> }> }
     const fields = msg.embeds[0].fields
-    expect(fields.some((x) => x.name === '✋ 已確認')).toBe(true)
+    expect(fields.some((x) => x.name === '✋ 已確認')).toBe(false)
     expect(fields.find((x) => x.name === '次數')?.value).toBe('3')
   })
 

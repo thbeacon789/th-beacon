@@ -2,7 +2,7 @@ import { actorLabel, allowedFrom, type IssueActor } from '@/core/lifecycle'
 import type { IssueStatus } from '@/core/types'
 import { refreshServiceHealth } from '@/pipeline/refresh-health'
 import type { DiscordBot } from '@/notify/discord-bot'
-import { buildResolveReply, renderRoot } from '@/notify/lifecycle-message'
+import { buildAckReply, buildResolveReply, renderRoot } from '@/notify/lifecycle-message'
 import type { DiscordMessage } from '@/notify/message'
 import type { Store, StoredIssue } from '@/store/contracts'
 
@@ -28,12 +28,8 @@ function sourceOf(actor: IssueActor): Source {
   return actor.kind === 'system' ? actor.source : 'manual'
 }
 
-export function transformRoot(
-  payload: DiscordMessage,
-  issue: StoredIssue,
-  actor: IssueActor,
-): DiscordMessage {
-  return renderRoot(payload, issue, sourceOf(actor))
+export function transformRoot(payload: DiscordMessage, issue: StoredIssue): DiscordMessage {
+  return renderRoot(payload, issue)
 }
 
 async function safely(what: string, fn: () => Promise<unknown>): Promise<void> {
@@ -72,7 +68,7 @@ export async function transitionIssue(
         rootEdit = {
           channelId: root.channelId,
           messageId: root.messageId,
-          payload: transformRoot(root.payload, issue, actor),
+          payload: transformRoot(root.payload, issue),
         }
       }
     } catch (error) {
@@ -89,9 +85,19 @@ export async function transitionIssue(
     if (editRoot) {
       await safely('edit root', () => bot.edit(rootEdit.channelId, rootEdit.messageId, rootEdit.payload))
     }
+    // 確認／解決改為另發一則回覆（不改原告警內容）。確認回覆不寫 notifications：
+    // kind 受 DB check constraint 限制（不新增 migration），且沒有任何判斷需要它。
+    if (to === 'acknowledged') {
+      await safely('ack reply', async () => {
+        await bot.post(buildAckReply(actorLabel(actor) ?? '', nowIso, rootEdit.messageId))
+      })
+    }
     if (to === 'resolved') {
       await safely('resolve reply', async () => {
-        const reply = await bot.post(buildResolveReply(sourceOf(actor), rootEdit.messageId))
+        const label = actorLabel(actor)
+        const reply = await bot.post(
+          buildResolveReply(sourceOf(actor), rootEdit.messageId, label !== null ? { actorLabel: label, atIso: nowIso } : undefined),
+        )
         await store.recordNotification({
           issueId: issue.id,
           serviceId: issue.serviceId,

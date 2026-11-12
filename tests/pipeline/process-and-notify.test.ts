@@ -270,7 +270,7 @@ describe('processAndNotify（bot 模式）', () => {
     const edited = edits[0].message as DiscordMessage
     const fields = edited.embeds[0].fields
     expect(fields.find((f) => f.name === '次數')?.value).toBe('2')
-    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(false)
     expect(JSON.stringify(edited.components)).not.toContain('ack')
     const rec = store.listNotifications().find((n) => n.kind === 'count_edit')
     expect(rec?.status).toBe('sent')
@@ -293,7 +293,7 @@ describe('processAndNotify（bot 模式）', () => {
     const m = posts[0] as DiscordMessage
     expect(m.content).toBeUndefined()
     expect(m.allowed_mentions).toEqual({ parse: [] })
-    expect(m.embeds[0].fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    expect(m.embeds[0].fields.some((f) => f.name === '✋ 已確認')).toBe(false)
     const labels = (m.components ?? []).flatMap((row) => row.components.map((c) => c.label))
     expect(labels).toEqual(['✅ 已解決'])
   })

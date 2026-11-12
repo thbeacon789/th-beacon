@@ -128,3 +128,14 @@
 1. 建立 Discord Application，加 Bot 進伺服器（權限 `SEND_MESSAGES`、`READ_MESSAGE_HISTORY`、`VIEW_CHANNEL`）。
 2. 部署 endpoint 後，在 Application 的 General Information 填 Interactions Endpoint URL（`https://<domain>/api/discord/interactions`）。
 3. 在 Vercel 設定上列四個環境變數。
+
+## 2026-11-12 修訂
+
+覆蓋 §2（確認）、§3（解決）中「編輯原告警訊息內容」的描述：
+
+- 確認與解決改為**另發一則回覆**（`message_reference` 指向該事故根訊息，`allowed_mentions: {parse: []}`，不 tag）。確認：`✋ 已由 <@user|email> 確認（HH:mm）`；手動解決：`✅ 已由 <@user|email> 標記解決（HH:mm）`；自動恢復維持 `✅ 已自動恢復`。時間為台北 24 小時制（`formatAlertTime`）。Discord 按鈕與 dashboard 共用 `transitionIssue` 的 followUp 發送，互動端不重複發。
+- **原告警根訊息內容完全不改**（顏色、標題、欄位、content）：不再加「✋ 已確認」欄位，也不再套綠色／「✅ 已解決」前綴／「處理方式」欄位。只調整按鈕：open → [確認, 已解決]；acknowledged → [已解決]；resolved → 無按鈕。
+- 不變：確認後冷卻到期的靜默計數編輯（次數／Last seen）、復發時上一事故根訊息標記（`renderPreviousIncidentRoot`）、ignored（灰色、無按鈕、不發回覆）。
+- 重複按到過時按鈕（unchanged）：`editOriginal` 以現況收掉過時按鈕，並 ephemeral 提示「已由 <@x> 確認」／「此問題已解決」。
+- 無根訊息（`getIncidentRoot` 為 null）：不發回覆、不編輯，只改 DB。Discord 失敗不影響轉換。
+- notifications：確認回覆**不記錄**（kind check constraint 無對應值且不新增 migration；冷卻判斷只看 alert／count_edit，無需此紀錄）。解決回覆照舊記 `resolve_reply`。

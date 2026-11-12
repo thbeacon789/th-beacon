@@ -59,9 +59,11 @@ function fakeResponder() {
   return { responder, edits, followUps }
 }
 
+const botPosts: any[] = []
 function fakeBot(): DiscordBot {
   return {
-    async post() {
+    async post(m) {
+      botPosts.push(m)
       return { ok: true, channelId: 'ch-1', messageId: 'reply-1' }
     },
     async edit() {
@@ -113,6 +115,7 @@ describe('handleInteraction', () => {
   let fr = fakeResponder()
   beforeEach(() => {
     fr = fakeResponder()
+    botPosts.length = 0
   })
   const runOn = (st: InMemoryStore, body: unknown, bot: DiscordBot | null = fakeBot()) =>
     handleInteraction(st, bot, fr.responder, config, signed(body), now)
@@ -179,6 +182,11 @@ describe('handleInteraction', () => {
     expect(fr.edits[0].data.allowed_mentions).toEqual({ parse: [] })
     expect(fr.edits[0].data).not.toHaveProperty('username')
     expect(fr.followUps).toHaveLength(0)
+    // 確認回覆由 transitionIssue 發一次（指向根訊息、不 tag）
+    expect(botPosts).toHaveLength(1)
+    expect(botPosts[0].content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(botPosts[0].allowed_mentions).toEqual({ parse: [] })
+    expect(botPosts[0].message_reference.message_id).toBe('m-1')
     const issue = await store.getIssue(issueId)
     expect(issue?.status).toBe('acknowledged')
     expect(issue?.acknowledgedBy).toBe('discord:111')
@@ -197,16 +205,18 @@ describe('handleInteraction', () => {
     expect(fr.followUps).toHaveLength(1)
   })
 
-  it('第二次 ack 且帶 interaction.message -> editOriginal 重繪成已確認、收掉確認按鈕', async () => {
+  it('第二次 ack 且帶 interaction.message -> editOriginal 收掉確認按鈕（內容不變）並 ephemeral 提示', async () => {
     await settle(await run(click(`ack:${issueId}:0`)))
     fr = fakeResponder()
+    botPosts.length = 0
     const msg = alertMsg(issueId)
     const body = { ...click(`ack:${issueId}:0`, '222'), message: { embeds: msg.embeds, components: msg.components } }
     await settle(await run(body))
-    expect(fr.followUps).toHaveLength(0)
+    expect(lastFollowUp()).toBe('已由 <@111> 確認')
+    expect(botPosts).toHaveLength(0)
     const data = fr.edits[0].data
     expect(data.flags).toBeUndefined()
-    expect(JSON.stringify(data.embeds)).toContain('<@111>')
+    expect(data.embeds).toEqual(msg.embeds)
     expect(JSON.stringify(data.components)).not.toContain(`ack:${issueId}`)
     expect(JSON.stringify(data.components)).toContain(`resolve:${issueId}`)
     expect((await store.getIssue(issueId))?.acknowledgedBy).toBe('discord:111')
@@ -214,8 +224,19 @@ describe('handleInteraction', () => {
 
   it('resolve 後再按 resolve -> follow-up 此問題已解決', async () => {
     await settle(await run(click(`resolve:${issueId}:0`)))
+    expect(botPosts[0].content).toBe('✅ 已由 <@111> 標記解決（18:10）')
     fr = fakeResponder()
     await settle(await run(click(`resolve:${issueId}:0`)))
+    expect(lastFollowUp()).toBe('此問題已解決')
+  })
+
+  it('resolve 後再按帶 message 的 resolve -> 收掉按鈕且內容不變，並 ephemeral 提示', async () => {
+    await settle(await run(click(`resolve:${issueId}:0`)))
+    fr = fakeResponder()
+    const msg = alertMsg(issueId)
+    await settle(await run({ ...click(`resolve:${issueId}:0`, '222'), message: { embeds: msg.embeds, components: msg.components } }))
+    expect(fr.edits[0].data.embeds).toEqual(msg.embeds)
+    expect(fr.edits[0].data.components).toBeUndefined()
     expect(lastFollowUp()).toBe('此問題已解決')
   })
 
@@ -252,7 +273,8 @@ describe('handleInteraction', () => {
     const msg = alertMsg(issue.id)
     const body = { ...click(`ack:${issue.id}:0`), message: { embeds: msg.embeds, components: msg.components } }
     await settle(await runOn(bare, body))
-    expect(JSON.stringify(fr.edits[0].data.embeds)).toContain('已確認')
+    expect(fr.edits[0].data.embeds).toEqual(msg.embeds)
+    expect(JSON.stringify(fr.edits[0].data.components)).not.toContain(`ack:${issue.id}`)
   })
 
   it('沒有根訊息也沒有 interaction.message -> 不呼叫 Discord', async () => {
@@ -279,13 +301,14 @@ describe('handleInteraction', () => {
     expect((await store.getIssue(issueId))?.acknowledgedBy).toBeNull()
   })
 
-  it('ack 後再 resolve：editOriginal 同時含已確認欄位與最新次數', async () => {
+  it('ack 後再 resolve：editOriginal 含最新次數、無已確認欄位、無按鈕', async () => {
     await settle(await run(click(`ack:${issueId}:0`)))
     await processEvent(store, event, now)
     fr = fakeResponder()
     await settle(await run(click(`resolve:${issueId}:0`, '222')))
     const fields = fr.edits[0].data.embeds[0].fields as Array<{ name: string; value: string }>
-    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(true)
+    expect(fields.some((f) => f.name === '✋ 已確認')).toBe(false)
+    expect(fr.edits[0].data.components).toBeUndefined()
     expect(fields.find((f) => f.name === '次數')?.value).toBe('2')
   })
 
