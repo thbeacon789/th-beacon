@@ -16,14 +16,14 @@ describe('buildDiscordMessage', () => {
     const msg = buildDiscordMessage(base)
     expect(msg.username).toBe('th-beacon')
     expect(msg.embeds).toHaveLength(1)
-    expect(msg.embeds[0].title).toBe('[P0] svc-a — DBError')
+    expect(msg.embeds[0].title).toBe('🔴 [P0] svc-a — DBError')
     expect(msg.embeds[0].color).toBe(0xe74c3c)
     expect(msg.embeds[0].description).toBe('db down: connection refused')
     expect(msg.embeds[0].url).toBeUndefined()
     expect(msg.embeds[0].fields).toEqual([
       { name: '次數', value: '7', inline: true },
-      { name: 'First seen', value: '18:00', inline: true },
-      { name: 'Last seen', value: '18:25', inline: true },
+      { name: '首次', value: '18:00', inline: true },
+      { name: '最近', value: '18:25', inline: true },
     ])
   })
 
@@ -147,7 +147,7 @@ describe('buildDiscordMessage details', () => {
 
   it('無 details 時欄位與既有行為一致', () => {
     const msg = buildDiscordMessage(base)
-    expect(msg.embeds[0].fields.map((f) => f.name)).toEqual(['次數', 'First seen', 'Last seen'])
+    expect(msg.embeds[0].fields.map((f) => f.name)).toEqual(['次數', '首次', '最近'])
   })
 
   it('summary 與 runUrl 附加成欄位，runUrl 為 markdown 連結', () => {
@@ -206,6 +206,25 @@ describe('extractNotifyDetails diagnosis', () => {
   })
 })
 
+describe('buildDiscordMessage severity mark', () => {
+  it.each([
+    ['P0', '🔴'],
+    ['P1', '🟠'],
+    ['P2', '🔵'],
+  ] as const)('%s 標題前綴 %s', (severity, mark) => {
+    const msg = buildDiscordMessage({
+      serviceName: 'svc',
+      severity,
+      errorType: 'E',
+      message: 'm',
+      count: 1,
+      firstSeen: 'a',
+      lastSeen: 'b',
+    })
+    expect(msg.embeds[0].title).toBe(`${mark} [${severity}] svc — E`)
+  })
+})
+
 describe('buildDiscordMessage diagnosis', () => {
   const b = {
     serviceName: 'svc',
@@ -219,11 +238,11 @@ describe('buildDiscordMessage diagnosis', () => {
   it('有分類時標題為中文判定', () => {
     expect(
       buildDiscordMessage({ ...b, severity: 'P2', details: { category: 'env' } }).embeds[0].title,
-    ).toBe('[P2] svc — 環境問題')
+    ).toBe('🔵 [P2] svc — 環境問題')
     expect(
       buildDiscordMessage({ ...b, severity: 'P1', details: { category: 'app' } }).embeds[0].title,
-    ).toBe('[P1] svc — app 問題')
-    expect(buildDiscordMessage({ ...b, severity: 'P1' }).embeds[0].title).toBe('[P1] svc — test_failure')
+    ).toBe('🟠 [P1] svc — app 問題')
+    expect(buildDiscordMessage({ ...b, severity: 'P1' }).embeds[0].title).toBe('🟠 [P1] svc — test_failure')
   })
 
   it('自由文字欄位中的 markdown 連結被拆開', () => {
@@ -262,8 +281,8 @@ describe('buildDiscordMessage diagnosis', () => {
     })
     expect(msg.embeds[0].fields.map((f) => f.name)).toEqual([
       '次數',
-      'First seen',
-      'Last seen',
+      '首次',
+      '最近',
       '失敗摘要',
       '判定原因',
       '修正建議',

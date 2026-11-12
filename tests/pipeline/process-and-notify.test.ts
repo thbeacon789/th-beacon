@@ -109,7 +109,7 @@ describe('processAndNotify', () => {
     expect(result.notifyReason).toBe('first')
     expect(sent).toHaveLength(1)
     expect(sent[0].url).toBe('https://discord/webhook')
-    expect(sent[0].message.embeds[0].title).toBe('[P1] svc-a — TypeError')
+    expect(sent[0].message.embeds[0].title).toBe('🟠 [P1] svc-a — TypeError')
     expect(await store.getLatestSentNotification('s-1', result.issue.fingerprint, 0)).toEqual({
       severity: 'P1',
       sentAt: now.toISOString(),
@@ -135,7 +135,7 @@ describe('processAndNotify', () => {
     expect(escalated.notified).toBe(true)
     expect(escalated.notifyReason).toBe('escalation')
     expect(sent).toHaveLength(2)
-    expect(sent[1].message.embeds[0].title).toBe('[P0] svc-a — TypeError')
+    expect(sent[1].message.embeds[0].title).toBe('🔴 [P0] svc-a — TypeError')
   })
 
   it('sender failure records failed, pipeline result intact, next event retries', async () => {
@@ -297,7 +297,7 @@ describe('processAndNotify（bot 模式）', () => {
     expect(m.allowed_mentions).toEqual({ parse: [] })
     expect(m.embeds[0].fields.some((f) => f.name === '✋ 已確認')).toBe(false)
     const labels = (m.components ?? []).flatMap((row) => row.components.map((c) => c.label))
-    expect(labels).toEqual(['✅ 已解決'])
+    expect(labels).toEqual(['Resolve'])
   })
 
   it('確認後升級仍 post 並 tag', async () => {
@@ -324,7 +324,7 @@ describe('processAndNotify（bot 模式）', () => {
     expect(edits).toHaveLength(1)
     expect(edits[0].messageId).toBe('m1')
     const prev = edits[0].message as DiscordMessage
-    expect(prev.embeds[0].fields.some((f) => f.name === '🔁 已復發')).toBe(true)
+    expect(prev.embeds[0].fields.some((f) => f.name === '↻ Reopened')).toBe(true)
     expect(prev.embeds[0].color).toBe(0x2ecc71)
     expect(prev.embeds[0].fields.some((f) => f.name === '處理方式')).toBe(false)
     expect(prev.content).toBeUndefined()

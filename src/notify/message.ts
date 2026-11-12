@@ -74,6 +74,10 @@ const SEVERITY_COLOR: Record<Severity, number> = {
   P2: 0x95a5a6,
 }
 
+const SEVERITY_MARK: Record<Severity, string> = { P0: '🔴', P1: '🟠', P2: '🔵' }
+
+export const LAST_SEEN_FIELD = '最近'
+
 const DESCRIPTION_LIMIT = 500
 
 export interface NotifyDetails {
@@ -182,7 +186,7 @@ export function buildDiscordMessage(params: {
     allowed_mentions: owner !== null ? { parse: [], users: [owner] } : { parse: [] },
     embeds: [
       {
-        title: `[${params.severity}] ${params.serviceName} — ${
+        title: `${SEVERITY_MARK[params.severity]} [${params.severity}] ${params.serviceName} — ${
           params.details?.category !== undefined
             ? CATEGORY_TITLE[params.details.category]
             : params.errorType
@@ -192,8 +196,8 @@ export function buildDiscordMessage(params: {
         ...(params.dashboardUrl !== undefined ? { url: params.dashboardUrl } : {}),
         fields: [
           { name: '次數', value: String(params.count), inline: true },
-          { name: 'First seen', value: formatAlertTime(params.firstSeen), inline: true },
-          { name: 'Last seen', value: formatAlertTime(params.lastSeen), inline: true },
+          { name: '首次', value: formatAlertTime(params.firstSeen), inline: true },
+          { name: LAST_SEEN_FIELD, value: formatAlertTime(params.lastSeen), inline: true },
           ...detailFields,
         ],
       },

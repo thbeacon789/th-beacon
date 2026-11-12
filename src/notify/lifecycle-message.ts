@@ -1,14 +1,21 @@
 import { displayActor, encodeButtonId, type ButtonAction } from '@/core/lifecycle'
 import type { StoredIssue } from '@/store/contracts'
-import { formatAlertTime, type DiscordEmbedField, type DiscordMessage, type DiscordReplyMessage } from './message'
+import { formatAlertTime, LAST_SEEN_FIELD, type DiscordEmbedField, type DiscordMessage, type DiscordReplyMessage } from './message'
 
 const GREEN = 0x2ecc71
 const GREY = 0x95a5a6
 
 type Source = 'manual' | 'poll' | 'heartbeat'
 
+const REOPENED_FIELD = '↻ Reopened'
+const AUTO_SOURCE: Record<Exclude<Source, 'manual'>, string> = { poll: '輪詢', heartbeat: '心跳' }
+
+const SEVERITY_MARK_RE = /^(?:🔴|🟠|🔵) /u
+
+/** 狀態前綴取代標題開頭的嚴重度色塊，避免兩個色塊並列。 */
 function prefixTitle(title: string, prefix: string): string {
-  return title.startsWith(`${prefix} `) ? title : `${prefix} ${title}`
+  if (title.startsWith(`${prefix} `)) return title
+  return `${prefix} ${title.replace(SEVERITY_MARK_RE, '')}`
 }
 
 function upsertField(fields: DiscordEmbedField[], field: DiscordEmbedField): void {
@@ -25,8 +32,8 @@ function stripMentions(m: DiscordMessage): void {
 
 function buttonRow(issueId: string, incidentSeq: number, actions: readonly ButtonAction[]) {
   const all = {
-    ack: { type: 2 as const, style: 2 as const, label: '✋ 確認' },
-    resolve: { type: 2 as const, style: 3 as const, label: '✅ 已解決' },
+    ack: { type: 2 as const, style: 2 as const, label: 'Acknowledge' },
+    resolve: { type: 2 as const, style: 3 as const, label: 'Resolve' },
   }
   return {
     type: 1 as const,
@@ -61,7 +68,7 @@ export function applyIgnored(msg: DiscordMessage): DiscordMessage {
   stripMentions(m)
   delete m.components
   m.embeds[0].color = GREY
-  m.embeds[0].title = prefixTitle(m.embeds[0].title, '🚫 已忽略')
+  m.embeds[0].title = prefixTitle(m.embeds[0].title, '⚪ Ignored')
   return m
 }
 
@@ -70,8 +77,8 @@ export function applyReopened(msg: DiscordMessage, reopenCount: number): Discord
   stripMentions(m)
   delete m.components
   upsertField(m.embeds[0].fields, {
-    name: '🔁 已復發',
-    value: `第 ${reopenCount} 次 → 見最新回覆`,
+    name: REOPENED_FIELD,
+    value: `第 ${reopenCount} 次，見最新回覆`,
     inline: false,
   })
   return m
@@ -81,7 +88,8 @@ export function applyCount(msg: DiscordMessage, count: number, lastSeen: string)
   const m = structuredClone(msg)
   for (const f of m.embeds[0].fields) {
     if (f.name === '次數') f.value = String(count)
-    else if (f.name === 'Last seen') f.value = formatAlertTime(lastSeen)
+    // 'Last seen' 為改版前的欄位名，舊根訊息仍要能更新
+    else if (f.name === LAST_SEEN_FIELD || f.name === 'Last seen') f.value = formatAlertTime(lastSeen)
   }
   return m
 }
@@ -95,7 +103,7 @@ function reply(content: string, replyToMessageId?: string): DiscordReplyMessage 
 
 /** 確認回覆：另發一則（不改告警原文）；不 tag 任何人。 */
 export function buildAckReply(actorLabel: string, atIso: string, replyToMessageId?: string): DiscordReplyMessage {
-  return reply(`✋ 已由 ${displayActor(actorLabel)} 確認（${formatAlertTime(atIso)}）`, replyToMessageId)
+  return reply(`🟡 Acknowledged — ${displayActor(actorLabel)} · ${formatAlertTime(atIso)}`, replyToMessageId)
 }
 
 /** 解決回覆：手動帶出是誰與時間；自動恢復維持固定文字。不 tag。 */
@@ -104,11 +112,11 @@ export function buildResolveReply(
   replyToMessageId?: string,
   manual?: { actorLabel: string; atIso: string },
 ): DiscordReplyMessage {
-  if (source !== 'manual') return reply('✅ 已自動恢復', replyToMessageId)
+  if (source !== 'manual') return reply(`🟢 Resolved — 自動恢復（${AUTO_SOURCE[source]}）`, replyToMessageId)
   return reply(
     manual !== undefined
-      ? `✅ 已由 ${displayActor(manual.actorLabel)} 標記解決（${formatAlertTime(manual.atIso)}）`
-      : '✅ 已解決',
+      ? `🟢 Resolved — ${displayActor(manual.actorLabel)} · ${formatAlertTime(manual.atIso)}`
+      : '🟢 Resolved',
     replyToMessageId,
   )
 }
@@ -151,10 +159,10 @@ export function renderPreviousIncidentRoot(base: DiscordMessage, reopenCount: nu
   stripMentions(m)
   delete m.components
   m.embeds[0].color = GREEN
-  m.embeds[0].title = prefixTitle(m.embeds[0].title, '✅ 已解決')
+  m.embeds[0].title = prefixTitle(m.embeds[0].title, '🟢 Resolved')
   upsertField(m.embeds[0].fields, {
-    name: '🔁 已復發',
-    value: `第 ${reopenCount} 次 → 見最新回覆`,
+    name: REOPENED_FIELD,
+    value: `第 ${reopenCount} 次，見最新回覆`,
     inline: false,
   })
   return m

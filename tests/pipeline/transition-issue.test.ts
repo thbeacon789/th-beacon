@@ -151,7 +151,7 @@ describe('transitionIssue', () => {
     expect(text(edited)).not.toContain('已確認')
     expect(f.posts).toHaveLength(1)
     const reply = f.posts[0] as { content: string; allowed_mentions: unknown; message_reference: unknown }
-    expect(reply.content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(reply.content).toBe('🟡 Acknowledged — <@111> · 18:10')
     expect(reply.allowed_mentions).toEqual({ parse: [] })
     // 發在討論串內（thread id = 根訊息 id），不帶 message_reference，也不需先開 thread
     expect(reply.message_reference).toBeUndefined()
@@ -167,7 +167,7 @@ describe('transitionIssue', () => {
     const f = fakeBot()
     await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'dashboard', email: 'a@b.c' }, now)
     expect(f.posts).toHaveLength(1)
-    expect((f.posts[0] as { content: string }).content).toBe('✋ 已由 a@b.c 確認（18:10）')
+    expect((f.posts[0] as { content: string }).content).toBe('🟡 Acknowledged — a@b.c · 18:10')
   })
 
   it('沒有根訊息：確認不發回覆', async () => {
@@ -215,7 +215,7 @@ describe('transitionIssue', () => {
     expect(edited.components).toBeUndefined()
     expect(text(f.edits[0].message)).not.toContain('自動恢復')
     expect(f.posts).toHaveLength(1)
-    expect(text(f.posts[0])).toContain('✅ 已自動恢復')
+    expect(text(f.posts[0])).toContain('🟢 Resolved — 自動恢復（輪詢）')
     expect(f.postTos[0].channelId).toBe('m-1')
     const replies = store.listNotifications().filter((n) => n.kind === 'resolve_reply')
     expect(replies).toHaveLength(1)
@@ -247,7 +247,7 @@ describe('transitionIssue', () => {
     await transitionIssue(store, f.bot, issue.id, 'acknowledged', { kind: 'discord', userId: '111' }, now)
     expect(f.postTos.map((p) => p.channelId)).toEqual(['m-1', 'm-1', 'ch-1'])
     const fb = f.postTos[2].message as { content: string; message_reference: unknown }
-    expect(fb.content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(fb.content).toBe('🟡 Acknowledged — <@111> · 18:10')
     expect(fb.message_reference).toEqual({ message_id: 'm-1', fail_if_not_exists: false })
   })
 
@@ -272,13 +272,13 @@ describe('transitionIssue', () => {
     const issue = await setupIssue()
     const f = fakeBot()
     await transitionIssue(store, f.bot, issue.id, 'resolved', { kind: 'dashboard', email: 'a@b.c' }, now)
-    expect((f.posts[0] as { content: string }).content).toBe('✅ 已由 a@b.c 標記解決（18:10）')
+    expect((f.posts[0] as { content: string }).content).toBe('🟢 Resolved — a@b.c · 18:10')
     expect((f.posts[0] as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [] })
     expect(text(f.edits[0].message)).not.toContain('手動')
     const d = fakeBot()
     const issue2 = await setupIssue()
     await transitionIssue(store, d.bot, issue2.id, 'resolved', { kind: 'discord', userId: '77' }, now)
-    expect((d.posts[0] as { content: string }).content).toBe('✅ 已由 <@77> 標記解決（18:10）')
+    expect((d.posts[0] as { content: string }).content).toBe('🟢 Resolved — <@77> · 18:10')
   })
 
   it('沒有根訊息：只改 DB，bot 完全不被呼叫', async () => {

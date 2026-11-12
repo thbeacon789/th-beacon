@@ -191,7 +191,7 @@ describe('handleInteraction', () => {
     expect(fr.followUps).toHaveLength(0)
     // 確認回覆由 transitionIssue 發一次（指向根訊息、不 tag）
     expect(botPosts).toHaveLength(1)
-    expect(botPosts[0].content).toBe('✋ 已由 <@111> 確認（18:10）')
+    expect(botPosts[0].content).toBe('🟡 Acknowledged — <@111> · 18:10')
     expect(botPosts[0].allowed_mentions).toEqual({ parse: [] })
     expect(botPosts[0].message_reference).toBeUndefined()
     const issue = await store.getIssue(issueId)
@@ -203,7 +203,7 @@ describe('handleInteraction', () => {
     await settle(await run(click(`ack:${issueId}:0`)))
     fr = fakeResponder()
     await settle(await run(click(`ack:${issueId}:0`, '222')))
-    expect(lastFollowUp()).toBe('已由 <@111> 確認')
+    expect(lastFollowUp()).toBe('🟡 Acknowledged — <@111>')
     expect(fr.edits).toHaveLength(0)
   })
 
@@ -219,7 +219,7 @@ describe('handleInteraction', () => {
     const msg = alertMsg(issueId)
     const body = { ...click(`ack:${issueId}:0`, '222'), message: { embeds: msg.embeds, components: msg.components } }
     await settle(await run(body))
-    expect(lastFollowUp()).toBe('已由 <@111> 確認')
+    expect(lastFollowUp()).toBe('🟡 Acknowledged — <@111>')
     expect(botPosts).toHaveLength(0)
     const data = fr.edits[0].data
     expect(data.flags).toBeUndefined()
@@ -231,10 +231,10 @@ describe('handleInteraction', () => {
 
   it('resolve 後再按 resolve -> follow-up 此問題已解決', async () => {
     await settle(await run(click(`resolve:${issueId}:0`)))
-    expect(botPosts[0].content).toBe('✅ 已由 <@111> 標記解決（18:10）')
+    expect(botPosts[0].content).toBe('🟢 Resolved — <@111> · 18:10')
     fr = fakeResponder()
     await settle(await run(click(`resolve:${issueId}:0`)))
-    expect(lastFollowUp()).toBe('此問題已解決')
+    expect(lastFollowUp()).toBe('🟢 Resolved')
   })
 
   it('resolve 後再按帶 message 的 resolve -> 收掉按鈕且內容不變，並 ephemeral 提示', async () => {
@@ -244,12 +244,12 @@ describe('handleInteraction', () => {
     await settle(await run({ ...click(`resolve:${issueId}:0`, '222'), message: { embeds: msg.embeds, components: msg.components } }))
     expect(fr.edits[0].data.embeds).toEqual(msg.embeds)
     expect(fr.edits[0].data.components).toBeUndefined()
-    expect(lastFollowUp()).toBe('此問題已解決')
+    expect(lastFollowUp()).toBe('🟢 Resolved')
   })
 
   it('incidentSeq 不符 -> 過期 follow-up 且 DB 不變', async () => {
     await settle(await run(click(`ack:${issueId}:5`)))
-    expect(lastFollowUp()).toBe('此告警已過期，請看最新一則')
+    expect(lastFollowUp()).toBe('此通知已過期，請看最新一則')
     expect((await store.getIssue(issueId))?.status).toBe('open')
   })
 
@@ -303,7 +303,7 @@ describe('handleInteraction', () => {
     const spy = vi.spyOn(store, 'getIssue').mockResolvedValueOnce({ ...(real as NonNullable<typeof real>), reopenCount: 0 })
     await settle(await run(click(`ack:${issueId}:0`)))
     spy.mockRestore()
-    expect(lastFollowUp()).toBe('此告警已過期，請看最新一則')
+    expect(lastFollowUp()).toBe('此通知已過期，請看最新一則')
     expect((await store.getIssue(issueId))?.status).toBe('open')
     expect((await store.getIssue(issueId))?.acknowledgedBy).toBeNull()
   })

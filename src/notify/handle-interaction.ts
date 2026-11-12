@@ -106,7 +106,7 @@ async function processClick(
 
   const current = await store.getIssue(parsed.issueId)
   if (current === null) return eph('找不到此問題')
-  if (current.reopenCount !== parsed.incidentSeq) return eph('此告警已過期，請看最新一則')
+  if (current.reopenCount !== parsed.incidentSeq) return eph('此通知已過期，請看最新一則')
 
   const to = parsed.action === 'ack' ? 'acknowledged' : 'resolved'
   const actor = { kind: 'discord', userId } as const
@@ -120,16 +120,16 @@ async function processClick(
 
   if (result.outcome === 'unchanged') {
     // 預檢之後事故被 reopen：UPDATE 條件擋下，現況已是新事故
-    if (result.issue.reopenCount !== parsed.incidentSeq) return eph('此告警已過期，請看最新一則')
+    if (result.issue.reopenCount !== parsed.incidentSeq) return eph('此通知已過期，請看最新一則')
     // 按到過時的按鈕（例如前一次點擊 DB 已更新但 Discord 畫面沒跟上）：
     // editOriginal 把按鈕重繪成現況（收掉過時按鈕），並以 ephemeral 告知誰已確認／已解決。
     const issue = result.issue
     const hint =
       parsed.action === 'ack' && issue.status !== 'resolved'
         ? issue.acknowledgedBy !== null
-          ? `已由 ${displayActor(issue.acknowledgedBy)} 確認`
-          : '已有人確認'
-        : '此問題已解決'
+          ? `🟡 Acknowledged — ${displayActor(issue.acknowledgedBy)}`
+          : '🟡 Acknowledged'
+        : '🟢 Resolved'
     const synced = rebuildFromInteraction(interaction, issue)
     return synced !== null
       ? { kind: 'edit', data: toInteractionData(synced), ephemeral: hint }
