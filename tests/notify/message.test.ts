@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildDiscordMessage, extractNotifyDetails } from '@/notify/message'
+import { buildDiscordMessage, extractNotifyDetails, formatAlertTime } from '@/notify/message'
 
 const base = {
   serviceName: 'svc-a',
@@ -22,9 +22,16 @@ describe('buildDiscordMessage', () => {
     expect(msg.embeds[0].url).toBeUndefined()
     expect(msg.embeds[0].fields).toEqual([
       { name: '次數', value: '7', inline: true },
-      { name: 'First seen', value: '2026-07-28T10:00:00.000Z', inline: true },
-      { name: 'Last seen', value: '2026-07-28T10:25:00.000Z', inline: true },
+      { name: 'First seen', value: '18:00', inline: true },
+      { name: 'Last seen', value: '18:25', inline: true },
     ])
+  })
+
+  it('formatAlertTime：台北 24 小時制 HH:mm，午夜為 00:00，無效字串原樣', () => {
+    expect(formatAlertTime('2026-07-28T10:25:59.999Z')).toBe('18:25')
+    expect(formatAlertTime('2026-07-28T16:05:00.000Z')).toBe('00:05')
+    expect(formatAlertTime('2026-07-28T05:30:00.000Z')).toBe('13:30')
+    expect(formatAlertTime('not-a-date')).toBe('not-a-date')
   })
 
   it('無負責人：不帶 content，allowed_mentions 禁止所有解析', () => {

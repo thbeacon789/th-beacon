@@ -58,7 +58,7 @@ describe('applyAcknowledged', () => {
     expect(ids(m)).toEqual([`resolve:${uuid}:1`])
     expect(m.embeds[0].fields).toContainEqual({
       name: '✋ 已確認',
-      value: '<@111>（2026-11-10T00:00:00.000Z）',
+      value: '<@111>（08:00）',
       inline: false,
     })
   })

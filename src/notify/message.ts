@@ -2,6 +2,21 @@ import type { Severity } from '@/core/types'
 import { isSafeRunUrl, type DiagnosisCategory } from '@/core/heartbeat'
 import { withAlertButtons } from './lifecycle-message'
 
+// 通知時間一律台北時間、24 小時制、只到分鐘（例 18:25）。時區顯式指定：Vercel 執行環境是 UTC。
+// hourCycle 'h23' 而非 hour12:false：部分 ICU 下後者會把午夜印成 24:00。
+const ALERT_TIME = new Intl.DateTimeFormat('zh-TW', {
+  timeZone: 'Asia/Taipei',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** ISO 時間 → 台北 HH:mm；無法解析時原樣回傳。 */
+export function formatAlertTime(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : ALERT_TIME.format(d)
+}
+
 export interface DiscordEmbedField {
   name: string
   value: string
@@ -176,8 +191,8 @@ export function buildDiscordMessage(params: {
         ...(params.dashboardUrl !== undefined ? { url: params.dashboardUrl } : {}),
         fields: [
           { name: '次數', value: String(params.count), inline: true },
-          { name: 'First seen', value: params.firstSeen, inline: true },
-          { name: 'Last seen', value: params.lastSeen, inline: true },
+          { name: 'First seen', value: formatAlertTime(params.firstSeen), inline: true },
+          { name: 'Last seen', value: formatAlertTime(params.lastSeen), inline: true },
           ...detailFields,
         ],
       },

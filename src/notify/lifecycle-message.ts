@@ -1,6 +1,6 @@
 import { displayActor, encodeButtonId, type ButtonAction } from '@/core/lifecycle'
 import type { StoredIssue } from '@/store/contracts'
-import type { DiscordEmbedField, DiscordMessage, DiscordReplyMessage } from './message'
+import { formatAlertTime, type DiscordEmbedField, type DiscordMessage, type DiscordReplyMessage } from './message'
 
 const GREEN = 0x2ecc71
 const GREY = 0x95a5a6
@@ -59,7 +59,7 @@ export function applyAcknowledged(
   stripMentions(m)
   upsertField(m.embeds[0].fields, {
     name: '✋ 已確認',
-    value: `${displayActor(actorLabel)}（${atIso}）`,
+    value: `${displayActor(actorLabel)}（${formatAlertTime(atIso)}）`,
     inline: false,
   })
   m.components = [buttonRow(issueId, incidentSeq, ['resolve'])]
@@ -111,7 +111,7 @@ export function applyCount(msg: DiscordMessage, count: number, lastSeen: string)
   const m = structuredClone(msg)
   for (const f of m.embeds[0].fields) {
     if (f.name === '次數') f.value = String(count)
-    else if (f.name === 'Last seen') f.value = lastSeen
+    else if (f.name === 'Last seen') f.value = formatAlertTime(lastSeen)
   }
   return m
 }
