@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createDiscordBot } from '@/notify/discord-bot'
+import { createDiscordBot, createInteractionResponder } from '@/notify/discord-bot'
 import type { DiscordMessage } from '@/notify/message'
 
 const message = {
@@ -60,5 +60,34 @@ describe('createDiscordBot', () => {
     })
     const r = await createDiscordBot(config, f as unknown as typeof fetch).post(message)
     expect(r).toEqual({ ok: false, reason: 'TypeError' })
+  })
+})
+
+describe('createInteractionResponder', () => {
+  it('editOriginal PATCH @original、無 Authorization；followUp POST ephemeral', async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = []
+    const f = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init })
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    const r = createInteractionResponder({ applicationId: 'app1' }, f)
+    expect(await r.editOriginal('tk', { content: 'x' })).toEqual({ ok: true })
+    expect(await r.followUp('tk', 'hi')).toEqual({ ok: true })
+    expect(calls[0].url).toBe('https://discord.com/api/v10/webhooks/app1/tk/messages/@original')
+    expect(calls[0].init.method).toBe('PATCH')
+    expect(JSON.stringify(calls[0].init.headers)).not.toContain('Authorization')
+    expect(calls[1].url).toBe('https://discord.com/api/v10/webhooks/app1/tk')
+    expect(calls[1].init.method).toBe('POST')
+    expect(JSON.parse(calls[1].init.body as string)).toEqual({ content: 'hi', flags: 64, allowed_mentions: { parse: [] } })
+  })
+
+  it('失敗不 throw', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const f = (async () => {
+      throw new Error('boom')
+    }) as unknown as typeof fetch
+    const r = createInteractionResponder({ applicationId: 'a' }, f)
+    expect((await r.followUp('t', 'x')).ok).toBe(false)
+    err.mockRestore()
   })
 })

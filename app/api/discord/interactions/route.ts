@@ -1,4 +1,5 @@
 import { after } from 'next/server'
+import { createInteractionResponder } from '@/notify/discord-bot'
 import { handleInteraction } from '@/notify/handle-interaction'
 import { createServerNotifyDeps, createServerStore, getDiscordInteractionConfig } from '@/store/server'
 
@@ -11,6 +12,7 @@ export async function POST(request: Request): Promise<Response> {
   const res = await handleInteraction(
     createServerStore(),
     createServerNotifyDeps({ budget: null }).bot ?? null,
+    createInteractionResponder({ applicationId: config.applicationId }),
     config,
     {
       rawBody,
