@@ -73,6 +73,12 @@ describe('processAndNotify', () => {
     expect(sent[1].message.allowed_mentions).toEqual({ parse: [] })
   })
 
+  it('標題連結指向該筆 issue 頁面（APP_URL 結尾斜線不重複）', async () => {
+    const { deps, sent } = fakeSender()
+    const result = await processAndNotify(store, { ...deps, dashboardUrl: 'https://beacon.example.com/' }, event(), now)
+    expect(sent[0].message.embeds[0].url).toBe(`https://beacon.example.com/issues/${result.issue.id}`)
+  })
+
   it('顏色與紀錄取 event severity', async () => {
     store.seedRule(null, { id: 'r', priority: 10, severity: 'P1', match: {} })
     const { deps, sent } = fakeSender()

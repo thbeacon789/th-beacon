@@ -324,7 +324,9 @@ async function notifyStage(
     count: issue.count,
     firstSeen: issue.firstSeen,
     lastSeen: issue.lastSeen,
-    ...(deps.dashboardUrl !== undefined ? { dashboardUrl: deps.dashboardUrl } : {}),
+    ...(deps.dashboardUrl !== undefined
+      ? { dashboardUrl: `${deps.dashboardUrl.replace(/\/+$/, '')}/issues/${issue.id}` }
+      : {}),
     details: extractNotifyDetails(event.metadata),
     ...(bot !== null && root === null && !quietRoot ? { buttons: { issueId: issue.id, incidentSeq: seq } } : {}),
   })
