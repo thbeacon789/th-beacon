@@ -1,6 +1,6 @@
 ---
 name: onboarding-th-beacon
-description: Use when connecting a service or repo to th-beacon (公司監控平台, th-beacon.vercel.app) — 接上監控、回報 CI／nightly／e2e 測試結果、心跳 heartbeat、推送錯誤到 /api/ingest、BEACON_SECRET、或 th-beacon 回 401／404 的接入問題.
+description: Use when connecting a service or repo to th-beacon (公司監控平台, th-beacon.vercel.app) — 接上監控、登記服務或測試用服務、設定告警負責人（Discord tag）、回報 CI／nightly／e2e 測試結果、心跳 heartbeat、推送錯誤到 /api/ingest、送測試告警、BEACON_SECRET、或 th-beacon 回 401／404 的接入問題.
 ---
 
 # 接入 th-beacon
@@ -21,14 +21,24 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 
 | 步驟 | 誰做 | 內容 |
 | --- | --- | --- |
-| 1 | 使用者 | 到 `https://th-beacon.vercel.app/services` 登記服務名稱，**同時勾選登記心跳**（名稱、interval、grace）。金鑰只顯示一次 |
+| 1 | 使用者 | 到 `https://th-beacon.vercel.app/services` 登記：服務名稱、服務說明、**負責人 Discord ID**，並**勾選登記心跳**（名稱、interval、grace）。金鑰只顯示一次 |
 | 2 | 使用者 | 在**自己的終端機**執行 `gh secret set BEACON_SECRET --repo <owner>/<repo>`（會隱藏輸入），或到 GitHub 網頁設定 |
 | 3 | 你 | 複製 script、改 workflow（見下） |
 | 4 | 你＋使用者 | 用 `gh workflow run` 觸發一次，`gh run view --log` 確認回報步驟收到 200 |
 
 一開始就把步驟 1、2 交代清楚，並把你建議的值一起給：服務名稱、心跳名稱，以及 interval／grace（daily 排程建議 `86400`／`3600`）。workflow 裡的名稱必須與登記的**完全相同**。
 
-**金鑰不經過對話。** 不要請使用者把金鑰貼進對話，也不要用 `!` 前綴執行帶金鑰的指令（輸出會進對話紀錄）。如果使用者還是貼了，提醒他設完 secret 後到 `/services` 按「重新產生」換一把。
+### 負責人與 Discord 告警
+
+負責人 Discord ID 是**數字 ID**（17–20 位），不是使用者名稱：Discord「使用者設定 → 進階」開啟開發者模式，對該成員按右鍵 →「複製使用者 ID」。留空也能登記，但告警就不會 tag 任何人；之後可在 `/services` 的服務卡片上補填或修改。
+
+接好之後的告警長這樣，登記時一併告訴使用者：
+
+- 告警發到共用告警頻道，**每一則都 tag 負責人**，標題連到該筆 issue 頁面。
+- 告警附「✋ 確認」「✅ 已解決」按鈕，頻道內任何人都能按。確認與解決的紀錄發在該告警開出的**討論串**裡；確認後冷卻期滿只靜默更新次數、不再 tag，只有嚴重度升級才再 tag。
+- 服務恢復（輪詢或心跳轉 pass）會自動解決並在討論串註記；同一問題解決後再發生，算新事故，重新告警並回覆指向上一則。
+
+**金鑰不經過對話。** 金鑰只走兩條路：使用者自己的終端機（`gh secret set` 會隱藏輸入），或剪貼簿（`$(pbpaste)`，指令與輸出都不含金鑰本身）。不要請使用者把金鑰貼進對話，也不要讓金鑰字面出現在 `!` 前綴指令裡（會進對話紀錄）。如果使用者還是貼了，提醒他設完 secret 後到 `/services` 按「重新產生」換一把。
 
 ## 接線
 
@@ -58,6 +68,20 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - ubuntu runner 預設就有 `jq`、`openssl`、`curl`。
 
 **心跳 fail 已經會告警**，一般不需要再推 ingest。只有服務在執行期（非 CI）要回報錯誤時才用 `/api/ingest`。此時 `message` 必須是固定字串，次數、時間、URL 一律放進 `metadata`，否則每次回報都會長出一筆新 issue。
+
+## 測試用服務（驗證告警流程）
+
+使用者只想看告警長怎樣、或驗證 Discord 按鈕時，登記一個獨立的測試服務，別拿正式服務送假錯誤（會弄髒它的健康燈號與 issue 紀錄）：
+
+1. 使用者到 `/services` 登記，名稱建議 `beacon-selftest`，填負責人 Discord ID，**不勾心跳**（沒有 CI，勾了會每天逾期告警）。金鑰顯示後**複製到剪貼簿**。
+2. 使用者在 repo 根目錄（th-beacon 本身，或已複製 `report-to-beacon.sh` 的 repo）用 `!` 前綴執行，金鑰從剪貼簿讀：
+
+```bash
+! BEACON_URL=https://th-beacon.vercel.app/api/ingest BEACON_SERVICE=beacon-selftest BEACON_SECRET="$(pbpaste)" bash scripts/report-to-beacon.sh "Discord 告警流程測試" "" selftest
+```
+
+3. 回 `201` 且帶 `issueId` 即送達（`triage: "deferred"` 代表判級與通知在回應後才跑，等幾秒）。請使用者到告警頻道依序確認：被 tag、按「確認」出現討論串紀錄、按「已解決」後按鈕消失。
+4. 要再送一次新告警，換一個 `message`（同 message 會聚合到同一筆 issue，冷卻期內不重發）。
 
 ## 回應碼速查
 
