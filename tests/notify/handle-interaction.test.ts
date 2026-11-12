@@ -133,6 +133,26 @@ describe('handleInteraction', () => {
     expect(body.data.content).toBe('已由 <@111> 確認')
   })
 
+  it('第二次 ack 且帶 interaction.message -> type 7 重繪成已確認、收掉確認按鈕（所有人可見）', async () => {
+    await run(click(`ack:${issueId}:0`))
+    const msg = withAlertButtons(
+      buildDiscordMessage({
+        serviceName: 'svc-a', severity: 'P1', errorType: 'X', message: 'x', count: 1,
+        firstSeen: event.occurredAt, lastSeen: event.occurredAt,
+      }),
+      issueId, 0, ['ack', 'resolve'],
+    )
+    const body = { ...click(`ack:${issueId}:0`, '222'), message: { embeds: msg.embeds, components: msg.components } }
+    const r = await handleInteraction(store, fakeBot(), config, signed(body), now)
+    const out = r.body as { type: number; data: { embeds: unknown[]; components: unknown[]; flags?: number } }
+    expect(out.type).toBe(7)
+    expect(out.data.flags).toBeUndefined()
+    expect(JSON.stringify(out.data.embeds)).toContain('<@111>')
+    expect(JSON.stringify(out.data.components)).not.toContain(`ack:${issueId}`)
+    expect(JSON.stringify(out.data.components)).toContain(`resolve:${issueId}`)
+    expect((await store.getIssue(issueId))?.acknowledgedBy).toBe('discord:111')
+  })
+
   it('resolve 後再按 resolve -> 此問題已解決', async () => {
     await run(click(`resolve:${issueId}:0`))
     const r = await run(click(`resolve:${issueId}:0`))

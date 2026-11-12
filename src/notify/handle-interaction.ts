@@ -1,9 +1,9 @@
-import { displayActor, parseButtonId } from '@/core/lifecycle'
+import { displayActor, parseButtonId, type IssueActor } from '@/core/lifecycle'
 import { transformRoot, transitionIssue } from '@/pipeline/transition-issue'
 import type { DiscordBot } from '@/notify/discord-bot'
 import { verifyDiscordSignature } from '@/notify/discord-signature'
 import type { DiscordMessage } from '@/notify/message'
-import type { Store } from '@/store/contracts'
+import type { Store, StoredIssue } from '@/store/contracts'
 
 export type InteractionResponse = { status: number; body: unknown; after?: () => Promise<void> }
 
@@ -75,6 +75,11 @@ export async function handleInteraction(
   if (result.outcome === 'unchanged') {
     // 預檢之後事故被 reopen：UPDATE 條件擋下，現況已是新事故
     if (result.issue.reopenCount !== parsed.incidentSeq) return ephemeral('此告警已過期，請看最新一則')
+    // 按到過時的按鈕（例如前一次點擊 DB 已更新但 Discord 畫面沒跟上）：
+    // 直接把訊息重繪成現況，讓所有人看到誰已確認／已解決，並收掉過時按鈕。
+    // 系統自動解決（resolvedBy 為 null）分不出輪詢或心跳，維持私訊提示。
+    const synced = parsed.action === 'ack' || result.issue.resolvedBy !== null ? rebuildFromInteraction(interaction, result.issue) : null
+    if (synced !== null) return { status: 200, body: { type: 7, data: toInteractionData(synced) } }
     if (parsed.action === 'ack') {
       const by = result.issue.acknowledgedBy
       return ephemeral(by !== null ? `已由 ${displayActor(by)} 確認` : '已有人確認')
@@ -83,25 +88,29 @@ export async function handleInteraction(
   }
 
   // changed
-  let message: DiscordMessage | null = null
-  if (result.rootEdit !== null) {
-    message = result.rootEdit.payload
-  } else {
-    const m = interaction.message
-    if (m !== undefined && Array.isArray(m.embeds) && m.embeds.length > 0) {
-      const base = {
-        username: 'th-beacon',
-        allowed_mentions: { parse: [] },
-        embeds: m.embeds,
-        ...(Array.isArray(m.components) ? { components: m.components } : {}),
-      } as unknown as DiscordMessage
-      message = transformRoot(base, result.issue, actor)
-    }
-  }
+  const message: DiscordMessage | null =
+    result.rootEdit !== null ? result.rootEdit.payload : rebuildFromInteraction(interaction, result.issue, actor)
 
   const body =
     message !== null
       ? { type: 7, data: toInteractionData(message) }
       : { type: 6 } // 沒有可套用的訊息：不改畫面，DB 已更新
   return { status: 200, body, after: result.followUp }
+}
+
+/** 以按鈕所在訊息為底，依 issue 現況重建；訊息沒有 embed 時回 null。 */
+function rebuildFromInteraction(
+  interaction: InteractionPayload,
+  issue: StoredIssue,
+  actor: IssueActor = { kind: 'discord', userId: '' },
+): DiscordMessage | null {
+  const m = interaction.message
+  if (m === undefined || !Array.isArray(m.embeds) || m.embeds.length === 0) return null
+  const base = {
+    username: 'th-beacon',
+    allowed_mentions: { parse: [] },
+    embeds: m.embeds,
+    ...(Array.isArray(m.components) ? { components: m.components } : {}),
+  } as unknown as DiscordMessage
+  return transformRoot(base, issue, actor)
 }
