@@ -18,9 +18,15 @@ const SOURCE_LABEL: Record<AiUsageSource, string> = {
 const usd = (v: number) => `$${v.toFixed(2)}`
 
 // 準確率一律與樣本數並列；rate null → 「—」
-function formatRate(r: Rate): string {
-  if (r.rate === null) return `—（${r.total} 已標記）`
-  return `${Math.round(r.rate * 100)}%（${r.correct}／${r.total} 已標記）`
+// 樣本數縮小字級並禁止換行，避免窄卡片把「（43／50 已標記）」拆成兩行
+function formatRate(r: Rate, unit = '已標記') {
+  const sample = r.rate === null ? `（${r.total} ${unit}）` : `（${r.correct}／${r.total} ${unit}）`
+  return (
+    <>
+      {r.rate === null ? '—' : `${Math.round(r.rate * 100)}%`}
+      <span className="ai-stats-sample">{sample}</span>
+    </>
+  )
 }
 
 function unpriced(n: number): string {
@@ -46,9 +52,7 @@ function Cards({ s }: { s: AiStatsView['summary'] }) {
       <div className="ai-stats-card">
         <div className="ai-stats-card-label">標記率（近 6 個月）</div>
         <div className="ai-stats-card-value">
-          {s.labelRate.rate === null
-            ? `—（${s.labelRate.total} 筆判定）`
-            : `${Math.round(s.labelRate.rate * 100)}%（${s.labelRate.correct}／${s.labelRate.total} 筆判定）`}
+          {formatRate(s.labelRate, '筆判定')}
         </div>
       </div>
     </div>

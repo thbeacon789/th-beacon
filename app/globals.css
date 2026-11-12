@@ -1496,6 +1496,14 @@ tbody tr:last-child td {
   color: var(--fg);
   overflow-wrap: anywhere;
 }
+.ai-stats-sample {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.ai-stats-card-value .ai-stats-sample {
+  display: block;
+}
 .ai-stats-card .hint {
   margin-top: var(--space-1);
 }
