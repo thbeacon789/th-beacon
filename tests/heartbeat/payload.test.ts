@@ -92,6 +92,13 @@ describe('diagnosis', () => {
     expect(r.value.diagnosis).not.toHaveProperty('extra')
   })
 
+  it('diagnosis 帶額外欄位 needsCodeChange:true 時合法，輸出的 diagnosis 不含該欄位且無 warning', () => {
+    const r = parse({ diagnosis: { ...good, needsCodeChange: true } })
+    expect(r.value.diagnosis).toEqual(good)
+    expect(r.value.diagnosis).not.toHaveProperty('needsCodeChange')
+    expect(r.warnings).toEqual([])
+  })
+
   it('超長 reason 與 suggestion 被截斷', () => {
     const r = parse({ diagnosis: { ...good, reason: 'a'.repeat(600), suggestion: 'b'.repeat(1200) } })
     expect(r.value.diagnosis?.reason).toHaveLength(DIAGNOSIS_REASON_LIMIT)
