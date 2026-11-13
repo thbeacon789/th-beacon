@@ -7,15 +7,16 @@
 | `/api/ingest` | POST | 每服務 HMAC | 推送錯誤事件 |
 | `/api/heartbeat` | POST | 每服務 HMAC | 具名心跳（CI 存活證明） |
 | `/api/ai-usage` | POST | 每服務 HMAC | 回報 AI 用量（token 或金額） |
+| `/api/ai-fix` | POST | 每服務 HMAC | 回報 CI 的 AI 修復 PR 結果 |
 | `/api/poll/services` | GET | Cron Bearer token | 服務輪詢 ＋ 心跳逾期掃描（內部用） |
 
-實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/ai-usage/route.ts`、`app/api/poll/services/route.ts`。
+實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/ai-usage/route.ts`、`app/api/ai-fix/route.ts`、`app/api/poll/services/route.ts`。
 
 ---
 
 ## 1. HMAC 驗證（ingest 與 heartbeat 共用）
 
-三個推送端點（ingest、heartbeat、ai-usage）的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
+四個推送端點（ingest、heartbeat、ai-usage、ai-fix）的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
 
 ### 必要 headers
 
@@ -155,6 +156,7 @@ values (
     "severity": "P2",           // 必填，"P0" | "P1" | "P2"
     "reason": "staging DB 連線逾時",       // 必填，非空字串，上限 500 字（超過截斷）
     "suggestion": "確認 staging 資料庫是否在線", // 必填，非空字串，上限 1000 字（超過截斷）
+    "needsCodeChange": true,    // 判讀腳本輸出的布林；伺服器不處理（見下）
     "model": "claude-sonnet-5-5"           // 選填，字串
   },
   "diagnosisError": "AI 呼叫逾時"                         // 選填，診斷失敗的原因，上限 200 字（超過截斷）
@@ -163,6 +165,7 @@ values (
 
 **`diagnosis`／`diagnosisError` 同為附帶資訊，不合法絕不 422。** 格式不符（enum 值錯、必填欄位缺漏、型別不對）時只丟棄該欄位、回應帶 `warnings`，並退回一般 `test_failure`（P1 規則表判級）。
 
+- `needsCodeChange`：`diagnose-e2e-failure.sh` 的輸出含此布林欄位（是否需改程式碼才能解決），供 CI 端決定要不要呼叫 AI 修復（§8）。**伺服器忽略此欄位**——`diagnosis` 只逐欄位取用上列欄位，其餘丟棄、不報錯、不入庫（程式碼內無任何讀取 `needsCodeChange` 之處），所以新舊版腳本的輸出都相容。
 - `status: "pass"` 時這兩個欄位一律忽略。
 - `category: "env"` 的失敗會建立**獨立的** `test_failure_env` issue（fingerprint 與 `test_failure` 分開），並採用 `diagnosis.severity` 作為嚴重度；`app` 仍是 `test_failure`，但同樣採用 `diagnosis.severity`。env 與 app 失敗因此分屬兩筆 issue，互不聚合。
 - `diagnosis`／`diagnosisError` 會寫入 event 的 `metadata`，Discord 通知會附上判定原因與修正建議。
@@ -287,6 +290,7 @@ Authorization: Bearer ${CRON_SECRET}
 3. 登記心跳名稱與 interval/grace（**必須早於** CI 接線，否則一律 404）
 4. CI 加上回報步驟：測試結果（pass/fail）→ `/api/heartbeat`（`if: always()`；fail 會自動建 `test_failure` issue 並告警，不必再推 ingest）。服務執行期錯誤才走 `/api/ingest`
 5. 先手動跑一次 curl 確認回 201/200，再交給排程
+6. （選用）CI 有 AI 修復 PR 流程者，開完 PR 後回報 `/api/ai-fix`（§8）。前提是 §3 的 heartbeat 已登記且該次失敗已建出 `test_failure` issue
 
 CI 端需要 `jq`、`openssl`、`curl`，且機器時鐘偏移不得超過 5 分鐘。
 
@@ -383,6 +387,74 @@ BODY='{"source":"ci_pr","model":"claude-sonnet-5-5","inputTokens":1234,"outputTo
 SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
 
 curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/ai-usage \
+  -H "Content-Type: application/json" \
+  -H "X-Beacon-Service: $BEACON_SERVICE" \
+  -H "X-Beacon-Timestamp: $TS" \
+  -H "X-Beacon-Signature: sha256=$SIG" \
+  -d "$BODY"
+```
+
+---
+
+## 8. `POST /api/ai-fix` — AI 修復 PR 結果回報
+
+CI 在 E2E 失敗後若由 AI 嘗試修復（開 PR），把結果回報到對應的 `test_failure` issue：存進 `issues.ai_fix_*` 四欄（issue 詳情頁顯示），並在該告警的 Discord 討論串通知負責人。**伺服器不呼叫 Claude、不持有 GitHub token**——開 PR 全在 CI 端完成，這個端點只收結果。
+
+驗證：headers 與簽章算法同 §1。心跳名稱須已於 §3 登記。實作：`app/api/ai-fix/route.ts`、`src/ai-fix/handle-ai-fix.ts`、`src/ai-fix/payload.ts`。
+
+### Request body
+
+```jsonc
+{
+  "heartbeat": "android-e2e-prod",                      // 必填，非空字串；須為該服務已登記的心跳名稱
+  "status": "pr_opened",                                // 必填，"pr_opened" | "no_fix" | "failed"
+  "prUrl": "https://github.com/o/r/pull/1",             // status=pr_opened 時必填；其餘狀態忽略並存成 null
+  "summary": "修正登入頁選擇器逾時",                      // 選填，超過 500 字截斷（結尾 …）；空字串視為未提供
+  "runUrl": "https://github.com/o/r/actions/runs/42"    // 選填
+}
+```
+
+- `status`：`pr_opened`（已開 PR）、`no_fix`（AI 判斷無需或無法修）、`failed`（修復流程失敗）。
+- `prUrl` 只接受 `https://github.com/<owner>/<repo>/pull/<數字>`（owner／repo 字元限 `A-Za-z0-9._-`，且不得為 `.` 或 `..`；`src/core/ai-fix.ts:7-14`）。`http://`、偽造網域（如 `github.com.evil.com`）、缺漏皆回 422。
+- `runUrl` 同 §3：不符白名單時**只丟棄該欄位**（存成 null），不擋整包回報。
+- **找 issue 的規則**：以 `(服務, heartbeat)` 的 `test_failure` 指紋（`heartbeatFingerprint(serviceId, 'test_failure', heartbeat)`）找該服務狀態為 `open` 或 `acknowledged` 的 issue；只對應 `test_failure`，不含 `test_failure_env`。找不到這樣的 issue（尚未建立、或已 resolved／ignored）回 404 `no_active_issue`，不寫入。
+
+### 成功回應 `201`
+
+```json
+{ "issueId": "uuid", "notified": true }
+```
+
+`notified` 表示本次是否實際在討論串發出通知。資料寫入（`ai_fix` 四欄：status、prUrl、summary、reportedAt）與通知是分開的：通知失敗不影響回應碼，資料已存即回 201，`notified` 為 `false`。同一 issue 重複回報會覆寫上一次的結果並更新 `reportedAt`。
+
+### 通知規則
+
+同時滿足才會在該 issue 告警的討論串發訊息（內含 PR 連結、摘要，並 @ 服務負責人）：
+
+- `status` 為 `pr_opened`，且 `prUrl` 與該 issue 上次記錄的 `prUrl` **不同**（同一 PR 重複回報不重發；換新 PR 會再發一則）
+- 伺服器為 Discord bot 模式（見 §6 的四個環境變數）；webhook 模式沒有討論串，不通知
+- 找得到該 issue 這一輪告警的根訊息
+
+`no_fix`、`failed` 一律不通知。此通知**不寫入 `notifications` 表**，不影響告警去重與冷卻。
+
+### 錯誤回應
+
+| 狀態 | Body | 情境 |
+| --- | --- | --- |
+| `401` | `{"error":"unauthorized"}` | 見 §1 |
+| `400` | `{"error":"invalid JSON"}` | body 不是合法 JSON |
+| `422` | `{"error":"invalid payload","details":[...]}` | `heartbeat` 缺漏／空白、`status` 非三值、`status=pr_opened` 但 `prUrl` 缺漏或格式不符 |
+| `404` | `{"error":"unknown heartbeat"}` | `(service, heartbeat)` 未在 `heartbeats` 登記 |
+| `404` | `{"error":"no_active_issue"}` | 該心跳目前沒有 `open`／`acknowledged` 的 `test_failure` issue |
+
+### 範例
+
+```bash
+TS="$(date +%s)"
+BODY='{"heartbeat":"android-e2e-prod","status":"pr_opened","prUrl":"https://github.com/o/r/pull/1","summary":"修正登入頁選擇器逾時","runUrl":"https://github.com/o/r/actions/runs/42"}'
+SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
+
+curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/ai-fix \
   -H "Content-Type: application/json" \
   -H "X-Beacon-Service: $BEACON_SERVICE" \
   -H "X-Beacon-Timestamp: $TS" \

@@ -17,6 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **告警生命週期（Discord bot）已完成**：issue 狀態轉換的唯一出口是 `src/pipeline/transition-issue.ts` 的 `transitionIssue`（dashboard、Discord 按鈕、輪詢／心跳自動恢復皆經它）。bot 模式需 `DISCORD_BOT_TOKEN`、`DISCORD_ALERT_CHANNEL_ID`、`DISCORD_PUBLIC_KEY`、`DISCORD_APPLICATION_ID` 四個變數齊全，否則退回 webhook；按鈕回呼端點 `/api/discord/interactions`（Ed25519 驗簽，設定見 `docs/api.md` §6）。Spec：`docs/superpowers/specs/2026-11-10-alert-lifecycle-design.md`。
 
+**AI 修復 PR（進行中，未完整上線）**：CI 在 E2E 失敗後由 AI 開修復 PR 並回報結果。**已完成**：伺服器端 `POST /api/ai-fix`（契約見 `docs/api.md` §8；經 HMAC，依心跳名稱找 `test_failure` issue，存入 `issues.ai_fix_*` 四欄，`pr_opened` 且 PR 為新時在告警討論串通知負責人）、issue 詳情頁顯示 AI 修復結果、判讀腳本 `scripts/diagnose-e2e-failure.sh` 的 `needsCodeChange` 輸出與 `DIAGNOSE_REDACTED_OUT`。**尚未完成**：CI 端修復腳本 `scripts/ai-fix-e2e-failure.sh`，以及 Trustnel 兩個 repo 的接入（接入後腳本改動需同步複製到那兩個 repo）；onboarding skill 也尚未補上此選用流程。Spec：`docs/superpowers/specs/2026-11-13-ai-fix-pr-design.md`；Plan：`docs/superpowers/plans/2026-11-13-ai-fix-pr.md`。
+
 **未完事項**：reopen 復發語意與恢復通知已隨告警生命週期完成；per-service `discord_webhook_url` 目前四個服務都未設，通知全走全域 `DISCORD_WEBHOOK_URL` fallback。部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md`。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令

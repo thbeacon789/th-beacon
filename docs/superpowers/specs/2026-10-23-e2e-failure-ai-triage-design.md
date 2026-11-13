@@ -29,6 +29,7 @@ Trustnel 的 Android／iOS 每日 e2e（`android-e2e-prod`、`ios-e2e-prod`）�
 **非目標**
 
 - 不自動修 CI、不開 PR。修正建議只是訊息中的文字。
+  - 註：此條已由 `2026-11-13-ai-fix-pr-design.md` 部分推翻（可自動開修復 PR）；「伺服器不持有 Anthropic key 或 GitHub token」維持不變（見下方第三條）。
 - 判讀過程不使用 `gh` CLI，也不跑 agent loop。只做一次 Messages API 呼叫，log 由 CI 直接餵入。
 - th-beacon 伺服器端不呼叫 Claude，不持有 Anthropic key 或 GitHub token。
 - 不做 dashboard 新 UI。診斷內容放在 event metadata，issue 詳情頁本來就會整包顯示。
