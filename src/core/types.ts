@@ -1,4 +1,5 @@
 import type { DiagnosisCategory } from '@/core/heartbeat'
+import type { AiFixStatus } from '@/core/ai-fix'
 export type Severity = 'P0' | 'P1' | 'P2'
 export type HealthStatus = 'down' | 'degraded' | 'healthy'
 export type IssueStatus = 'open' | 'acknowledged' | 'resolved' | 'ignored'
@@ -56,4 +57,12 @@ export const EMPTY_LABEL: JudgmentLabel = {
   severityCorrect: null,
   categoryVerdict: null,
   categoryCorrect: null,
+}
+
+// issue 上的 AI 修復 PR 回報（POST /api/ai-fix）。
+export interface IssueAiFix {
+  status: AiFixStatus
+  prUrl: string | null
+  summary: string | null
+  reportedAt: string // ISO 8601
 }
