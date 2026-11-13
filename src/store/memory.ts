@@ -4,7 +4,7 @@ import { EMPTY_LABEL } from '@/core/types'
 import { isSameJudgment } from '@/core/ai-judgment'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
 
 interface SeededRule {
   serviceId: string | null
@@ -103,6 +103,7 @@ export class InMemoryStore implements Store {
         message: event.message,
         tags: [],
         ai: null,
+        aiFix: null,
         acknowledgedAt: null,
         acknowledgedBy: null,
         resolvedAt: null,
@@ -437,6 +438,21 @@ export class InMemoryStore implements Store {
     throw new Error(`unknown issue: ${issueId}`)
   }
 
+  async getHeartbeat(serviceId: string, name: string): Promise<StoredHeartbeat | null> {
+    const hb = this.heartbeats.find((h) => h.serviceId === serviceId && h.name === name)
+    return hb === undefined ? null : { ...hb }
+  }
+
+  async recordIssueAiFix(issueId: string, fix: IssueAiFix): Promise<void> {
+    for (const [key, issue] of this.issues) {
+      if (issue.id === issueId) {
+        this.issues.set(key, { ...issue, aiFix: { ...fix } })
+        return
+      }
+    }
+    throw new Error(`unknown issue: ${issueId}`)
+  }
+
   async rotateWebhookSecret(serviceId: string, webhookSecret: string): Promise<boolean> {
     if (!this.services.has(serviceId)) return false
     this.secrets.set(serviceId, webhookSecret)
@@ -527,7 +543,9 @@ export class InMemoryStore implements Store {
   }
 
   private defensiveCopy(issue: StoredIssue): StoredIssue {
-    return { ...issue, tags: [...issue.tags], ai: issue.ai === null ? null : { ...issue.ai } }
+    return { ...issue, tags: [...issue.tags], ai: issue.ai === null ? null : { ...issue.ai },
+      aiFix: issue.aiFix === null ? null : { ...issue.aiFix },
+    }
   }
 
   private findIssueById(issueId: string): StoredIssue {

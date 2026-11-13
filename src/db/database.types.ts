@@ -295,6 +295,10 @@ export type Database = {
           acknowledged_by: string | null
           ai_category: string | null
           ai_error: string | null
+          ai_fix_pr_url: string | null
+          ai_fix_reported_at: string | null
+          ai_fix_status: string | null
+          ai_fix_summary: string | null
           ai_judged_at: string | null
           ai_model: string | null
           ai_reason: string | null
@@ -325,6 +329,10 @@ export type Database = {
           acknowledged_by?: string | null
           ai_category?: string | null
           ai_error?: string | null
+          ai_fix_pr_url?: string | null
+          ai_fix_reported_at?: string | null
+          ai_fix_status?: string | null
+          ai_fix_summary?: string | null
           ai_judged_at?: string | null
           ai_model?: string | null
           ai_reason?: string | null
@@ -355,6 +363,10 @@ export type Database = {
           acknowledged_by?: string | null
           ai_category?: string | null
           ai_error?: string | null
+          ai_fix_pr_url?: string | null
+          ai_fix_reported_at?: string | null
+          ai_fix_status?: string | null
+          ai_fix_summary?: string | null
           ai_judged_at?: string | null
           ai_model?: string | null
           ai_reason?: string | null

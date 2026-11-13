@@ -1,14 +1,15 @@
-import type { AiJudgmentSource, AiUsageSource, CanonicalEvent, HealthStatus, Issue, IssueAiTriage, IssueStatus, JudgmentLabel, Severity } from '@/core/types'
+import type { AiJudgmentSource, AiUsageSource, CanonicalEvent, HealthStatus, Issue, IssueAiFix, IssueAiTriage, IssueStatus, JudgmentLabel, Severity } from '@/core/types'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 
-export type { IssueAiTriage }
+export type { IssueAiTriage, IssueAiFix }
 
 export interface StoredIssue extends Issue {
   id: string
   ai: IssueAiTriage | null
+  aiFix: IssueAiFix | null
   acknowledgedAt: string | null
   acknowledgedBy: string | null
   resolvedAt: string | null
@@ -201,6 +202,10 @@ export interface Store {
   listEnabledHeartbeats(): Promise<StoredHeartbeat[]>
   recordHeartbeatRun(serviceId: string, name: string, run: HeartbeatRun): Promise<StoredHeartbeat | null>
   recordIssueAiTriage(issueId: string, triage: IssueAiTriage): Promise<void>
+  /** 不論 enabled；找不到回 null */
+  getHeartbeat(serviceId: string, name: string): Promise<StoredHeartbeat | null>
+  /** 覆寫；issue 不存在 throw `unknown issue: <id>` */
+  recordIssueAiFix(issueId: string, fix: IssueAiFix): Promise<void>
 
   // ---- 後台登記（Plan 9）：唯一寫入路徑是登入後的 server action ----
   /** 名稱已存在時回 null（unique 違反由 DB 判定，不做 check-then-insert 競態） */

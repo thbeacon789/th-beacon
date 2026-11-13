@@ -1,8 +1,9 @@
 import type { Database } from '@/db/database.types'
+import { AI_FIX_STATUSES } from '@/core/ai-fix'
 import type { AiJudgmentSource, AiUsageSource, EventSource, HealthStatus, IssueStatus, Severity, Verdict } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
 import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
-import type { IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
+import type { IssueAiFix, IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
@@ -41,6 +42,18 @@ export function rowToAiTriage(row: IssueRow): IssueAiTriage | null {
   }
 }
 
+export function rowToAiFix(row: IssueRow): IssueAiFix | null {
+  // ai_fix_reported_at 是「有回報過」的唯一標記
+  if (row.ai_fix_reported_at === null) return null
+  if (row.ai_fix_status === null) throw new Error('invalid ai fix status: null')
+  return {
+    status: narrow(row.ai_fix_status, AI_FIX_STATUSES, 'ai fix status'),
+    prUrl: row.ai_fix_pr_url,
+    summary: row.ai_fix_summary,
+    reportedAt: row.ai_fix_reported_at,
+  }
+}
+
 export function rowToIssue(row: IssueRow): StoredIssue {
   return {
     id: row.id,
@@ -56,6 +69,7 @@ export function rowToIssue(row: IssueRow): StoredIssue {
     message: row.message,
     tags: row.tags,
     ai: rowToAiTriage(row),
+    aiFix: rowToAiFix(row),
     acknowledgedAt: row.acknowledged_at,
     acknowledgedBy: row.acknowledged_by,
     resolvedAt: row.resolved_at,

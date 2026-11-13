@@ -581,6 +581,57 @@ describe('InMemoryStore AI 判定與說明', () => {
     expect(next.issue.ai).toEqual(triage)
   })
 
+  describe('ai fix', () => {
+    const fix = {
+      status: 'pr_opened' as const,
+      prUrl: 'https://github.com/o/r/pull/1',
+      summary: 's',
+      reportedAt: '2026-11-13T00:00:00.000Z',
+    }
+
+    it('recordIssueAiFix 後 getIssue().aiFix 等於寫入值；再寫一次為覆寫', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      expect((await store.getIssue(issue.id))?.aiFix).toBeNull()
+      await store.recordIssueAiFix(issue.id, fix)
+      expect((await store.getIssue(issue.id))?.aiFix).toEqual(fix)
+      const second = { status: 'no_fix' as const, prUrl: null, summary: null, reportedAt: '2026-11-14T00:00:00.000Z' }
+      await store.recordIssueAiFix(issue.id, second)
+      expect((await store.getIssue(issue.id))?.aiFix).toEqual(second)
+    })
+
+    it('recordIssueAiFix 對不存在的 issue throw unknown issue', async () => {
+      await expect(store.recordIssueAiFix('nope', fix)).rejects.toThrow('unknown issue: nope')
+    })
+
+    it('getHeartbeat 找得到 enabled=false 的心跳；名稱不符或 serviceId 不符回 null', async () => {
+      store.seedService(svc)
+      store.seedHeartbeat('s-1', {
+        id: 'hb-off',
+        name: 'off',
+        enabled: false,
+        intervalSeconds: 86_400,
+        graceSeconds: 3_600,
+        lastRunAt: null,
+        lastSuccessAt: null,
+        lastRunStatus: null,
+        lastRunUrl: null,
+        lastRunSummary: null,
+        createdAt: '2026-07-01T00:00:00.000Z',
+      })
+      expect((await store.getHeartbeat('s-1', 'off'))?.name).toBe('off')
+      expect(await store.getHeartbeat('s-1', 'other')).toBeNull()
+      expect(await store.getHeartbeat('s-2', 'off')).toBeNull()
+    })
+
+    it('getIssue 回傳副本：修改回傳物件的 aiFix 不影響 store', async () => {
+      const { issue } = await store.upsertIssueWithEvent(event())
+      await store.recordIssueAiFix(issue.id, fix)
+      const got = await store.getIssue(issue.id)
+      got!.aiFix!.summary = 'mutated'
+      expect((await store.getIssue(issue.id))?.aiFix?.summary).toBe('s')
+    })
+  })
+
   it('createService 可帶負責人；updateServiceOwner 可改可清，不存在回 false', async () => {
     const created = await store.createService('svc-o', 's', '說明', '123456789012345678')
     expect((await store.getService(created!.id))?.ownerDiscordId).toBe('123456789012345678')

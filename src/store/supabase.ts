@@ -4,7 +4,7 @@ import type { CanonicalEvent, HealthStatus, IssueStatus, JudgmentLabel, Severity
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -404,6 +404,32 @@ export class SupabaseStore implements Store {
       .eq('id', issueId)
       .select('id')
     if (error) throw new Error(`recordIssueAiTriage failed: ${error.message}`)
+    if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
+  }
+
+  async getHeartbeat(serviceId: string, name: string): Promise<StoredHeartbeat | null> {
+    const { data, error } = await this.client
+      .from('heartbeats')
+      .select('*')
+      .eq('service_id', serviceId)
+      .eq('name', name)
+      .maybeSingle()
+    if (error) throw new Error(`getHeartbeat failed: ${error.message}`)
+    return data === null ? null : rowToHeartbeat(data)
+  }
+
+  async recordIssueAiFix(issueId: string, fix: IssueAiFix): Promise<void> {
+    const { data, error } = await this.client
+      .from('issues')
+      .update({
+        ai_fix_status: fix.status,
+        ai_fix_pr_url: fix.prUrl,
+        ai_fix_summary: fix.summary,
+        ai_fix_reported_at: fix.reportedAt,
+      })
+      .eq('id', issueId)
+      .select('id')
+    if (error) throw new Error(`recordIssueAiFix failed: ${error.message}`)
     if (data.length === 0) throw new Error(`unknown issue: ${issueId}`)
   }
 

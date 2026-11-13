@@ -5,6 +5,7 @@ import {
   narrowHealthStatus,
   narrowEventSource,
   rowToIssue,
+  rowToAiFix,
   rowToAiJudgment,
   narrowAiUsageSource,
   rowToService,
@@ -36,6 +37,10 @@ const issueRow: IssueRow = {
   ai_model: null,
   ai_judged_at: null,
   ai_error: null,
+  ai_fix_status: null,
+  ai_fix_pr_url: null,
+  ai_fix_summary: null,
+  ai_fix_reported_at: null,
   acknowledged_at: null,
   acknowledged_by: null,
   resolved_at: null,
@@ -110,6 +115,7 @@ describe('rowToIssue', () => {
       message: 'boom',
       tags: ['db'],
       ai: null,
+      aiFix: null,
       acknowledgedAt: null,
       acknowledgedBy: null,
       resolvedAt: null,
@@ -236,5 +242,34 @@ describe('rowToAiJudgment', () => {
     expect(() => rowToAiJudgment({ ...jRow, source: 'bogus' })).toThrow('invalid ai judgment source')
     expect(() => narrowAiUsageSource('bogus')).toThrow('invalid ai usage source')
     expect(narrowAiUsageSource('ci_pr')).toBe('ci_pr')
+  })
+})
+
+describe('rowToAiFix', () => {
+  it('ai_fix_reported_at 為 null → aiFix null', () => {
+    expect(rowToAiFix(issueRow)).toBeNull()
+    expect(rowToIssue(issueRow).aiFix).toBeNull()
+  })
+
+  it('四欄齊全 → IssueAiFix', () => {
+    const row = {
+      ...issueRow,
+      ai_fix_status: 'pr_opened',
+      ai_fix_pr_url: 'https://github.com/o/r/pull/1',
+      ai_fix_summary: 'fixed',
+      ai_fix_reported_at: '2026-11-13T00:00:00+00:00',
+    }
+    expect(rowToAiFix(row)).toEqual({
+      status: 'pr_opened',
+      prUrl: 'https://github.com/o/r/pull/1',
+      summary: 'fixed',
+      reportedAt: '2026-11-13T00:00:00+00:00',
+    })
+  })
+
+  it('ai_fix_status 非三值 → throw', () => {
+    expect(() =>
+      rowToAiFix({ ...issueRow, ai_fix_status: 'bogus', ai_fix_reported_at: '2026-11-13T00:00:00+00:00' }),
+    ).toThrow()
   })
 })
