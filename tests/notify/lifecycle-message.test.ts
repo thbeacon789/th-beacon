@@ -8,6 +8,7 @@ import {
   applyReopened,
   applyCount,
   buildResolveReply,
+  buildAiFixReply,
   buildFollowUpAlert,
   renderRoot,
   renderPreviousIncidentRoot,
@@ -222,5 +223,36 @@ describe('renderPreviousIncidentRoot', () => {
     const f = m.embeds[0].fields
     expect(f.find((x) => x.name === '↻ Reopened')?.value).toBe('第 2 次，見最新回覆')
     expect(f.some((x) => x.name === '處理方式')).toBe(false)
+  })
+})
+
+describe('buildAiFixReply', () => {
+  const pr = 'https://github.com/o/r/pull/1'
+  it('含 PR 連結、摘要；有 owner 時 content 以 <@owner> 開頭且只放行該 owner', () => {
+    const m = buildAiFixReply({ prUrl: pr, summary: '改了斷言', ownerDiscordId: '123', runUrl: null })
+    expect(m.content.startsWith('<@123>')).toBe(true)
+    expect(m.content).toContain('🤖 AI 已開修復 PR')
+    expect(m.content).toContain(pr)
+    expect(m.content).toContain('改了斷言')
+    expect(m.allowed_mentions).toEqual({ parse: [], users: ['123'] })
+  })
+  it('無 owner 時 allowed_mentions 為 {parse: []}', () => {
+    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: null })
+    expect(m.allowed_mentions).toEqual({ parse: [] })
+    expect(m.content).not.toContain('<@')
+  })
+  it('summary 含 @everyone 與 ]( 時不放行 everyone，content 不含 ](', () => {
+    const m = buildAiFixReply({ prUrl: pr, summary: '@everyone [點我](https://evil.example)', ownerDiscordId: '123', runUrl: null })
+    expect(m.allowed_mentions).toEqual({ parse: [], users: ['123'] })
+    expect(m.content).not.toContain('](')
+    expect(m.content).toContain('] (')
+  })
+  it('帶 runUrl 時含 run 連結；replyToMessageId 省略時無 message_reference', () => {
+    const run = 'https://github.com/o/r/actions/runs/9'
+    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: run })
+    expect(m.content).toContain(run)
+    expect(m.message_reference).toBeUndefined()
+    const r = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: null }, 'm-9')
+    expect(r.message_reference).toEqual({ message_id: 'm-9', fail_if_not_exists: false })
   })
 })

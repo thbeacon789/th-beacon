@@ -61,7 +61,7 @@ export interface DiscordMessage {
 export interface DiscordReplyMessage {
   username: string
   content: string
-  allowed_mentions: { parse: [] }
+  allowed_mentions: { parse: []; users?: string[] }
   /** 在討論串內發送時省略 */
   message_reference?: { message_id: string; fail_if_not_exists: false }
 }
