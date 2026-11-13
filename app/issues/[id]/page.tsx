@@ -7,6 +7,7 @@ import { JudgmentLabelForm } from '@/web/judgment-label-form'
 import { ExternalLinkIcon } from '@/web/icons'
 import { formatDateTime, formatDateTimeSeconds } from '@/web/format'
 import { allowedFrom } from '@/core/lifecycle'
+import { isSafePrUrl } from '@/core/ai-fix'
 import { changeIssueStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -36,7 +37,7 @@ export default async function IssueDetailPage({
         </h1>
       </div>
       <p className="detail-message">{issue.message}</p>
-      {(ai !== null || judgment !== null) && (
+      {(ai !== null || judgment !== null || issue.aiFix !== null) && (
         <section aria-labelledby="ai-triage-title">
           <h2 id="ai-triage-title">AI 判定</h2>
           {ai !== null && (
@@ -81,6 +82,40 @@ export default async function IssueDetailPage({
               </li>
             )}
           </ul>
+          )}
+          {issue.aiFix !== null && (
+            <ul className="meta">
+              <li>
+                <span className="meta-key">AI 修復</span>
+                <span className="meta-val" style={{ whiteSpace: 'pre-wrap' }}>
+                  {issue.aiFix.status === 'pr_opened' &&
+                    (isSafePrUrl(issue.aiFix.prUrl) ? (
+                      <a
+                        className="link-external"
+                        href={issue.aiFix.prUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        已開修復 PR
+                        <ExternalLinkIcon />
+                        <span className="sr-only">（在新分頁開啟）</span>
+                      </a>
+                    ) : (
+                      '已開修復 PR'
+                    ))}
+                  {issue.aiFix.status === 'no_fix' && '未產生修正'}
+                  {issue.aiFix.status === 'failed' && '修復失敗'}
+                  {issue.aiFix.summary !== null && issue.aiFix.summary !== '' && (
+                    <>
+                      {'\n'}
+                      {issue.aiFix.summary}
+                    </>
+                  )}
+                  {'\n'}
+                  {formatDateTime(issue.aiFix.reportedAt)}
+                </span>
+              </li>
+            </ul>
           )}
           {judgment !== null && (
             <div className="judgment-label">
