@@ -83,7 +83,7 @@ e2e-prod.yml
 │
 └─ job: ai-fix（新增，ubuntu-latest）
      if: ${{ !cancelled() && vars.AI_FIX_ENABLED == 'true' && needs.playback-smoke.outputs.needs_fix == 'true' }}
-     permissions: id-token: write, contents: read
+     permissions: id-token: write, contents: read, pull-requests: read（後者供失敗回報 step 的唯讀查詢）
      checkout App 到 app/ ＋ checkout th-beacon 釘選版本到 beacon/（並列）→ 下載 ai-fix-input（到 runner.temp）
      → 換 GitHub App 權杖 → 安裝 Claude Code CLI（釘版本）
      → 在 working-directory: app 下執行 "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh"
@@ -104,7 +104,7 @@ e2e-prod.yml
   - `path` 必須在 workspace 內，所以 th-beacon 不可能放在 App 工作樹之外；這就是 `ai-fix` 必須用「並列＋`working-directory`」而非巢狀的原因。
 - **版本釘選與更新**：`ref` 一律寫完整 commit SHA（寫在 workflow 檔字面值，不放 repo variable，讓變更進 PR diff），且該 commit 必須已存在於 th-beacon 的遠端（所以接入前 th-beacon 須先 push）。更新程序：th-beacon 改腳本並 push → 人工在兩個 App repo 把 `ref` 改成新 SHA。`.github/**` 在 AI 禁改清單內，AI 改不到這個 SHA。
 - **停用開關與 `if` 條件（2026-11-16 最終審查後追加）**：`ai-fix` job 的 `if` 為 `${{ !cancelled() && vars.AI_FIX_ENABLED == 'true' && needs.playback-smoke.outputs.needs_fix == 'true' }}`。repo variable `AI_FIX_ENABLED` 設為 `true` 才啟用；該 variable 不存在時功能預設關閉（由使用者在驗收時開啟）。要緊急停用就把它改掉或刪除，不必改 workflow、不必走 PR。
-- **失敗回報 step（最終審查後追加）**：`ai-fix` job 尾端有一個 `if: ${{ failure() }}` 的 step，以 `AI_FIX_REPORT_ONLY=failed` 執行同一支腳本，只帶 `BEACON_BASE_URL`／`BEACON_SERVICE`／`BEACON_SECRET`／`RUN_URL`，送出 `{heartbeat, status:"failed", summary:"ai-fix job 失敗，見 run", runUrl}` 後 exit 0；`continue-on-error: true`，且不設 `working-directory`（`app/` 可能不存在）。涵蓋腳本開始前就失敗的情形（App 權杖換發失敗、artifact 下載失敗、bot id 解析失敗、腳本缺 env 而 exit 2），否則 th-beacon 收不到任何回報、沒有人會發現。正常流程已回報 `failed` 後再補報一次是可接受的（同為 failed）。step 內先檢查腳本檔存在，不存在只印一行說明。
+- **失敗回報 step（最終審查後追加）**：`ai-fix` job 尾端有一個 `if: ${{ failure() }}` 的 step，以 `AI_FIX_REPORT_ONLY=failed` 執行同一支腳本，只帶 `GH_TOKEN`（`github.token`）、`AI_FIX_DRY_RUN`、`BEACON_BASE_URL`／`BEACON_SERVICE`／`BEACON_SECRET`／`RUN_URL`；腳本先以唯讀 `gh pr list --head ai-fix/<name> --state open` 確認沒有 open 的 AI PR，才送出 `{heartbeat, status:"failed", summary:"ai-fix job 失敗，見 run", runUrl}` 後 exit 0。**已有 open PR、查詢失敗或輸出空白／無法解析、缺 `gh`／`GH_TOKEN`、乾跑時一律不回報**（寧可少一筆失敗回報，也不把 issue 上仍有效的 `pr_opened` 與 PR 連結蓋成 `failed`）。job 逾時或被取消時此 step 不執行，屬已知限制。釘選的 `ref` 須更新到含此行為的 th-beacon commit 後才生效；`continue-on-error: true`，且不設 `working-directory`（`app/` 可能不存在）。涵蓋腳本開始前就失敗的情形（App 權杖換發失敗、artifact 下載失敗、bot id 解析失敗、腳本缺 env 而 exit 2），否則 th-beacon 收不到任何回報、沒有人會發現。正常流程已回報 `failed` 後再補報一次是可接受的（同為 failed；此時分支上沒有 open PR）。step 內先檢查腳本檔存在，不存在只印一行說明。
 - `playback-smoke` 在此情境必為失敗，故 `ai-fix` 的 `if` 必須帶狀態函式，否則會被隱含的 `success()` 跳過；採 `!cancelled()` 而非 `always()`，使用者手動取消整個 run 時不再啟動修復（2026-11-16 審查後修訂）。同理，`playback-smoke` 內任何「失敗後才執行」的 step（判讀、寫 `needs_fix`、上傳 `ai-fix-input`）的 `if` 都必須顯式帶 `failure() || cancelled()`：step 的 `if` 沒有狀態函式時同樣隱含 `success()`。
 - 設定 `needs_fix` 的 step 放在 Diagnose 之後，條件與 Diagnose 相同（`failure() || cancelled()`），且不得受後續 step（回報心跳、上傳產物）失敗影響。
 - **基底分支＝觸發該次 run 的分支**（`github.ref_name`），不是寫死預設分支：`ai-fix` checkout 該次 run 的 commit，PR 的 base 也指向同一分支。排程執行時即為 `main`；手動在測試分支觸發時，PR 開回測試分支（前提：使用者已為該測試分支另建一條臨時 federation rule，subject prefix 指向該分支；否則該分支上的 job 在換發權杖時會 401，見 §6 實測結論。），不會把測試分支的其他 commit 夾帶進對 `main` 的 PR。注意兩個 repo 的 `ci.yml` 只對 base 為 `main` 的 PR 觸發，測試分支上的 PR 不會自動跑 CI。
@@ -147,7 +147,7 @@ claude -p "<prompt>" \
 
 - `--tools` 把內建工具集合限制為讀檔／改檔；agent 沒有 Bash，無法執行指令、無法連網、無法讀環境變數。（官方文件：只靠 `--allowedTools` 不足以排除 Bash，必須用 `--tools`。）
 - 預設值（皆可由 env 覆寫）：`AI_FIX_MODEL=claude-opus-5-5`（使用者指定用 opus；`src/core/ai-pricing.ts` 已有其單價）、`AI_FIX_MAX_BUDGET_USD=5`、`AI_FIX_MAX_TURNS=40`（後兩者為我的決定；花費上限因改用 opus 由 3 調為 5，避免修到一半被截斷而整筆白花）。判讀那一步的模型不變（`claude-sonnet-5-5`）。
-- **逾時（最終審查後追加）**：`claude` 以 `AI_FIX_AGENT_TIMEOUT_SEC`（預設 1500，須為正整數，否則退回預設）為上限；逾時即對 agent 的整個行程群組送 TERM、5 秒後 KILL（macOS 沒有 `timeout` 指令，以 perl 看門狗＋獨立 session 實作，GNU/BSD 皆可），視為 `failed`、summary 註明逾時，並照常走 `.git` manifest 比對與還原、清理、回報（順序不變：先還原才執行任何 git 指令）。理由：否則 agent 卡住時只能等 job 的 30 分鐘逾時把整個 job 殺掉，th-beacon 收不到任何回報。腳本被訊號（INT／TERM／HUP）中斷時同樣終止 agent 與其子行程。
+- **逾時（最終審查後追加）**：`claude` 以 `AI_FIX_AGENT_TIMEOUT_SEC`（預設 1500，須為正整數，否則退回預設）為上限；逾時即對 agent 的整個行程群組送 TERM、5 秒後 KILL（macOS 沒有 `timeout` 指令，以 perl 看門狗＋獨立 session（`setsid`）實作；僅在 macOS 本機實測，ubuntu 待 CI 驗證），視為 `failed`、summary 註明逾時，並照常走 `.git` manifest 比對與還原、清理、回報（順序不變：先還原才執行任何 git 指令）。理由：否則 agent 卡住時只能等 job 的 30 分鐘逾時把整個 job 殺掉，th-beacon 收不到任何回報。腳本被訊號（INT／TERM／HUP）中斷時同樣終止 agent 與其子行程。
 - **OIDC JWT 重取（最終審查後追加）**：Anthropic federation rule 的權杖壽命為 600 秒，agent 可能跑超過 10 分鐘，而 CLI 重新換發時會重讀 `ANTHROPIC_IDENTITY_TOKEN_FILE`，檔內 GitHub JWT 若已過期，長任務會中途認證失敗。所以 agent 執行期間腳本啟動背景迴圈，每隔 `AI_FIX_JWT_REFRESH_SEC`（預設 240，須為正整數）重新向 OIDC 端點取 JWT，寫到 `$WORK/idtoken.new`（0600）後以 `mv` 原子覆寫 identity token 檔（暫存檔與目標同在 `$WORK` 下，同一檔案系統，故為原子；暫存檔不在 identity token 目錄內，該目錄始終只有一個檔）。取 JWT 失敗時保留舊檔、繼續下一輪、不印 token。request token 只存在於腳本自己的環境與經 stdin 餵給 curl 的設定（`-K -`，不落地、不進 argv）；agent 讀得到的位置（cwd、agent 的 HOME、agent 的 env）都沒有它。迴圈以獨立 session 啟動，agent 結束後（含逾時、被訊號中斷）整個行程群組被終止，納入 trap 清理。
 - agent 行程的環境變數只保留 Anthropic 認證所需，其餘（GitHub App 權杖、`BEACON_SECRET`、E2E 帳密）不傳入。
 - prompt 內容：判讀結果（reason／suggestion）、遮蔽後 log、已知環境問題檔、目標 repo 的 `CLAUDE.md`、以及規則——
@@ -184,7 +184,7 @@ claude -p "<prompt>" \
 
 **乾跑**：`AI_FIX_DRY_RUN=1` 時執行到越界檢查為止，印出 diff 與預定的 PR 標題／描述，不推送、不開 PR、不回報。乾跑**會呼叫模型**（依預設最高可能花到 `AI_FIX_MAX_BUDGET_USD`）與 GitHub 的唯讀查詢（`gh pr list`），只是不 push、不開 PR、不回報 th-beacon，所以這筆花費不會出現在 `/ai-stats`。
 
-**只回報失敗模式**（最終審查後追加）：以 `AI_FIX_REPORT_ONLY=failed` 啟動時，只需要 `<heartbeat-name>` 一個參數與 `BEACON_BASE_URL`／`BEACON_SERVICE`／`BEACON_SECRET`／`RUN_URL`，直接送出 `/api/ai-fix` `{heartbeat, status:"failed", summary:"ai-fix job 失敗，見 run", runUrl}` 後 exit 0；不檢查工作樹、不碰 git、不呼叫 gh／claude／OIDC，不在 git repo 內也能執行；缺 `BEACON_*` 或回報失敗只印 warning。heartbeat 名稱仍須通過字元集驗證（不合法 exit 2）。供 §5.1 的失敗回報 step 使用。
+**只回報失敗模式**（最終審查後追加）：以 `AI_FIX_REPORT_ONLY=failed` 啟動時，只需要 `<heartbeat-name>` 一個參數與 `BEACON_BASE_URL`／`BEACON_SERVICE`／`BEACON_SECRET`／`RUN_URL`，直接送出 `/api/ai-fix` `{heartbeat, status:"failed", summary:"ai-fix job 失敗，見 run", runUrl}` 後 exit 0；不檢查工作樹、不碰 git、不呼叫 claude／OIDC，不在 git repo 內也能執行（先以 `gh pr list --repo $GITHUB_REPOSITORY` 做唯讀查詢，規則見 §5.1）；缺 `BEACON_*` 或回報失敗只印 warning。heartbeat 名稱仍須通過字元集驗證（不合法 exit 2）。供 §5.1 的失敗回報 step 使用。
 
 ### 5.4 th-beacon：`POST /api/ai-fix`
 
@@ -294,7 +294,7 @@ claude -p "<prompt>" \
 ## 7. 測試與驗收
 
 - th-beacon：payload 驗證與 `prUrl` 驗證的單元測試；handler 測試（驗簽、找不到 issue、三種 status、重複 `prUrl` 不重發通知、webhook 模式不通知）；Store 的 memory 與 supabase 實作；`pnpm typecheck`、`pnpm test` 通過。
-- 腳本：沿用 `tests/scripts/helpers.ts` 的做法，以 PATH 上的假 `claude`／`gh`／`git` 與本機 fake server 測試——已有 open PR 時不呼叫模型、越界改動被丟棄並回報 `failed`、`fixed=false` 回報 `no_fix`、成功時回報內容與 HMAC 正確、乾跑不產生任何外部呼叫、agent 行程拿不到 GitHub 權杖。
+- 腳本：沿用 `tests/scripts/helpers.ts` 的做法，以 PATH 上的假 `claude`／`gh`／`git` 與本機 fake server 測試——已有 open PR 時不呼叫模型、越界改動被丟棄並回報 `failed`、`fixed=false` 回報 `no_fix`、成功時回報內容與 HMAC 正確、乾跑會呼叫模型與 GitHub 唯讀查詢，但不 push、不開 PR、不回報 th-beacon（與 §5.3 一致）、agent 行程拿不到 GitHub 權杖。
 - 實機驗收（Android 先行，通過後再接 iOS）。**前提**：federation rule 只允許 `refs/heads/main`，所以必須在接入已推上 App repo 的 `main` 之後進行（含 th-beacon 先 push、workflow 內 SHA 已存在於遠端）；兩次 push 都需使用者明確同意。以下項目「須在 CI 實跑才能確認」的逐項判定標準見計畫 Task 11 Step 2（deploy key 讀取、`fetch-depth: 1`＋SHA＋ssh-key＋sparse-checkout 組合、`.beacon/` 不干擾建置、自架 runner 金鑰清理、`persist-credentials: false` 下以 App 權杖 push、空 HOME 下 WIF、`Read(**/.git/**)` deny、opus＋`--json-schema`＋`--append-system-prompt-file` 與權限旗標組合、無 `ai-fix` label 時 `gh pr create` 失敗）。這些在實跑前一律視為**未驗證**：
   0. **部署後、驗收前先確認路由可達**（最終審查後追加；`/api/ai-fix` 曾因漏列 `src/web/paths.ts` 的 public path 而被 proxy 重導到 `/login`，CI 一律拿到 307，handler 測試繞過 proxy 所以沒抓到）：以 HMAC 簽章對線上 `/api/ai-fix` 送一筆請求（簽章方式同 `scripts/*-to-beacon.sh`），確認回應**不是 307**。該心跳沒有 active issue 時預期 `404 {"error":"no_active_issue"}`，即代表路由可達；`401` 代表路由可達但簽章／服務名有誤。同時確認 repo variable `AI_FIX_ENABLED` 尚未設為 `true`（功能預設關閉），待煙霧請求通過後才由使用者開啟。
   1. 以乾跑模式手動觸發，確認 diff 與 PR 描述合理。
@@ -321,6 +321,7 @@ claude -p "<prompt>" \
 - **iOS 的 AI PR 照常自動觸發 `ci.yml`（使用者決定）**，而 iOS 的 `ci.yml` 跑在不重置的自架 M2 上：AI 產出的 Swift 程式碼（含測試）會在負責人審核前就在該機器上被編譯與執行。已評估過「`ai-fix/*` 分支跳過自動 CI、審後手動觸發」與「iOS 先不接」，使用者選擇接受此風險以換取省事。緩解只有兩項：build 設定檔在禁改清單內、agent 沒有 Bash 與網路工具。iOS 的 `ci.yml` 不需修改。
 - **如何停用**（最終審查後追加）：首選是把 repo variable `AI_FIX_ENABLED` 改成非 `true` 的值或刪除（立即生效、不必改 workflow）；備援是把 `ai-fix` job 的 `if` 改為 `false`（需走 PR／push）。**伺服器端不需要回滾**：`POST /api/ai-fix` 只寫 `issues.ai_fix_*` 四欄，不影響告警流程，沒人呼叫就只是閒置。
 - **`sparse-checkout: scripts` 在 cone 模式下也會取出 th-beacon 根目錄的檔案**（如 `CLAUDE.md`、`.env.example`），不只 `scripts/`。iOS 的 `playback-smoke` 跑在自架 M2，這些檔案會留在該機器上（與上一條 th-beacon 原始碼出現在自架 runner 屬同一類取捨）；接受。
+- **agent 逾時與 job 逾時的餘裕很小**：agent 逾時預設 25 分鐘、job 上限 30 分鐘，餘裕約 2–4 分鐘（安裝 CLI、權杖等前置步驟與逾時後的還原／回報都要吃這段）；job 逾時時失敗回報 step 不會執行，th-beacon 收不到任何回報。
 - **th-beacon checkout 本身失敗時無法回報**：失敗回報 step 用的就是 th-beacon 的腳本，checkout 失敗時腳本不存在，step 只印一行說明就結束，th-beacon 收不到任何回報。已知限制；此時 job 本身會是紅的。
 - `--max-budget-usd` 是客戶端估算，可能略超上限。
 - 餵給修復 agent 的 log 與判讀那一步送給模型的是同一份（同一套遮蔽），沒有新增外流面；`ai-fix-input` artifact 保留期比照既有失敗產物（7 天）。遮蔽只涵蓋 `DIAGNOSE_REDACT_VARS` 列出的變數，這是既有限制，本次不擴充。

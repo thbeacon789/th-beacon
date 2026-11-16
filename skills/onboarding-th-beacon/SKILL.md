@@ -171,6 +171,7 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
     permissions:
       id-token: write
       contents: read
+      pull-requests: read   # 失敗回報 step 以唯讀查詢確認沒有 open 的 AI PR，才補報 failed
     steps:
       # 目標 repo 與 th-beacon 並列、不可巢狀：腳本要求 cwd（app/）是乾淨的 repo 根，且 agent 被限制在 cwd 內
       - name: Checkout app
@@ -251,10 +252,13 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
       # job 在腳本開始前就失敗（App 權杖、artifact 下載、bot id 解析、腳本缺 env）時，th-beacon 否則收不到任何回報。
       # 以「只回報失敗」模式補報；不設 working-directory（app/ 可能不存在）。
       # 已知限制：th-beacon checkout 本身失敗時腳本不存在，無法回報。
-      - name: Report ai-fix job failure
+      # 腳本會先確認該分支沒有 open 的 AI PR 才回報（有、或查不到都不回報，免得蓋掉仍有效的 pr_opened）。
+      - name: Report ai-fix job failure to th-beacon
         if: ${{ failure() }}
         continue-on-error: true
         env:
+          GH_TOKEN: ${{ github.token }}
+          AI_FIX_DRY_RUN: ${{ inputs.ai_fix_dry_run && '1' || '' }}
           BEACON_BASE_URL: ${{ vars.BEACON_BASE_URL }}
           BEACON_SERVICE: <beacon-service>
           BEACON_SECRET: ${{ secrets.BEACON_SECRET }}
