@@ -443,7 +443,7 @@ CI 在 E2E 失敗後若由 AI 嘗試修復（開 PR），把結果回報到對�
 | --- | --- | --- |
 | `401` | `{"error":"unauthorized"}` | 見 §1 |
 | `400` | `{"error":"invalid JSON"}` | body 不是合法 JSON |
-| `422` | `{"error":"invalid payload","details":[...]}` | `heartbeat` 缺漏／空白、`status` 非三值、`status=pr_opened` 但 `prUrl` 缺漏或格式不符 |
+| `422` | `{"error":"invalid payload","details":[...]}` | payload 非物件（陣列、`null`、純值）、`heartbeat` 缺漏／空白、`status` 非三值、`status=pr_opened` 但 `prUrl` 缺漏或格式不符 |
 | `404` | `{"error":"unknown heartbeat"}` | `(service, heartbeat)` 未在 `heartbeats` 登記 |
 | `404` | `{"error":"no_active_issue"}` | 該心跳目前沒有 `open`／`acknowledged` 的 `test_failure` issue |
 

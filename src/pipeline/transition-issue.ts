@@ -90,7 +90,7 @@ export async function transitionIssue(
     // kind 受 DB check constraint 限制（不新增 migration），且沒有任何判斷需要它。
     if (to === 'acknowledged') {
       await safely('ack reply', async () => {
-        await postInThread(bot, rootEdit, (replyTo) => buildAckReply(actorLabel(actor) ?? '', nowIso, replyTo))
+        await postInThread(bot, rootEdit, (replyTo) => buildAckReply(actorLabel(actor) ?? '', nowIso, replyTo), 'transitionIssue')
       })
     }
     if (to === 'resolved') {
@@ -98,6 +98,7 @@ export async function transitionIssue(
         const label = actorLabel(actor)
         const reply = await postInThread(bot, rootEdit, (replyTo) =>
           buildResolveReply(sourceOf(actor), replyTo, label !== null ? { actorLabel: label, atIso: nowIso } : undefined),
+          'transitionIssue',
         )
         await store.recordNotification({
           issueId: issue.id,

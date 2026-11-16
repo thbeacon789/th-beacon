@@ -85,4 +85,13 @@ describe('postInThread', () => {
     const r = await postInThread(f.bot, root, build)
     expect(r.ok).toBe(false)
   })
+
+  it('log 前綴使用呼叫端傳入的標籤，未傳則為中性的 postInThread', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await postInThread(fakeBot([false, false, true]).bot, root, build, 'aiFix')
+    expect(spy.mock.calls.map((c) => String(c[0])).every((m) => m.startsWith('aiFix: '))).toBe(true)
+    spy.mockClear()
+    await postInThread(fakeBot([false, false, true]).bot, root, build)
+    expect(spy.mock.calls.map((c) => String(c[0])).every((m) => m.startsWith('postInThread: '))).toBe(true)
+  })
 })

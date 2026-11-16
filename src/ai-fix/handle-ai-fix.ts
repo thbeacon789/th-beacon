@@ -78,6 +78,7 @@ export async function handleAiFix(
             { prUrl, summary: report.summary, ownerDiscordIds: auth.service.ownerDiscordIds, runUrl: report.runUrl },
             replyTo,
           ),
+          'aiFix',
         )
         notified = result.ok
       }

@@ -10,17 +10,18 @@ export async function postInThread(
   bot: DiscordBot,
   root: { channelId: string; messageId: string; payload: DiscordMessage },
   build: (replyTo?: string) => DiscordReplyMessage,
+  label = 'postInThread', // log 前綴：呼叫端傳入，才分得出是哪條流程的失敗
 ): Promise<BotPostResult> {
   const inThread = build()
   let result = await bot.postTo(root.messageId, inThread)
   if (!result.ok) {
     const title = root.payload.embeds[0]?.title ?? ''
     const started = await bot.startThread(root.channelId, root.messageId, title.slice(0, THREAD_NAME_MAX))
-    if (!started.ok) console.error(`transitionIssue: start thread failed: ${started.reason}`)
+    if (!started.ok) console.error(`${label}: start thread failed: ${started.reason}`)
     result = await bot.postTo(root.messageId, inThread)
   }
   if (!result.ok) {
-    console.error(`transitionIssue: thread post failed (${result.reason}), fallback to channel reply`)
+    console.error(`${label}: thread post failed (${result.reason}), fallback to channel reply`)
     result = await bot.postTo(root.channelId, build(root.messageId))
   }
   return result
