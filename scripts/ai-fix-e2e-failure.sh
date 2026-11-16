@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # CI e2e 失敗的 AI 修復（去重、呼叫 agent、越界檢查、commit、推分支、開 PR、回報 th-beacon）。canonical 在 th-beacon，各 CI repo 於 workflow 執行時 checkout th-beacon 的釘選 commit 使用，不複製。
 # 用法：ai-fix-e2e-failure.sh <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>
+#   只回報失敗模式：AI_FIX_REPORT_ONLY=failed ai-fix-e2e-failure.sh <heartbeat-name>
+#     只需 BEACON_BASE_URL／BEACON_SERVICE／BEACON_SECRET／RUN_URL；直接 POST /api/ai-fix {status:"failed"} 後 exit 0。
+#     不檢查工作樹、不碰 git、不呼叫 gh／claude／OIDC，不在 git repo 內也能執行；缺 BEACON_* 或回報失敗只印 warning。
+#     供 workflow 的 ai-fix job 尾端 `if: failure()` step 使用（腳本開始前 job 就失敗時，th-beacon 否則收不到任何回報）。
 #
 # 必要 env：BASE_BRANCH（觸發 run 的分支，PR base）、RUN_URL、AI_FIX_REVIEWER、GH_TOKEN（只給 gh／git 用，不傳給 agent）、
 #   ANTHROPIC_FEDERATION_RULE_ID／ANTHROPIC_ORGANIZATION_ID／ANTHROPIC_SERVICE_ACCOUNT_ID（選填 ANTHROPIC_WORKSPACE_ID）、
@@ -8,16 +12,24 @@
 # 回報 th-beacon（選填 env）：BEACON_BASE_URL、BEACON_SERVICE、BEACON_SECRET（缺任一則不回報、其餘照跑）；
 #   commit 作者：AI_FIX_APP_SLUG（預設 github-actions）、AI_FIX_APP_USER_ID（選填，組 noreply email）。
 # 選填 env：AI_FIX_MODEL（claude-opus-5-5）、AI_FIX_MAX_BUDGET_USD（5）、AI_FIX_MAX_TURNS（40）、AI_FIX_COOLDOWN_DAYS（7）、
-#   AI_FIX_MAX_FILES（20）、AI_FIX_MAX_LINES（600）、AI_FIX_DENY_PATHS（空白分隔，追加禁改 glob）、AI_FIX_DRY_RUN
+#   AI_FIX_MAX_FILES（20）、AI_FIX_MAX_LINES（600）、AI_FIX_DENY_PATHS（空白分隔，追加禁改 glob）、AI_FIX_DRY_RUN、
+#   AI_FIX_AGENT_TIMEOUT_SEC（agent 逾時，預設 1500，須為正整數）、AI_FIX_JWT_REFRESH_SEC（agent 執行期間重取 OIDC JWT 的間隔，預設 240，須為正整數）
 #
 # 認證：非 --bare 的 claude -p 以原生 WIF 換權杖（ANTHROPIC_IDENTITY_TOKEN_FILE＋四個 WIF 變數）。
 #   絕不使用 ANTHROPIC_API_KEY（傳給 agent 的值固定為空字串）。--setting-sources user 會關掉目標 repo 的 hooks 與 .mcp.json，
 #   同時讓 CLAUDE.md 不自動載入，所以改以 --append-system-prompt-file 顯式附上。
+#   federation rule 的權杖壽命只有 600 秒，agent 可能跑更久：agent 執行期間由背景迴圈每隔 AI_FIX_JWT_REFRESH_SEC 重取 JWT，
+#   寫到 $WORK/idtoken.new（0600）後 mv 原子覆寫 identity token 檔（同在 $WORK 下＝同一檔案系統；暫存檔不在 identity token 目錄內，
+#   該目錄始終只有一個檔）。request token 只存在於腳本環境與經 stdin 餵給 curl 的設定（-K -），不落地、不進 argv。
 #
 # 結束狀態（stdout 印 STATUS=／COST_USD=／SUMMARY=）：pr_opened|no_fix|failed（乾跑為 ready）。
 # 一律 exit 0（參數／必要 env 錯誤為 exit 2）；回報 th-beacon 失敗只印 warning，不改變 exit code。
 # 去重跳過（分支已有 open PR，或冷卻期內有未合併即關閉的 PR）＝不呼叫模型、不回報、不印 STATUS、exit 0。
-# 乾跑（AI_FIX_DRY_RUN）：零請求（OIDC 除外）、零 push、零 gh pr create、不回報。
+# 去重查詢本身失敗（gh pr list 非零退出或輸出無法解析）＝印 warning 後同樣跳過（不回報）：回報 failed 會蓋掉 issue 上原本的 pr_opened。
+# agent 逾時（AI_FIX_AGENT_TIMEOUT_SEC）：對 agent 的整個行程群組先 TERM、5 秒後 KILL，視為 failed（summary 註明逾時），
+#   仍先做 .git manifest 比對與還原才執行任何 git 指令。腳本被 INT／TERM／HUP 中斷時同樣終止 agent 與重取迴圈。
+# 乾跑（AI_FIX_DRY_RUN）：**會呼叫模型**（最高可能花到預算上限）與 GitHub 的唯讀查詢（gh pr list），
+#   但零 push、零 gh pr create、不回報 th-beacon（所以這筆花費不會出現在 /ai-stats）。
 # 須在 repo 根目錄執行。所有 git 指令一律走 g()（關掉 fsmonitor 與 hooks、隔絕全域設定）；push 另用 g_push() 顯式帶憑證。
 #
 # 防護（agent 只有讀寫檔工具，但能寫的不只追蹤檔）：
@@ -38,32 +50,48 @@
 set -uo pipefail
 
 # ---------- 參數與 env 驗證（錯誤一律 exit 2）----------
-if [ "$#" -ne 5 ]; then
+REPORT_ONLY=""
+[ "${AI_FIX_REPORT_ONLY:-}" = "failed" ] && REPORT_ONLY=1
+if [ -n "$REPORT_ONLY" ]; then
+  if [ "$#" -lt 1 ]; then
+    echo "usage: AI_FIX_REPORT_ONLY=failed ai-fix-e2e-failure.sh <heartbeat-name>" >&2
+    exit 2
+  fi
+  NAME="$1"
+  RUN_URL="${RUN_URL:-}"
+elif [ "$#" -ne 5 ]; then
   echo "usage: ai-fix-e2e-failure.sh <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>" >&2
   exit 2
+else
+  PLATFORM="$1"
+  NAME="$2"
+  KNOWN_FILE="$3"
+  DIAG_FILE="$4"
+  LOG_FILE="$5"
 fi
-PLATFORM="$1"
-NAME="$2"
-KNOWN_FILE="$3"
-DIAG_FILE="$4"
-LOG_FILE="$5"
 
 case "$NAME" in
   ''|*[!A-Za-z0-9._-]*) echo "ai-fix: invalid heartbeat name" >&2; exit 2 ;;
 esac
-for v in BASE_BRANCH RUN_URL AI_FIX_REVIEWER GH_TOKEN ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID \
-  ANTHROPIC_SERVICE_ACCOUNT_ID ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN; do
-  if [ -z "${!v:-}" ]; then echo "ai-fix: missing required env $v" >&2; exit 2; fi
-done
-for tool in claude gh git jq perl curl iconv awk find sort comm cmp; do
-  command -v "$tool" >/dev/null 2>&1 || { echo "ai-fix: missing tool $tool" >&2; exit 2; }
-done
-if command -v sha256sum >/dev/null 2>&1; then
-  HASHER="sha256sum"
-elif command -v shasum >/dev/null 2>&1; then
-  HASHER="shasum -a 256"
+if [ -n "$REPORT_ONLY" ]; then
+  for tool in jq perl curl; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "ai-fix: missing tool $tool" >&2; exit 2; }
+  done
 else
-  echo "ai-fix: missing tool sha256sum/shasum" >&2; exit 2
+  for v in BASE_BRANCH RUN_URL AI_FIX_REVIEWER GH_TOKEN ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID \
+    ANTHROPIC_SERVICE_ACCOUNT_ID ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN; do
+    if [ -z "${!v:-}" ]; then echo "ai-fix: missing required env $v" >&2; exit 2; fi
+  done
+  for tool in claude gh git jq perl curl iconv awk find sort comm cmp; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "ai-fix: missing tool $tool" >&2; exit 2; }
+  done
+  if command -v sha256sum >/dev/null 2>&1; then
+    HASHER="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    HASHER="shasum -a 256"
+  else
+    echo "ai-fix: missing tool sha256sum/shasum" >&2; exit 2
+  fi
 fi
 
 num_or() { case "$1" in ''|*[!0-9]*) echo "$2" ;; *) echo "$1" ;; esac; }
@@ -76,6 +104,10 @@ MAX_TURNS="$(num_or "${AI_FIX_MAX_TURNS:-}" 40)"
 COOLDOWN_DAYS="$(num_or "${AI_FIX_COOLDOWN_DAYS:-}" 7)"
 MAX_FILES="$(num_or "${AI_FIX_MAX_FILES:-}" 20)"
 MAX_LINES="$(num_or "${AI_FIX_MAX_LINES:-}" 600)"
+# 正整數（>0，至多 9 位）；其餘一律退回預設，避免 0 造成立刻逾時或狂打 OIDC
+pos_or() { case "$1" in ''|*[!0-9]*) echo "$2" ;; *) if [ "${#1}" -le 9 ] && [ "$((10#$1))" -gt 0 ]; then echo "$((10#$1))"; else echo "$2"; fi ;; esac; }
+AGENT_TIMEOUT="$(pos_or "${AI_FIX_AGENT_TIMEOUT_SEC:-}" 1500)"
+JWT_REFRESH_SEC="$(pos_or "${AI_FIX_JWT_REFRESH_SEC:-}" 240)"
 BRANCH="ai-fix/$NAME"
 
 # 結果狀態（7b 接續使用）
@@ -89,7 +121,27 @@ DRY_RUN="${AI_FIX_DRY_RUN:-}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ai-fix.XXXXXX")" || exit 0
 chmod 700 "$WORK"
 umask 077
-trap 'rm -rf "$WORK"' EXIT
+# 背景行程（agent 看門狗、JWT 重取迴圈）都以獨立 session 啟動：pid 即 pgid，可整組終止。
+# 任何結束方式（正常、exit、INT／TERM／HUP）都經 EXIT trap 清理。
+AGENT_PID=""
+REFRESH_PID=""
+stop_background() {
+  if [ -n "$REFRESH_PID" ]; then
+    kill -KILL -- "-$REFRESH_PID" 2>/dev/null
+    { wait "$REFRESH_PID"; } 2>/dev/null
+    REFRESH_PID=""
+  fi
+  if [ -n "$AGENT_PID" ]; then
+    kill -TERM "$AGENT_PID" 2>/dev/null # 看門狗收到 TERM 會 KILL 整個 agent 行程群組
+    { wait "$AGENT_PID"; } 2>/dev/null
+    AGENT_PID=""
+  fi
+}
+cleanup() { stop_background; rm -rf "$WORK"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # agent 控制的字串輸出前先中和：換行改空白（不能偽造 STATUS= 行），:: 拆開（不能構成 workflow command）
 san() { printf '%s' "$1" | perl -0777 -pe 's/[\r\n]+/ /g; 1 while s/::/: :/'; }
@@ -176,6 +228,18 @@ terminal() { # $1=STATUS $2=SUMMARY
   exit 0
 }
 
+# ---------- 只回報失敗模式：不碰 git／gh／claude／OIDC，到此為止 ----------
+if [ -n "$REPORT_ONLY" ]; then
+  for v in BEACON_BASE_URL BEACON_SERVICE BEACON_SECRET; do
+    if [ -z "${!v:-}" ]; then echo "ai-fix: warning: $v not set, skip beacon report"; exit 0; fi
+  done
+  STATUS="failed"
+  SUMMARY="ai-fix job 失敗，見 run"
+  echo "ai-fix: report-only mode, reporting failed for $NAME"
+  report_beacon
+  exit 0
+fi
+
 # 本腳本所有 git 呼叫都走這裡：關掉 fsmonitor 與 hooks，並隔絕全域／系統設定
 # （全域設定可能含 filter／textconv／fsmonitor 等會執行外部指令的項目）。
 # 約定：push 需要憑證時用下方 g_push()（建立在 g() 之上），不靠全域設定；不要放寬這個 g()。
@@ -207,13 +271,17 @@ fi
 # ---------- 去重 ----------
 # 分支已有 open PR，或 AI_FIX_COOLDOWN_DAYS 天內有「未合併即關閉」的 PR（負責人已表態不要這個修法）→ 直接結束。
 # 已合併的 PR 不擋：合併後仍失敗代表是新狀況。
+# 查詢失敗或輸出無法解析時無從得知分支上是否已有 PR：印 warning、不回報、不呼叫 agent、exit 0（視同跳過）。
+# 不能回報 failed：會把 issue 上原本的 pr_opened 與 PR 連結蓋掉。
+dedup_unknown() { echo "ai-fix: warning: $1, skip (no report)"; exit 0; }
 PR_LIST="$(gh pr list --head "$BRANCH" --state all --json number,state,mergedAt,closedAt 2>/dev/null)" \
-  || terminal failed "cannot list PRs for dedup"
+  || dedup_unknown "cannot list PRs for dedup"
 DUP="$(printf '%s' "$PR_LIST" | jq -r --argjson d "$COOLDOWN_DAYS" '
-  any(.[]; .state == "OPEN"
+  if type != "array" then error("not an array") else . end
+  | any(.[]; .state == "OPEN"
     or (.mergedAt == null and .closedAt != null
         and ((now - (.closedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) < ($d * 86400))))' 2>/dev/null)" \
-  || terminal failed "cannot parse PR list for dedup"
+  || dedup_unknown "cannot parse PR list for dedup"
 if [ "$DUP" = "true" ]; then
   echo "ai-fix: skip, open PR or recently rejected PR exists for $BRANCH"
   exit 0
@@ -223,6 +291,8 @@ fi
 g switch -C "$BRANCH" >/dev/null 2>&1 || terminal failed "cannot create branch $BRANCH"
 
 # ---------- 禁改清單（逐字取自 spec §5.3，不分大小寫）----------
+# 末段（fastlane、.claude、CLAUDE.md、AGENTS.md、.mcp.json、.gitattributes、.gitmodules、.gitignore）為 2026-11-16 最終審查後追加：
+# 這些路徑合併後會被執行或成為下一輪 agent 的指令來源（.gitignore 還能讓日後的檔案逃過「新出現的被忽略檔」檢查）。
 # 規則：含 / 的 glob 從 repo 根起算；不含 / 的 glob 比對任意深度的檔名（如 *.keystore 也要擋 app/release.keystore）。
 # 「**/」前綴＝任意深度含根、結尾「/**」＝任何後代、「*」不跨 /。
 DENY_DEFAULT='.github/**
@@ -244,7 +314,15 @@ gradlew*
 **/*.xcodeproj/**
 **/*.xcworkspace/**
 Podfile*
-**/*.xcconfig'
+**/*.xcconfig
+**/fastlane/**
+**/.claude/**
+**/CLAUDE.md
+**/AGENTS.md
+**/.mcp.json
+**/.gitattributes
+**/.gitmodules
+**/.gitignore'
 DENY_FILE="$WORK/deny.txt"
 printf '%s\n' "$DENY_DEFAULT" >"$DENY_FILE"
 set -f # 關掉 pathname expansion，否則 docs/** 之類會被展開成現有檔名
@@ -319,7 +397,7 @@ PROMPT="$WORK/prompt.txt"
 RULES_EOF
   sed 's/^/  - /' "$DENY_FILE"
   cat <<'RULES_EOF'
-- 根因落在禁改路徑（例如 scripts/e2e.sh、build 設定）時不要改，回報 fixed=false，並在 rootCause 說明該改哪裡，交給人處理。
+- 根因落在禁改路徑（例如 scripts/e2e.sh、build 設定、fastlane、CLAUDE.md／AGENTS.md／.claude 等 agent 設定）時不要改，回報 fixed=false，並在 rootCause 說明該改哪裡，交給人處理。
 - 找不到有把握的修法就不要改，回報 fixed=false。
 - 你只有讀檔與改檔工具，沒有 Bash：無法執行測試，不要宣稱已驗證。
 - 最後只輸出符合 schema 的結果：fixed、target（test 測試／app 應用程式／both 兩者）、rootCause、changeSummary、prTitle（簡短，不含前綴）、verificationNotes（誠實說明驗證程度與假設）。一律使用繁體中文。
@@ -336,20 +414,19 @@ RULES_EOF
 } >"$PROMPT"
 
 # ---------- 認證：向 GitHub OIDC 取 JWT，寫入 0600 檔 ----------
-# request token 與 JWT 副本用完立刻刪除；identity token 檔獨佔一個目錄（agent 看得到的只有它）。
-printf 'header = "Authorization: Bearer %s"\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" >"$WORK/oidc.cfg"
-code="$(curl -sS --max-time 30 -K "$WORK/oidc.cfg" -o "$WORK/oidc.json" -w '%{http_code}' \
-  "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fapi.anthropic.com" 2>/dev/null)" || code="000"
-rm -f "$WORK/oidc.cfg"
-if [ "$code" != "200" ]; then rm -f "$WORK/oidc.json"; terminal failed "oidc token request failed: HTTP $code"; fi
-JWT="$(jq -r '.value // empty' "$WORK/oidc.json" 2>/dev/null)"
-rm -f "$WORK/oidc.json"
-[ -n "$JWT" ] || terminal failed "oidc token response has no value"
+# request token 只存在於腳本環境，並經 stdin 餵給 curl（-K -）：不落地、不進 argv。
+# identity token 檔獨佔一個目錄（agent 看得到的只有它）；agent 執行期間由背景迴圈定期重取並原子覆寫（見下）。
+fetch_jwt() { # $1=輸出檔；成功回 0 且檔內只有 JWT（0600），失敗回 1 且不動輸出檔；絕不印出 token
+  local jwt
+  jwt="$(printf 'header = "Authorization: Bearer %s"\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    | curl -sS --fail --max-time 30 -K - "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fapi.anthropic.com" 2>/dev/null \
+    | jq -r '.value // empty' 2>/dev/null)" || jwt=""
+  [ -n "$jwt" ] || return 1
+  printf '%s' "$jwt" >"$1" && chmod 600 "$1"
+}
 mkdir "$WORK/idtoken" && chmod 700 "$WORK/idtoken"
 TOKEN_FILE="$WORK/idtoken/identity-token"
-printf '%s' "$JWT" >"$TOKEN_FILE"
-chmod 600 "$TOKEN_FILE"
-unset JWT
+fetch_jwt "$TOKEN_FILE" || { rm -f "$TOKEN_FILE"; terminal failed "oidc token request failed"; }
 
 # ---------- agent 前快照：git 設定類檔案、巢狀 .git、被忽略檔 ----------
 SNAP="$WORK/gitsnap"
@@ -401,16 +478,66 @@ REPO_ROOT="$(g rev-parse --show-toplevel 2>/dev/null)"
 
 AGENT_HOME="$WORK/agent-home"
 mkdir "$AGENT_HOME" && chmod 700 "$AGENT_HOME"
+
+# JWT 重取迴圈：federation rule 的權杖壽命 600 秒，agent 可能跑更久，而 CLI 換發時會重讀 identity token 檔。
+# 暫存檔放在 $WORK（agent 讀不到，且與目標同一檔案系統，mv 為原子），不放進 identity token 目錄。
+# 失敗時保留舊檔、繼續下一輪、不印 token。獨立 session（pid 即 pgid）使 stop_background 能整組終止（含 sleep／curl）。
+read -r -d '' REFRESH_LOOP <<'LOOP_EOF' || true
+while :; do
+  sleep "$JWT_REFRESH_SEC"
+  rm -f "$WORK/idtoken.new"
+  if fetch_jwt "$WORK/idtoken.new"; then mv -f "$WORK/idtoken.new" "$TOKEN_FILE"; fi
+done
+LOOP_EOF
+JWT_REFRESH_SEC="$JWT_REFRESH_SEC" WORK="$WORK" TOKEN_FILE="$TOKEN_FILE" \
+  perl -e 'use POSIX qw(setsid); setsid(); exec { $ARGV[0] } @ARGV; exit 127' \
+  bash -c "$(declare -f fetch_jwt)"$'\n'"$REFRESH_LOOP" >/dev/null 2>&1 </dev/null &
+REFRESH_PID=$!
+
+# agent 看門狗（macOS 沒有 timeout 指令，改用 perl，兩個平台通用）：新 session 執行 agent，逾時先 TERM、5 秒後 KILL 整個行程群組，
+# 並在 $1 旗標檔留下記號；結束後（不論原因）再 KILL 一次掃掉殘留的子行程。收到 TERM／INT／HUP 時直接 KILL 整組。
+read -r -d '' WATCHDOG_PL <<'PL_EOF' || true
+use POSIX qw(setsid WNOHANG);
+my ($limit, $flag, @cmd) = @ARGV;
+my $pid = fork();
+defined $pid or exit 127;
+if ($pid == 0) { setsid(); exec { $cmd[0] } @cmd; exit 127; }
+sub killgrp { kill $_[0], -$pid; }
+for my $s (qw(TERM INT HUP)) { $SIG{$s} = sub { killgrp("KILL"); exit 143; }; }
+my ($deadline, $kill_at, $timedout, $status) = (time + $limit, 0, 0, 0);
+while (1) {
+  my $r = waitpid($pid, WNOHANG);
+  if ($r == $pid) { $status = $?; last; }
+  last if $r < 0;
+  if (!$timedout && time >= $deadline) {
+    $timedout = 1;
+    if (open(my $f, ">", $flag)) { close $f; }
+    killgrp("TERM");
+    $kill_at = time + 5;
+  }
+  killgrp("KILL") if $timedout && time >= $kill_at;
+  select(undef, undef, undef, 0.1);
+}
+killgrp("KILL");
+exit($timedout ? 124 : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+PL_EOF
+
 # env -i＋白名單：GH_TOKEN、BEACON_SECRET、E2E 帳密等一律不傳入；用 stdin 餵 prompt（避免超過單一參數上限）
 AGENT_OUT="$WORK/agent.out"
-env -i PATH="$PATH" HOME="$AGENT_HOME" ${TMPDIR:+TMPDIR="$TMPDIR"} \
+AGENT_TIMEOUT_FLAG="$WORK/agent.timeout"
+perl -e "$WATCHDOG_PL" "$AGENT_TIMEOUT" "$AGENT_TIMEOUT_FLAG" \
+  env -i PATH="$PATH" HOME="$AGENT_HOME" ${TMPDIR:+TMPDIR="$TMPDIR"} \
   ANTHROPIC_FEDERATION_RULE_ID="$ANTHROPIC_FEDERATION_RULE_ID" \
   ANTHROPIC_ORGANIZATION_ID="$ANTHROPIC_ORGANIZATION_ID" \
   ANTHROPIC_SERVICE_ACCOUNT_ID="$ANTHROPIC_SERVICE_ACCOUNT_ID" \
   ${ANTHROPIC_WORKSPACE_ID:+ANTHROPIC_WORKSPACE_ID="$ANTHROPIC_WORKSPACE_ID"} \
   ANTHROPIC_IDENTITY_TOKEN_FILE="$TOKEN_FILE" \
   ANTHROPIC_API_KEY="" DISABLE_AUTOUPDATER=1 \
-  claude "${ARGS[@]}" <"$PROMPT" >"$AGENT_OUT" 2>"$WORK/agent.err"
+  claude "${ARGS[@]}" <"$PROMPT" >"$AGENT_OUT" 2>"$WORK/agent.err" &
+AGENT_PID=$!
+{ wait "$AGENT_PID"; } 2>/dev/null
+AGENT_PID="" # 看門狗已自行收掉 agent 行程群組
+stop_background
 rm -rf "$AGENT_HOME"
 # 不依賴 exit code：認證失敗、超限時 claude 會非零退出，但仍照常解析 stdout
 
@@ -450,6 +577,11 @@ discard_changes() {
 if [ -n "$VIOL" ]; then
   discard_changes
   terminal failed "$VIOL"
+fi
+# 逾時：已先完成上面的 .git manifest 比對與還原才執行任何 git 指令（discard_changes 內有 git）
+if [ -e "$AGENT_TIMEOUT_FLAG" ]; then
+  discard_changes
+  terminal failed "agent 逾時（超過 ${AGENT_TIMEOUT} 秒），已終止並丟棄改動"
 fi
 
 # ---------- 解析結果 ----------

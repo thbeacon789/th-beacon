@@ -1,10 +1,12 @@
 import { createHmac } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runBash, startServer, type FakeServer } from './helpers'
+import { parseAiFixPayload } from '@/ai-fix/payload'
+import { parseAiUsagePayload } from '@/ai-usage/payload'
 
 const SCRIPT = path.resolve(__dirname, '../../scripts/ai-fix-e2e-failure.sh')
 const DAY = 86_400_000
@@ -33,6 +35,9 @@ interface Plan {
   deletes?: string[]
   stdout?: unknown
   exitCode?: number
+  sleepMs?: number // 寫完檔後睡這麼久（模擬長任務／卡住）
+  spawnChild?: boolean // 另起一個 sleep 子行程（驗證逾時時連子行程一併終止）
+  ignoreTerm?: boolean // 忽略 SIGTERM（驗證 KILL 升級）
 }
 
 // 假 claude：劇本路徑與記錄目錄寫死在檔內（agent env 已被隔離，不能靠 env 傳）
@@ -55,9 +60,32 @@ process.stdin.on('end', () => {
   for (const [p, c] of Object.entries(plan.writes || {})) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, c) }
   for (const [a, b] of plan.renames || []) { fs.mkdirSync(path.dirname(b), { recursive: true }); fs.renameSync(a, b) }
   for (const p of plan.deletes || []) fs.rmSync(p)
-  const out = plan.stdout
-  process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out))
-  process.exit(plan.exitCode || 0)
+  fs.writeFileSync(path.join(rec, 'pid.txt'), String(process.pid))
+  if (plan.ignoreTerm) process.on('SIGTERM', () => {})
+  if (plan.spawnChild) {
+    const c = require('child_process').spawn('sleep', ['60'], { stdio: 'ignore' })
+    fs.writeFileSync(path.join(rec, 'child-pid.txt'), String(c.pid))
+  }
+  const finish = () => {
+    // 結束前再看一次：identity token 是否被更新、WORK 內是否有檔含 request token
+    let tokenEnd = null, tokenDirEnd = null
+    const leaks = []
+    if (tf) {
+      try { tokenEnd = fs.readFileSync(tf, 'utf8'); tokenDirEnd = fs.readdirSync(path.dirname(tf)) } catch {}
+      const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const f = path.join(d, e.name)
+        if (e.isDirectory()) walk(f)
+        else { try { if (fs.readFileSync(f, 'utf8').includes('REQ_TOKEN')) leaks.push(f) } catch {} }
+      } }
+      try { walk(path.dirname(path.dirname(tf))) } catch {}
+    }
+    fs.writeFileSync(path.join(rec, 'end.json'), JSON.stringify({ tokenEnd, tokenDirEnd, leaks }))
+    const out = plan.stdout
+    process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out))
+    process.exit(plan.exitCode || 0)
+  }
+  if (plan.sleepMs) setTimeout(finish, plan.sleepMs)
+  else finish()
 })
 `
 const fakeGhSource = (recDir: string) => `#!/usr/bin/env node
@@ -70,6 +98,8 @@ if (a[0] === 'pr' && a[1] === 'list' && a.includes('url,headRefOid,baseRefName,i
   let t = has('gh-open-prs.json') ? fs.readFileSync(path.join(rec, 'gh-open-prs.json'), 'utf8') : '[]'
   if (t.includes('@HEAD')) t = t.split('@HEAD').join(require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim())
   process.stdout.write(t)
+} else if (a[0] === 'pr' && a[1] === 'list' && has('gh-fail-list')) {
+  process.stderr.write('boom\\n'); process.exit(1)
 } else if (a[0] === 'pr' && a[1] === 'comment') {
   if (has('gh-fail-comment')) process.exit(1)
 } else if (a[0] === 'pr' && a[1] === 'list') process.stdout.write(fs.readFileSync(path.join(rec, 'gh-list.json'), 'utf8'))
@@ -89,6 +119,7 @@ describe('ai-fix-e2e-failure.sh', () => {
   let bin: string
   let server: FakeServer | undefined
   let apiStatus = 201
+  let oidcFailAfterFirst = false
 
   const sh = (cwd: string, ...args: string[]) =>
     execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } })
@@ -109,6 +140,23 @@ describe('ai-fix-e2e-failure.sh', () => {
       workDir: string[] | null
     }
   const stdin = () => fs.readFileSync(path.join(rec, 'stdin.txt'), 'utf8')
+  const endInfo = () =>
+    JSON.parse(fs.readFileSync(path.join(rec, 'end.json'), 'utf8')) as { tokenEnd: string | null; tokenDirEnd: string[] | null; leaks: string[] }
+  const oidcReqs = () => server!.requests.filter((q) => q.path.startsWith('/oidc'))
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+  const waitDead = async (pid: number) => {
+    for (let i = 0; i < 40 && alive(pid); i++) await sleep(100)
+    return !alive(pid)
+  }
+  const readPid = (f: string) => Number(fs.readFileSync(path.join(rec, f), 'utf8'))
   const ghLog = () =>
     fs.existsSync(path.join(rec, 'gh.log'))
       ? fs.readFileSync(path.join(rec, 'gh.log'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[])
@@ -192,9 +240,16 @@ describe('ai-fix-e2e-failure.sh', () => {
     setPrList([])
     setPlan({ writes: { 'app/Login.kt': 'class Login2\n' }, stdout: successOut() })
     apiStatus = 201
-    server = await startServer((req) =>
-      req.path.startsWith('/oidc') ? { json: { value: 'JWT_FAKE' } } : req.path.startsWith('/api/') ? { status: apiStatus, json: {} } : { json: {} },
-    )
+    oidcFailAfterFirst = false
+    let oidcCount = 0
+    server = await startServer((req) => {
+      if (req.path.startsWith('/oidc')) {
+        oidcCount += 1
+        if (oidcFailAfterFirst && oidcCount > 1) return { status: 500, json: { error: 'down' } }
+        return { json: { value: oidcCount === 1 ? 'JWT_FAKE' : `JWT_REFRESH_${oidcCount}` } }
+      }
+      return req.path.startsWith('/api/') ? { status: apiStatus, json: {} } : { json: {} }
+    })
   })
   afterEach(async () => {
     await server?.close()
@@ -317,6 +372,7 @@ describe('ai-fix-e2e-failure.sh', () => {
       expect(p).toMatch(/fixed=false/)
       expect(p).toMatch(/根因[^\n]*禁改/)
       expect(p).toContain('找不到有把握的修法就不要改')
+      for (const g of ['**/fastlane/**', '**/.claude/**', '**/CLAUDE.md', '**/AGENTS.md', '**/.mcp.json', '**/.gitattributes', '**/.gitmodules', '**/.gitignore']) expect(p).toContain(g)
     })
 
     it('repo 根目錄有 CLAUDE.md → 帶 --append-system-prompt-file 指向它', async () => {
@@ -409,6 +465,23 @@ describe('ai-fix-e2e-failure.sh', () => {
       'Podfile',
       'Podfile.lock',
       'Config/Debug.xcconfig',
+      // 2026-11-16 最終審查追加：合併後會被執行或成為下一輪 agent 指令來源的路徑（根目錄與子目錄各一例）
+      'fastlane/Fastfile',
+      'ios/fastlane/Fastfile',
+      '.claude/settings.json',
+      'app/.claude/commands/x.md',
+      'CLAUDE.md',
+      'app/CLAUDE.md',
+      'AGENTS.md',
+      'phone/AGENTS.md',
+      '.mcp.json',
+      'phone/.mcp.json',
+      '.gitattributes',
+      'phone/.gitattributes',
+      '.gitmodules',
+      'phone/.gitmodules',
+      '.gitignore',
+      'phone/.gitignore',
     ])('改 %s → failed 且工作樹乾淨', async (p) => {
       setPlan({ writes: { 'app/Login.kt': 'x\n', [p]: 'evil\n' }, stdout: successOut() })
       const r = await run()
@@ -1110,6 +1183,257 @@ process.exit(r.status === null ? 1 : r.status)
 
     it('腳本不再含過時的「只比對 .git/config、hooks、info」註解', () => {
       expect(fs.readFileSync(SCRIPT, 'utf8')).not.toContain('等設定類檔案：agent 前後比對雜湊')
+    })
+  })
+
+  describe('去重查詢失敗（最終審查 B5）', () => {
+    it.each([
+      ['gh pr list 非零退出', () => fs.writeFileSync(path.join(rec, 'gh-fail-list'), '')],
+      ['gh pr list 輸出無法解析', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), 'not json')],
+    ])('%s → 印 warning、不回報、不呼叫 agent、exit 0（視同跳過）', async (_n, arrange) => {
+      arrange()
+      const r = await run(beacon())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning/i)
+      expect(r.stdout).not.toContain('STATUS=')
+      expect(calls()).toBe(0)
+      expect(apiReqs()).toHaveLength(0)
+      expect(oidcReqs()).toHaveLength(0)
+    })
+  })
+
+  describe('只回報失敗模式 AI_FIX_REPORT_ONLY=failed（最終審查 B4）', () => {
+    const noRepo = () => {
+      const d = path.join(dir, 'not-a-repo')
+      fs.mkdirSync(d, { recursive: true })
+      return d
+    }
+    const minimalEnv = (extra: Record<string, string> = {}): Record<string, string> => ({
+      PATH: `${bin}:${process.env.PATH ?? ''}`,
+      AI_FIX_REPORT_ONLY: 'failed',
+      BEACON_BASE_URL: server!.url,
+      BEACON_SERVICE: 'svc-a',
+      BEACON_SECRET: 'beacon-secret',
+      RUN_URL: 'https://github.com/o/r/actions/runs/1',
+      ...extra,
+    })
+    const sigOk = (q: { headers: Record<string, string | string[] | undefined>; body: string }) =>
+      q.headers['x-beacon-signature'] ===
+      `sha256=${createHmac('sha256', 'beacon-secret').update(`${String(q.headers['x-beacon-timestamp'])}.${q.body}`).digest('hex')}`
+
+    it('只需要 heartbeat 名稱：在非 git 目錄送出正確 body 與簽章，零 gh／claude／OIDC，exit 0', async () => {
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv(), noRepo())
+      expect(r.code).toBe(0)
+      expect(apiReqs().map((q) => q.path)).toEqual(['/api/ai-fix'])
+      const q = apiReqs()[0]
+      expect(q.method).toBe('POST')
+      expect(q.headers['x-beacon-service']).toBe('svc-a')
+      expect(sigOk(q)).toBe(true)
+      expect(JSON.parse(q.body)).toEqual({
+        heartbeat: 'android-e2e-prod',
+        status: 'failed',
+        summary: 'ai-fix job 失敗，見 run',
+        runUrl: 'https://github.com/o/r/actions/runs/1',
+      })
+      expect(ghLog()).toHaveLength(0)
+      expect(calls()).toBe(0)
+      expect(oidcReqs()).toHaveLength(0)
+      expect(r.stdout + r.stderr).not.toContain('beacon-secret')
+    })
+
+    it('在 git repo 內也不碰 git：工作樹有未提交改動、分支不變、不建立 ai-fix 分支', async () => {
+      put('untracked.txt', 'x')
+      const before = sh(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv(), repo)
+      expect(r.code).toBe(0)
+      expect(apiReqs()).toHaveLength(1)
+      expect(sh(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(before)
+      expect(fs.existsSync(path.join(repo, 'untracked.txt'))).toBe(true)
+    })
+
+    it.each([['BEACON_SECRET'], ['BEACON_BASE_URL'], ['BEACON_SERVICE']])('缺 %s → 印 warning、exit 0、不送請求', async (k) => {
+      const env = minimalEnv()
+      delete env[k]
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], env, noRepo())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning/i)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('回報失敗（HTTP 500）只印 warning、exit 0', async () => {
+      apiStatus = 500
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv(), noRepo())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning/i)
+    })
+
+    it('heartbeat 名稱不合法 → exit 2；沒給名稱 → exit 2', async () => {
+      expect((await runBash(SCRIPT, ['a/b'], minimalEnv(), noRepo())).code).toBe(2)
+      expect((await runBash(SCRIPT, [], minimalEnv(), noRepo())).code).toBe(2)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('AI_FIX_REPORT_ONLY 不是 failed → 走正常流程（參數個數不符 → exit 2）', async () => {
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv({ AI_FIX_REPORT_ONLY: '1' }), noRepo())
+      expect(r.code).toBe(2)
+    })
+  })
+
+  describe('OIDC JWT 重取（最終審查 B1）', () => {
+    it('agent 執行期間每隔 AI_FIX_JWT_REFRESH_SEC 重取 JWT，原子覆寫 identity token；期間 request token 不落在 WORK', async () => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n' }, sleepMs: 3500, stdout: successOut() })
+      const r = await run({ AI_FIX_JWT_REFRESH_SEC: '1' })
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(oidcReqs().length).toBeGreaterThan(1)
+      for (const q of oidcReqs()) expect(q.headers.authorization).toBe('Bearer REQ_TOKEN')
+      const e = endInfo()
+      expect(e.tokenEnd).toMatch(/^JWT_REFRESH_\d+$/)
+      expect(e.tokenDirEnd).toEqual(['identity-token'])
+      expect(e.leaks).toEqual([])
+      // 腳本結束後迴圈已終止：不再有新的 OIDC 請求
+      const n = oidcReqs().length
+      await sleep(2500)
+      expect(oidcReqs().length).toBe(n)
+    }, 30_000)
+
+    it('重取失敗（OIDC 回 500）時保留舊 token 檔、不印 token，agent 照跑', async () => {
+      oidcFailAfterFirst = true
+      setPlan({ writes: { 'app/Login.kt': 'x\n' }, sleepMs: 2500, stdout: successOut() })
+      const r = await run({ AI_FIX_JWT_REFRESH_SEC: '1' })
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(oidcReqs().length).toBeGreaterThan(1)
+      expect(endInfo().tokenEnd).toBe('JWT_FAKE')
+      expect(endInfo().tokenDirEnd).toEqual(['identity-token'])
+      expect(r.stdout + r.stderr).not.toContain('REQ_TOKEN')
+      expect(r.stdout + r.stderr).not.toContain('JWT_')
+    }, 30_000)
+
+    it.each(['0', 'abc', '-3'])('AI_FIX_JWT_REFRESH_SEC=%s → 退回預設 240 秒（不會狂打 OIDC）', async (v) => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n' }, sleepMs: 1500, stdout: successOut() })
+      await run({ AI_FIX_JWT_REFRESH_SEC: v })
+      expect(oidcReqs()).toHaveLength(1)
+    }, 30_000)
+
+    it('腳本被 SIGTERM 中斷 → agent、其子行程與重取迴圈都被終止，WORK 已清除', async () => {
+      setPlan({ sleepMs: 60_000, spawnChild: true, stdout: successOut() })
+      const child = spawn(
+        'bash',
+        [SCRIPT, 'android', 'android-e2e-prod', path.join(dir, 'known.md'), path.join(dir, 'diag.json'), path.join(dir, 'log.txt')],
+        { cwd: repo, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...baseEnv({ AI_FIX_JWT_REFRESH_SEC: '1' }) }, stdio: 'ignore' },
+      )
+      const closed = new Promise((resolve) => child.on('close', resolve))
+      for (let i = 0; i < 100 && !fs.existsSync(path.join(rec, 'child-pid.txt')); i++) await sleep(100)
+      expect(fs.existsSync(path.join(rec, 'child-pid.txt'))).toBe(true)
+      await sleep(1500) // 讓重取迴圈至少跑一輪
+      const tokenFile = agentEnv().env.ANTHROPIC_IDENTITY_TOKEN_FILE
+      child.kill('SIGTERM')
+      await closed
+      expect(await waitDead(readPid('pid.txt'))).toBe(true)
+      expect(await waitDead(readPid('child-pid.txt'))).toBe(true)
+      expect(fs.existsSync(tokenFile)).toBe(false)
+      const n = oidcReqs().length
+      await sleep(2500)
+      expect(oidcReqs().length).toBe(n)
+    }, 30_000)
+  })
+
+  describe('agent 逾時（最終審查 B2）', () => {
+    const withBeaconTimeout = { AI_FIX_AGENT_TIMEOUT_SEC: '3' } // 留足 node 冷啟動的時間，仍遠小於假 agent 的睡眠
+
+    it('agent 睡得比逾時久 → failed、summary 註明逾時、回報 failed、工作樹乾淨、agent 與其子行程都被終止', async () => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n' }, sleepMs: 60_000, spawnChild: true, stdout: successOut() })
+      const t0 = Date.now()
+      const r = await run({ ...withBeaconTimeout, ...beacon() })
+      expect(Date.now() - t0).toBeLessThan(20_000)
+      expect(r.code).toBe(0)
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(r.stdout).toMatch(/SUMMARY=.*逾時/)
+      expect(porcelain()).toBe('')
+      expect(r.stderr).not.toMatch(/Killed|Terminated|line \d+:/) // 背景行程被終止時 bash 不應往 stderr 噴工作狀態訊息
+      expect(JSON.parse(apiReqs()[0].body)).toMatchObject({ status: 'failed' })
+      expect(JSON.parse(apiReqs()[0].body).summary).toContain('逾時')
+      expect(await waitDead(readPid('pid.txt'))).toBe(true)
+      expect(await waitDead(readPid('child-pid.txt'))).toBe(true)
+      expect(ghLog().some((a) => a[1] === 'create')).toBe(false)
+    }, 40_000)
+
+    it('agent 忽略 SIGTERM → 數秒後以 KILL 終止', async () => {
+      setPlan({ sleepMs: 60_000, ignoreTerm: true, stdout: successOut() })
+      const r = await run(withBeaconTimeout)
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(r.stdout).toMatch(/SUMMARY=.*逾時/)
+      expect(await waitDead(readPid('pid.txt'))).toBe(true)
+    }, 40_000)
+
+    it('逾時後仍先比對並還原 .git，才執行任何 git 指令（fsmonitor 不會被執行）', async () => {
+      const orig = fs.readFileSync(path.join(repo, '.git/config'), 'utf8')
+      const marker = path.join(dir, 'fsmonitor-ran')
+      setPlan({
+        writes: { '.git/config': `${orig}[core]\n\tfsmonitor = touch ${marker}; false\n`, 'app/Login.kt': 'x\n' },
+        sleepMs: 60_000,
+        stdout: successOut(),
+      })
+      const r = await run(withBeaconTimeout)
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(fs.existsSync(marker)).toBe(false)
+      expect(fs.readFileSync(path.join(repo, '.git/config'), 'utf8')).toBe(orig)
+      expect(porcelain()).toBe('')
+    }, 40_000)
+
+    it.each(['0', 'abc', '-5'])('AI_FIX_AGENT_TIMEOUT_SEC=%s → 退回預設 1500 秒（不會立刻逾時）', async (v) => {
+      const r = await run({ AI_FIX_AGENT_TIMEOUT_SEC: v })
+      expect(r.stdout).toContain('STATUS=pr_opened')
+    })
+
+    it('沒逾時時行為不變：agent 的 stdin／stdout／exit code 照舊傳遞', async () => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n' }, stdout: successOut(), exitCode: 1 })
+      const r = await run({ AI_FIX_AGENT_TIMEOUT_SEC: '60' })
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(stdin()).toContain('MARKER-REASON')
+    })
+  })
+
+  describe('契約：腳本送出的 body 通過伺服器端驗證（最終審查 B6）', () => {
+    const parseFix = (body: string) => parseAiFixPayload(JSON.parse(body))
+
+    it('pr_opened／no_fix／failed 的 /api/ai-fix 與 /api/ai-usage', async () => {
+      await run(beacon())
+      const prOpened = parseFix(apiReqs()[0].body)
+      expect(prOpened).toMatchObject({ ok: true, value: { status: 'pr_opened', prUrl: 'https://github.com/o/r/pull/9' } })
+      const usage = parseAiUsagePayload(JSON.parse(apiReqs()[1].body))
+      expect(usage).toMatchObject({ ok: true, value: { source: 'ci_pr', costUsd: 0.42 } })
+
+      server!.requests.length = 0
+      setPlan({ stdout: successOut({ ...RESULT, fixed: false, rootCause: '根因在 scripts/e2e.sh' }) })
+      await run(beacon())
+      expect(parseFix(apiReqs()[0].body)).toMatchObject({ ok: true, value: { status: 'no_fix', prUrl: null } })
+
+      server!.requests.length = 0
+      setPlan({ writes: { 'scripts/e2e.sh': 'evil\n' }, stdout: successOut() })
+      await run(beacon())
+      expect(parseFix(apiReqs()[0].body)).toMatchObject({ ok: true, value: { status: 'failed' } })
+    })
+
+    it('report-only 的 body', async () => {
+      const d = path.join(dir, 'not-a-repo')
+      fs.mkdirSync(d)
+      await runBash(
+        SCRIPT,
+        ['android-e2e-prod'],
+        {
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          AI_FIX_REPORT_ONLY: 'failed',
+          BEACON_BASE_URL: server!.url,
+          BEACON_SERVICE: 'svc-a',
+          BEACON_SECRET: 'beacon-secret',
+          RUN_URL: 'https://github.com/o/r/actions/runs/1',
+        },
+        d,
+      )
+      expect(parseFix(apiReqs()[0].body)).toMatchObject({
+        ok: true,
+        value: { heartbeat: 'android-e2e-prod', status: 'failed', runUrl: 'https://github.com/o/r/actions/runs/1' },
+      })
     })
   })
 })
