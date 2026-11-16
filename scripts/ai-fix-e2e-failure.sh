@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# CI e2e 失敗的 AI 修復（上半：去重、呼叫 agent、越界檢查、乾跑）。canonical 在 th-beacon，各 CI repo 位元組一致地複製。
+# CI e2e 失敗的 AI 修復（去重、呼叫 agent、越界檢查、commit、推分支、開 PR、回報 th-beacon）。canonical 在 th-beacon，各 CI repo 位元組一致地複製。
 # 用法：ai-fix-e2e-failure.sh <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>
 #
 # 必要 env：BASE_BRANCH（觸發 run 的分支，PR base）、RUN_URL、AI_FIX_REVIEWER、GH_TOKEN（只給 gh／git 用，不傳給 agent）、
 #   ANTHROPIC_FEDERATION_RULE_ID／ANTHROPIC_ORGANIZATION_ID／ANTHROPIC_SERVICE_ACCOUNT_ID（選填 ANTHROPIC_WORKSPACE_ID）、
 #   ACTIONS_ID_TOKEN_REQUEST_URL／ACTIONS_ID_TOKEN_REQUEST_TOKEN（runner 提供，workflow 需 id-token: write）
+# 回報 th-beacon（選填 env）：BEACON_BASE_URL、BEACON_SERVICE、BEACON_SECRET（缺任一則不回報、其餘照跑）；
+#   commit 作者：AI_FIX_APP_SLUG（預設 github-actions）、AI_FIX_APP_USER_ID（選填，組 noreply email）。
 # 選填 env：AI_FIX_MODEL（claude-opus-5-5）、AI_FIX_MAX_BUDGET_USD（5）、AI_FIX_MAX_TURNS（40）、AI_FIX_COOLDOWN_DAYS（7）、
 #   AI_FIX_MAX_FILES（20）、AI_FIX_MAX_LINES（600）、AI_FIX_DENY_PATHS（空白分隔，追加禁改 glob）、AI_FIX_DRY_RUN
 #
@@ -12,20 +14,24 @@
 #   絕不使用 ANTHROPIC_API_KEY（傳給 agent 的值固定為空字串）。--setting-sources user 會關掉目標 repo 的 hooks 與 .mcp.json，
 #   同時讓 CLAUDE.md 不自動載入，所以改以 --append-system-prompt-file 顯式附上。
 #
-# 結束狀態（stdout 印 STATUS=／COST_USD=／SUMMARY=）：pr_opened|no_fix|failed|ready。
-# 本檔（7a）止於 ready 或其他終態；一律 exit 0（參數／必要 env 錯誤為 exit 2）。
+# 結束狀態（stdout 印 STATUS=／COST_USD=／SUMMARY=）：pr_opened|no_fix|failed（乾跑為 ready）。
+# 一律 exit 0（參數／必要 env 錯誤為 exit 2）；回報 th-beacon 失敗只印 warning，不改變 exit code。
 # 去重跳過（分支已有 open PR，或冷卻期內有未合併即關閉的 PR）＝不呼叫模型、不回報、不印 STATUS、exit 0。
-# 須在 repo 根目錄執行。agent 結束後的所有 git 指令一律走 g()（關掉 fsmonitor 與 hooks），7b 的 commit／push 也必須用 g()。
+# 乾跑（AI_FIX_DRY_RUN）：零請求（OIDC 除外）、零 push、零 gh pr create、不回報。
+# 須在 repo 根目錄執行。所有 git 指令一律走 g()（關掉 fsmonitor 與 hooks、隔絕全域設定）；push 另用 g_push() 顯式帶憑證。
 #
 # 防護（agent 只有讀寫檔工具，但能寫的不只追蹤檔）：
-#   - .git/config、.git/hooks、.git/info 等設定類檔案：agent 前後比對雜湊，不一致即 failed 並還原（先於任何 git 指令）。
 #   - 新出現的巢狀 .git、被 .gitignore 忽略的新檔：視為越界、failed，並只刪除這些新檔。
 #   - 殘餘限制：agent 執行前就存在的被忽略檔（如建置產物），其內容被改動無法便宜地偵測。
 #   - 寫入範圍從源頭限制：--allowedTools 只給 Edit(./**)（涵蓋 Write）、--disallowedTools 擋 .git、
 #     --settings 開 blockWrites／blockReadsOutsideWorkingDirectories；agent 的 HOME 是用完即丟的空目錄。
 #     （Read(**/.git/**) deny 未實測，待 CI 乾跑驗證）
 #   - 整棵 .git 樹（排除 objects/ 但含 objects/info/、index、logs/）在 agent 前後比對 manifest，不一致即 failed 並還原。
-#   - g() 隔絕全域／系統 git 設定（GIT_CONFIG_GLOBAL=/dev/null、GIT_CONFIG_NOSYSTEM=1）。
+#   - g() 隔絕全域／系統 git 設定（GIT_CONFIG_GLOBAL=/dev/null、GIT_CONFIG_NOSYSTEM=1）；因此 gh auth setup-git 的
+#     credential helper 不生效，push 時以 g_push() 用 -c credential.*.helper 從環境變數 GH_TOKEN 取權杖（不進 argv／檔案）。
+#   - agent 與 log 的文字全是不可信資料：進 commit／PR 標題前單行化並限長；進 PR 描述前逐行加 "> " 引用前綴、
+#     中和 @ 提及與 HTML 標籤，使其無法偽造描述的固定段落或 @ 到人；回報 body 一律以 jq --arg 組成。
+#   - 快照前確認 .git 是真實目錄（非符號連結、非 gitfile）且 git 回報的 gitdir 就是 $PWD/.git。
 #   - 殘餘限制：cwd 內任何受版控檔案 agent 都讀得到；改動後腳本不執行 repo 內任何程式；
 #     檔案型符號連結與硬連結未測。
 # 相容 bash 3.2（macOS）與 bash 5（ubuntu）。JWT 只存在 0600 暫存檔，不印出。
@@ -77,31 +83,106 @@ STATUS=""
 SUMMARY=""
 COST_USD=""
 RESULT_JSON=""
+PR_URL=""
+DRY_RUN="${AI_FIX_DRY_RUN:-}"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ai-fix.XXXXXX")" || exit 0
 chmod 700 "$WORK"
 umask 077
 trap 'rm -rf "$WORK"' EXIT
 
-# 終態：印結果並結束（回報由 7b 補）
 # agent 控制的字串輸出前先中和：換行改空白（不能偽造 STATUS= 行），:: 拆開（不能構成 workflow command）
 san() { printf '%s' "$1" | perl -0777 -pe 's/[\r\n]+/ /g; 1 while s/::/: :/'; }
+
+# 單行化（san）後依 UTF-16 code unit 截斷到 $1 以內（與伺服器 String.length 同單位，且不切壞多位元組字元）
+clip() { # $1=上限 $2=文字
+  san "$2" | CLIP_MAX="$1" perl -CS -0777 -pe '
+    my $max = $ENV{CLIP_MAX}; my $u = 0;
+    $u += (ord($_) > 0xFFFF ? 2 : 1) for split //, $_;
+    if ($u > $max) {
+      my ($o, $c) = ("", 0);
+      for my $ch (split //, $_) { my $w = ord($ch) > 0xFFFF ? 2 : 1; last if $c + $w > $max - 1; $o .= $ch; $c += $w }
+      $_ = $o . "\x{2026}";
+    }'
+}
+
+# 多行不可信文字 → PR 描述用引用區塊：CRLF 正規化、截斷、@ 與 < 後插入零寬空格、逐行加 "> "
+quote_block() { # $1=上限 $2=文字
+  printf '%s' "$2" | CLIP_MAX="$1" perl -CS -0777 -pe '
+    s/\r\n?/\n/g;
+    my $max = $ENV{CLIP_MAX}; my $u = 0;
+    $u += (ord($_) > 0xFFFF ? 2 : 1) for split //, $_;
+    if ($u > $max) {
+      my ($o, $c) = ("", 0);
+      for my $ch (split //, $_) { my $w = ord($ch) > 0xFFFF ? 2 : 1; last if $c + $w > $max - 1; $o .= $ch; $c += $w }
+      $_ = $o . "\x{2026}";
+    }
+    s/@/@\x{200B}/g; s/</<\x{200B}/g;
+    s/^/> /mg;'
+}
+
+# ---------- 回報 th-beacon（簽章同 diagnose-e2e-failure.sh；失敗只印 warning，永不改變 exit code）----------
+beacon_post() { # $1=路徑 $2=body
+  local f="$WORK/beacon.body" ts sig code
+  printf '%s' "$2" >"$f"
+  ts="$(date +%s)"
+  # 金鑰走環境變數給 perl，不進 argv
+  sig="$(printf '%s.%s' "$ts" "$2" | perl -MDigest::SHA=hmac_sha256_hex -0777 -ne 'print hmac_sha256_hex($_, $ENV{BEACON_SECRET})' 2>/dev/null)"
+  if [ -z "$sig" ]; then echo "ai-fix: warning: cannot sign beacon report for $1"; return 0; fi
+  code="$(curl -sS --max-time 10 -X POST "${BEACON_BASE_URL%/}$1" \
+    -H 'Content-Type: application/json' \
+    -H "X-Beacon-Service: $BEACON_SERVICE" \
+    -H "X-Beacon-Timestamp: $ts" \
+    -H "X-Beacon-Signature: sha256=$sig" \
+    --data-binary @"$f" -o /dev/null -w '%{http_code}' 2>/dev/null)" || code="000"
+  case "$code" in
+    2??) echo "ai-fix: beacon report $1 ok (HTTP $code)" ;;
+    *) echo "ai-fix: warning: beacon report $1 failed (HTTP $code)" ;;
+  esac
+  return 0
+}
+report_beacon() {
+  [ -z "$DRY_RUN" ] || return 0
+  [ -n "${BEACON_BASE_URL:-}" ] && [ -n "${BEACON_SECRET:-}" ] || return 0
+  if [ -z "${BEACON_SERVICE:-}" ]; then echo "ai-fix: warning: BEACON_SERVICE not set, skip beacon report"; return 0; fi
+  local body
+  body="$(jq -nc --arg hb "$NAME" --arg st "$STATUS" --arg pr "$PR_URL" --arg sm "$(clip 500 "$SUMMARY")" --arg ru "$RUN_URL" \
+    '{heartbeat:$hb, status:$st} + (if $pr != "" then {prUrl:$pr} else {} end) + {summary:$sm, runUrl:$ru}')" \
+    || { echo "ai-fix: warning: cannot build beacon report"; return 0; }
+  beacon_post /api/ai-fix "$body"
+  # 費用只在 total_cost_usd 為 0 ≤ x < 1,000,000 的數字時回報（失敗與 no_fix 也算，錢已經花了）
+  body="$(jq -nc --arg model "$MODEL" --argjson c "${COST_USD:-null}" \
+    'select($c | type == "number" and . >= 0 and . < 1000000) | {source:"ci_pr", model:$model[0:100], costUsd:$c}' 2>/dev/null)" || body=""
+  if [ -n "$body" ]; then beacon_post /api/ai-usage "$body"; fi
+  return 0
+}
+
+# 終態：回報（若啟用）後印結果並結束
 terminal() { # $1=STATUS $2=SUMMARY
   STATUS="$1"
   SUMMARY="$2"
   echo "ai-fix: $(san "$SUMMARY")"
+  report_beacon
   echo "STATUS=$STATUS"
   echo "COST_USD=$(san "$COST_USD")"
   echo "SUMMARY=$(san "$SUMMARY")"
   exit 0
 }
 
-# 本腳本（7a）所有 git 呼叫都走這裡：關掉 fsmonitor 與 hooks，並隔絕全域／系統設定
+# 本腳本所有 git 呼叫都走這裡：關掉 fsmonitor 與 hooks，並隔絕全域／系統設定
 # （全域設定可能含 filter／textconv／fsmonitor 等會執行外部指令的項目）。
-# 約定：7b 的 push 需要憑證時，另寫一個「顯式帶入憑證」的包裝，不靠全域設定；不要放寬這個 g()。
+# 約定：push 需要憑證時用下方 g_push()（建立在 g() 之上），不靠全域設定；不要放寬這個 g()。
 g() {
   GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
     git -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"
+}
+# 只給 push 用：先清空 helper 清單，再只對 GitHub 主機掛一個從環境變數 GH_TOKEN 取權杖的 helper。
+# 單引號內的 ${GH_TOKEN} 不在此展開，由 git 啟動的 sh 在 helper 執行時才展開：權杖不進 argv、不寫入任何檔案。
+GIT_SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+case "$GIT_SERVER" in https://*[!A-Za-z0-9.:-]*|https://) GIT_SERVER="https://github.com" ;; esac
+g_push() {
+  GIT_TERMINAL_PROMPT=0 g -c credential.helper= \
+    -c "credential.${GIT_SERVER}.helper=!f() { echo username=x-access-token; echo \"password=\${GH_TOKEN}\"; }; f" "$@"
 }
 
 # ---------- 工作樹乾淨檢查（不乾淨時不動任何檔案）----------
@@ -258,6 +339,10 @@ unset JWT
 
 # ---------- agent 前快照：git 設定類檔案、巢狀 .git、被忽略檔 ----------
 GITDIR="$(g rev-parse --absolute-git-dir 2>/dev/null)" || terminal failed "cannot locate git dir"
+# .git 必須是真實目錄（非符號連結、非 gitfile／worktree），且就是 $PWD/.git；否則快照與還原的對象不可信
+if [ ! -d .git ] || [ -L .git ] || [ "$GITDIR" != "$(pwd -P)/.git" ]; then
+  terminal failed ".git is not a plain directory at repository root"
+fi
 SNAP="$WORK/gitsnap"
 # .git 樹 manifest（路徑＋類型＋雜湊；符號連結記連結目標、不跟隨）。排除 objects/（但含 objects/info/）、index、logs/。
 git_meta_manifest() {
@@ -269,14 +354,16 @@ git_meta_manifest() {
       else printf '%s %s\n' "$($HASHER "$f" 2>/dev/null | awk '{print $1}')" "$f"; fi
     done )
 }
-# .git 頂層項目（排除 objects／logs／index）＋ objects/info
-git_top_entries() { ( cd "$GITDIR" && ls -A ) | grep -v -x -e objects -e logs -e index; }
+# $1 目錄的頂層項目（排除 objects／logs／index），NUL 分隔、輸出完整路徑（檔名含換行也安全）
+top_entries0() { find "$1" -mindepth 1 -maxdepth 1 ! -name objects ! -name logs ! -name index -print0; }
 restore_git_meta() {
-  git_top_entries | while IFS= read -r e; do rm -rf "${GITDIR:?}/$e"; done
+  local p
+  top_entries0 "$GITDIR" | while IFS= read -r -d '' p; do
+    [ -n "$p" ] && [ "$p" != "$GITDIR" ] && rm -rf -- "$p"
+  done
   rm -rf "${GITDIR:?}/objects/info"
-  for e in $(ls -A "$SNAP"); do
-    [ "$e" = "objects" ] && continue
-    cp -RPp "$SNAP/$e" "$GITDIR/$e"
+  top_entries0 "$SNAP" | while IFS= read -r -d '' p; do
+    [ -n "$p" ] && cp -RPp "$p" "$GITDIR/${p##*/}"
   done
   if [ -e "$SNAP/objects/info" ]; then mkdir -p "$GITDIR/objects"; cp -RPp "$SNAP/objects/info" "$GITDIR/objects/info"; fi
 }
@@ -284,7 +371,7 @@ list_nested_git() { find . -path ./.git -prune -o -name .git -print -prune 2>/de
 list_ignored() { g ls-files -o -i --exclude-standard -z 2>/dev/null | tr '\0' '\n' | LC_ALL=C sort; }
 
 mkdir -p "$SNAP"
-git_top_entries | while IFS= read -r e; do cp -RPp "$GITDIR/$e" "$SNAP/$e"; done
+top_entries0 "$GITDIR" | while IFS= read -r -d '' p; do cp -RPp "$p" "$SNAP/${p##*/}"; done
 if [ -e "$GITDIR/objects/info" ]; then mkdir -p "$SNAP/objects"; cp -RPp "$GITDIR/objects/info" "$SNAP/objects/info"; fi
 HEAD_BEFORE="$(g rev-parse HEAD 2>/dev/null)" || terminal failed "cannot resolve HEAD"
 git_meta_manifest >"$WORK/meta.before"
@@ -417,28 +504,39 @@ if [ "$FILE_COUNT" -gt "$MAX_FILES" ] || [ "$LINE_COUNT" -gt "$MAX_LINES" ]; the
   terminal failed "change too large: $FILE_COUNT files (max $MAX_FILES), $LINE_COUNT lines (max $MAX_LINES)"
 fi
 
-# ---------- PR 標題與描述（7b 開 PR 時沿用）----------
+# ---------- PR 標題與描述 ----------
 case "$TARGET" in
   test) TARGET_LABEL="測試" ;;
   app) TARGET_LABEL="App" ;;
-  *) TARGET_LABEL="測試與 App" ;;
+  *) TARGET_LABEL="兩者" ;;
 esac
-PR_TITLE_FULL="[AI fix] $PR_TITLE"
-PR_BODY_FILE="$WORK/pr-body.md"
-{
-  printf '## 失敗的 run\n%s\n\n' "$RUN_URL"
-  printf '## AI 判定原因\n%s\n\n' "$(jq -r '.reason // "（無）"' "$DIAG_FILE" 2>/dev/null)"
-  printf '## 根因\n%s\n\n' "$ROOT_CAUSE"
-  printf '## 改了什麼（目標：%s）\n%s\n\n' "$TARGET_LABEL" "$CHANGE_SUMMARY"
-  printf '## 驗證\n**未經 E2E 驗證，僅由 PR CI 驗證 build 與單元測試。**\n\n驗證建議：%s\n\n' "$VERIFY_NOTES"
-  printf '## 本次花費\nUS$%s\n' "${COST_USD:-?}"
-} >"$PR_BODY_FILE"
+TITLE_CLIPPED="$(clip 120 "$PR_TITLE")"
+[ -n "$TITLE_CLIPPED" ] || TITLE_CLIPPED="E2E 修復"
+PR_TITLE_FULL="[AI fix] $TITLE_CLIPPED"
+REASON_TEXT="$(jq -r '.reason // "（無）"' "$DIAG_FILE" 2>/dev/null)" || REASON_TEXT="（無）"
+[ -n "$REASON_TEXT" ] || REASON_TEXT="（無）"
 
-SUMMARY="$CHANGE_SUMMARY"
+# $1=非空時在描述開頭加上 @ 該帳號的審查請求（自動指派 reviewer 失敗時用）。固定段落由本函式輸出，
+# agent／判讀文字一律經 quote_block（逐行 "> " 前綴＋中和 @、<），無法偽造標題或提及他人。
+build_pr_body() {
+  {
+    if [ -n "$1" ]; then printf '請 @%s 審查（自動指派 reviewer 失敗）。\n\n' "$1"; fi
+    printf '## 失敗的 run\n%s\n\n' "$RUN_URL"
+    printf '## AI 判定原因\n%s\n\n' "$(quote_block 2000 "$REASON_TEXT")"
+    printf '## 根因\n%s\n\n' "$(quote_block 4000 "$ROOT_CAUSE")"
+    printf '## 改了什麼（目標：%s）\n%s\n\n' "$TARGET_LABEL" "$(quote_block 4000 "$CHANGE_SUMMARY")"
+    printf '## 驗證\n**未經 E2E 驗證，僅由 PR CI 驗證 build 與單元測試。**\n\n驗證建議：\n%s\n\n' "$(quote_block 4000 "$VERIFY_NOTES")"
+    printf '## 本次花費\nUS$%s\n' "${COST_USD:-?}"
+  } >"$PR_BODY_FILE"
+}
+PR_BODY_FILE="$WORK/pr-body.md"
+build_pr_body ""
+
+SUMMARY="$(clip 450 "$CHANGE_SUMMARY")；改的是$TARGET_LABEL"
 STATUS="ready"
 
 # 輸出前一律中和：diff 與描述每行加固定前綴，標題／摘要經 san()，任何一行都不可能以 :: 或 STATUS= 開頭
-if [ -n "${AI_FIX_DRY_RUN:-}" ]; then
+if [ -n "$DRY_RUN" ]; then
   echo "===== diff ====="
   g diff --cached | sed 's/^/| /'
   echo "===== PR 標題 ====="
@@ -454,9 +552,68 @@ if [ -n "${AI_FIX_DRY_RUN:-}" ]; then
   exit 0
 fi
 
-# ---------- 7b 接續點：commit、推送、開 PR、回報 th-beacon（git 指令一律走 g()）----------
+# ---------- commit ----------
 echo "ai-fix: $FILE_COUNT files, $LINE_COUNT lines passed boundary check"
-echo "STATUS=$STATUS"
-echo "COST_USD=$(san "$COST_USD")"
-echo "SUMMARY=$(san "$SUMMARY")"
-exit 0
+SLUG="${AI_FIX_APP_SLUG:-github-actions}"
+case "$SLUG" in ''|*[!A-Za-z0-9-]*) SLUG="github-actions" ;; esac
+case "${AI_FIX_APP_USER_ID:-}" in
+  ''|*[!0-9]*) COMMIT_EMAIL="${SLUG}[bot]@users.noreply.github.com" ;;
+  *) COMMIT_EMAIL="${AI_FIX_APP_USER_ID}+${SLUG}[bot]@users.noreply.github.com" ;;
+esac
+head_still_ok() {
+  [ "$(g symbolic-ref HEAD 2>/dev/null)" = "refs/heads/$BRANCH" ]
+}
+if ! head_still_ok || [ "$(g rev-parse HEAD 2>/dev/null)" != "$HEAD_BEFORE" ]; then
+  discard_changes
+  terminal failed "HEAD changed before commit"
+fi
+g -c "user.name=${SLUG}[bot]" -c "user.email=$COMMIT_EMAIL" -c commit.gpgsign=false \
+  commit -q -m "$PR_TITLE_FULL" -m "$(clip 500 "$CHANGE_SUMMARY")" >/dev/null 2>"$WORK/commit.err" \
+  || { discard_changes; terminal failed "git commit failed"; }
+# commit 後：仍在該分支，且新 commit 的唯一父 commit 就是 agent 執行前記下的 sha
+NEW_PARENTS="$(g rev-list --parents -n 1 HEAD 2>/dev/null)"
+if ! head_still_ok || [ "$(printf '%s' "$NEW_PARENTS" | awk '{ print NF }')" != "2" ] \
+  || [ "$(printf '%s' "$NEW_PARENTS" | awk '{ print $2 }')" != "$HEAD_BEFORE" ]; then
+  terminal failed "commit parent mismatch, not pushed"
+fi
+
+# ---------- push（強制推：同名舊分支已有已關閉的 PR 時需要覆蓋）----------
+if ! g_push push --force -q origin "HEAD:refs/heads/$BRANCH" >"$WORK/push.out" 2>&1; then
+  head -n 20 "$WORK/push.out" | sed 's/^/| /'
+  terminal failed "git push failed"
+fi
+
+# ---------- 開 PR ----------
+PR_OUT="$WORK/pr-create.out"
+# gh 也隔絕全域／系統 git 設定（它只需要 GH_TOKEN 與 repo 的 remote）
+gh_create() { # $@=額外旗標
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 gh pr create --base "$BASE_BRANCH" --head "$BRANCH" \
+    --title "$PR_TITLE_FULL" --body-file "$PR_BODY_FILE" --label ai-fix "$@" >"$PR_OUT" 2>"$WORK/pr-create.err"
+}
+pr_url_from() { # stdin → 最後一個符合白名單的網址
+  grep -E '^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[0-9]+$' | tail -n 1
+}
+CREATED=""
+if gh_create --reviewer "$AI_FIX_REVIEWER"; then
+  CREATED=1
+else
+  # reviewer 無法指派（例如非 collaborator）→ 不帶 --reviewer 重試，並在描述 @ 該帳號
+  MENTION=""
+  case "$AI_FIX_REVIEWER" in *[!A-Za-z0-9/_-]*) ;; *) MENTION="$AI_FIX_REVIEWER" ;; esac
+  build_pr_body "$MENTION"
+  if gh_create; then CREATED=1; fi
+fi
+if [ -n "$CREATED" ]; then
+  PR_URL="$(pr_url_from <"$PR_OUT")"
+else
+  # 第一次可能其實已建好 PR、只是後續步驟（如指派）失敗；查一次同分支的 open PR
+  PR_URL="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null | pr_url_from)"
+fi
+if [ -z "$PR_URL" ]; then
+  if [ -n "$CREATED" ]; then
+    terminal failed "分支已推送（${BRANCH}），PR 已建立但無法取得其網址，請到 GitHub 確認"
+  fi
+  terminal failed "分支已推送（${BRANCH}），但 gh pr create 失敗，請手動開 PR"
+fi
+echo "ai-fix: PR opened $PR_URL"
+terminal pr_opened "$SUMMARY"
