@@ -3,6 +3,8 @@
 日期：2026-11-13
 狀態：已核准（2026-11-13）
 前置 spec：`2026-10-23-e2e-failure-ai-triage-design.md`（CI 端 AI 判讀）、`2026-11-11-ai-stats-design.md`（`ci_pr` 用量來源已預留）
+變更紀錄：
+- 2026-11-16：腳本分發方式由「複製進各 App repo」改為「workflow 執行時 checkout th-beacon 的釘選 commit」（見 §3、§5.1、§5.5、§9）。原因：複製品已實際漂移（兩個 App repo 的 `diagnose-e2e-failure.sh` 與正本各差 23 行），且修復腳本的安全檢查不宜各 repo 版本不一。
 
 > 本 spec 推翻 `2026-10-23-e2e-failure-ai-triage-design.md` 中「不自動修 CI、不開 PR」的非目標。「th-beacon 伺服器不持有 Anthropic key 或 GitHub token」這條**維持不變**。
 
@@ -10,7 +12,7 @@
 
 Trustnel iOS／Android 的每日 E2E 失敗時，現在 AI 只給「判定原因＋修正建議」，負責人仍要自己讀 log、找檔案、動手改。本功能讓 AI 在判讀為「需要改程式碼」時直接開出 PR，負責人的工作從「修」變成「審」。
 
-先做 `trustnel/trustnel-viewer-android` 與 `trustnel/trustnel-viewer-ios`；設計上以共用腳本實作，之後其他 repo 可照同一套接入。
+先做 `trustnel/trustnel-viewer-android` 與 `trustnel/trustnel-viewer-ios`；設計上以 th-beacon 持有的共用腳本實作（各 repo 執行時 checkout 釘選版本，不複製），之後其他 repo 可照同一套接入。
 
 ## 2. 目標／非目標／反目標
 
@@ -42,7 +44,7 @@ Trustnel iOS／Android 的每日 E2E 失敗時，現在 AI 只給「判定原因
 - th-beacon 部署在 Vercel（Hobby），無法執行 agent；agent 必須跑在 CI。
 - iOS E2E 跑在自架 M2 runner（不重置）；不得在其上以寫入權限執行 agent。
 - `src/core/**` 純函式約束照舊；schema 變更走 `supabase migration new` → `db push` → `db:types`。
-- 腳本正本在 th-beacon `scripts/`，Trustnel 兩個 repo 持有的是**複製的實體檔**（非 symlink）；改正本後要同步複製。
+- 腳本只存在於 th-beacon `scripts/`；Trustnel 兩個 repo 在 workflow 執行時以 deploy key checkout 私有 repo `thbeacon789/th-beacon` 的**釘選 commit**（只取 `scripts/`），不持有複製品。th-beacon 是私有 repo 且與 App repo 不同擁有者，內建 `GITHUB_TOKEN` 讀不到，故只能用 deploy key（SSH）。checkout 的 `path` 必須在 `$GITHUB_WORKSPACE` 之內。
 - 判讀腳本既有的遮蔽規則（`DIAGNOSE_REDACT_VARS`）必須同樣套用在餵給修復 agent 的 log 上。
 
 ## 4. 考慮過的做法
@@ -75,14 +77,16 @@ Trustnel iOS／Android 的每日 E2E 失敗時，現在 AI 只給「判定原因
 ```
 e2e-prod.yml
 ├─ job: playback-smoke（既有，權限不變）
-│    跑 E2E → Diagnose（輸出多一個 needsCodeChange）→ Report heartbeat → 上傳產物
+│    checkout App（根目錄）→ checkout th-beacon 釘選版本到 .beacon/（先 App 後 th-beacon）
+│    跑 E2E → Diagnose（./.beacon/scripts/，輸出多一個 needsCodeChange）→ Report heartbeat（./.beacon/scripts/）→ 上傳產物
 │    新增：job output `needs_fix`；上傳 artifact `ai-fix-input`（遮蔽後的 log ＋ diagnosis.json）
 │
 └─ job: ai-fix（新增，ubuntu-latest）
      if: always() && needs.playback-smoke.outputs.needs_fix == 'true'
      permissions: id-token: write, contents: read
-     checkout → 下載 ai-fix-input → 換 GitHub App 權杖 → 安裝 Claude Code CLI（釘版本）
-     → scripts/ai-fix-e2e-failure.sh
+     checkout App 到 app/ ＋ checkout th-beacon 釘選版本到 beacon/（並列）→ 下載 ai-fix-input（到 runner.temp）
+     → 換 GitHub App 權杖 → 安裝 Claude Code CLI（釘版本）
+     → 在 working-directory: app 下執行 "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh"
           1. 已有未關閉的 AI PR → 結束（不回報）
           2. claude -p 改檔（只有讀檔／改檔工具）
           3. 檢查改動是否越界
@@ -92,6 +96,12 @@ e2e-prod.yml
 
 `needs_fix` 為 true 的條件：E2E 失敗、`diagnosis.json` 有效、`category == "app"`、`needsCodeChange == true`。任何一項不成立，`ai-fix` job 不啟動。
 
+- **腳本取得方式與目錄配置（2026-11-16 定案）**：
+  - 兩個 job 都以 `actions/checkout@v4` checkout `thbeacon789/th-beacon`：`ssh-key: ${{ secrets.BEACON_SCRIPTS_DEPLOY_KEY }}`、`ref: <完整 40 碼 commit SHA>`、`sparse-checkout: scripts`、`fetch-depth: 1`、`persist-credentials: false`。
+  - `playback-smoke`（Android 為 `ubuntu-latest`，iOS 為自架 `[self-hosted, macOS, ARM64, m2]`）：App 維持在 workspace 根目錄，既有建置步驟（`./gradlew`、`phone/build/...`、`./scripts/e2e.sh` 等）一律不改；th-beacon checkout 到 `.beacon/`，**順序必須先 App 後 th-beacon**（之後若再對根目錄 checkout，`clean` 會把 `.beacon/` 連同巢狀 repo 一起刪掉）；腳本路徑為 `./.beacon/scripts/<name>.sh`。App 的 checkout 加 `persist-credentials: false`。此 job 沒有「工作樹乾淨」要求也沒有 agent，`.beacon/` 以未追蹤目錄存在無妨。
+  - `ai-fix`（兩個平台都跑 `ubuntu-latest`）：App checkout 到 `app/`（`ref: ${{ github.sha }}`、`persist-credentials: false`），th-beacon checkout 到 `beacon/`，兩者並列；執行腳本的步驟設 `working-directory: app`，以 `"$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh"` 呼叫；`known-env-issues` 檔路徑相對於 `app/`；artifact 下載到 `${{ runner.temp }}/ai-fix-input`。**理由**：腳本要求 cwd 是 App repo 根且工作樹乾淨（巢狀的 `.beacon/` 會讓它判為不乾淨），且 agent 被限制在 cwd（`app/`）內，碰不到位於 `app/` 之外、正在執行的腳本。
+  - `path` 必須在 workspace 內，所以 th-beacon 不可能放在 App 工作樹之外；這就是 `ai-fix` 必須用「並列＋`working-directory`」而非巢狀的原因。
+- **版本釘選與更新**：`ref` 一律寫完整 commit SHA（寫在 workflow 檔字面值，不放 repo variable，讓變更進 PR diff），且該 commit 必須已存在於 th-beacon 的遠端（所以接入前 th-beacon 須先 push）。更新程序：th-beacon 改腳本並 push → 人工在兩個 App repo 把 `ref` 改成新 SHA。`.github/**` 在 AI 禁改清單內，AI 改不到這個 SHA。
 - `playback-smoke` 在此情境必為失敗，故 `ai-fix` 的 `if` 必須帶 `always()`，否則會被隱含的 `success()` 跳過。
 - 設定 `needs_fix` 的 step 放在 Diagnose 之後，條件與 Diagnose 相同（`failure() || cancelled()`），且不得受後續 step（回報心跳、上傳產物）失敗影響。
 - **基底分支＝觸發該次 run 的分支**（`github.ref_name`），不是寫死預設分支：`ai-fix` checkout 該次 run 的 commit，PR 的 base 也指向同一分支。排程執行時即為 `main`；手動在測試分支觸發時，PR 開回測試分支（前提：使用者已為該測試分支另建一條臨時 federation rule，subject prefix 指向該分支；否則該分支上的 job 在換發權杖時會 401，見 §6 實測結論。），不會把測試分支的其他 commit 夾帶進對 `main` 的 PR。注意兩個 repo 的 `ci.yml` 只對 base 為 `main` 的 PR 觸發，測試分支上的 PR 不會自動跑 CI。
@@ -198,19 +208,20 @@ claude -p "<prompt>" \
 
 ### 5.5 Trustnel 兩個 repo 的變更
 
-- 複製更新後的 `diagnose-e2e-failure.sh` 與新的 `ai-fix-e2e-failure.sh`。
-- `e2e-prod.yml`：`playback-smoke` 新增 job output 與 `ai-fix-input` artifact 上傳；新增 `ai-fix` job（§5.1）。
-- Repo 設定（需使用者操作，計畫中附逐步說明）：
-  - 在 `trustnel` 組織建立 GitHub App（Repository permissions：Contents: Read and write、Pull requests: Read and write；不勾 Workflows），安裝到兩個 repo。
-  - Secrets：`AI_FIX_APP_CLIENT_ID`、`AI_FIX_APP_PRIVATE_KEY`。
-  - Variables：`AI_FIX_REVIEWER`（負責人 GitHub 帳號，須有該 repo 寫入權限）。
-  - 建立 label `ai-fix`。
-  - 確認 Anthropic WIF 的 federation rule 允許新 job 換權杖（若規則有限定 job／workflow 條件）。
+- **移除複製品**：App repo `scripts/` 內來自 th-beacon 的 `diagnose-e2e-failure.sh` 與 `heartbeat-to-beacon.sh` 在接入時刪除，workflow 改引用 checkout 出來的版本（`./.beacon/scripts/...`）。App repo 自己的腳本（例如 `scripts/e2e.sh`、`ci-e2e-run.sh`、`logcat-focus.sh`）不動。換成 th-beacon 版 diagnose 後，診斷 JSON 會多出 `needsCodeChange`；伺服器逐欄位重組並丟棄，不影響心跳接收（§5.2）。
+- `e2e-prod.yml`：兩個 checkout 步驟（§5.1 的目錄配置）；`playback-smoke` 新增 job output 與 `ai-fix-input` artifact 上傳；新增 `ai-fix` job（§5.1）；Diagnose／Report heartbeat 改用 `.beacon/` 路徑。
+- **已完成的前置條件（使用者於 2026-11-16 完成設定；同時保留作為日後新專案接入的操作清單）**：
+  - th-beacon（`thbeacon789/th-beacon`）上為每個 App repo 各加一把**唯讀** deploy key（`trustnel-viewer-android`、`trustnel-viewer-ios`）；私鑰存入對應 App repo 的 secret `BEACON_SCRIPTS_DEPLOY_KEY`。deploy key 只對單一 repo 有效、不可跨 repo 重用。
+  - GitHub App `trustnel-ai-fix` 已安裝到兩個 App repo（Repository permissions：Contents: Read and write、Pull requests: Read and write；不含 Workflows）。
+  - 兩個 App repo 的 secrets：`BEACON_SCRIPTS_DEPLOY_KEY`、`AI_FIX_APP_CLIENT_ID`、`AI_FIX_APP_PRIVATE_KEY`；variable `AI_FIX_REVIEWER`（值為 `trustnel`，須有該 repo 寫入權限）；label `ai-fix`。
+  - Anthropic WIF 的 federation rule 維持只允許 `refs/heads/main`，**不放寬**（見 §6 實測結論）。
+- 尚待使用者操作：接入前 th-beacon 須先 push（讓釘選的 SHA 存在於遠端），接入後須將 App repo 的 `main` 推上去才能驗收（federation rule 只允許 main）；兩者皆須使用者明確同意，見計畫 Task 11。
 
 ### 5.6 文件
 
 - `docs/api.md` 新增 §8 `POST /api/ai-fix`；§3 心跳的 `diagnosis` 說明補 `needsCodeChange`（伺服器忽略）。
-- `skills/onboarding-th-beacon/SKILL.md` 補「AI 修復 PR」的選用接入步驟。
+- `skills/onboarding-th-beacon/SKILL.md` 補「AI 修復 PR」的選用接入步驟，並把既有的「複製 script」步驟改為「執行時 checkout th-beacon 釘選版本」（deploy key 建立、secret、workflow 片段、SHA 更新程序）。
+- `scripts/diagnose-e2e-failure.sh`、`scripts/ai-fix-e2e-failure.sh` 開頭「各 CI repo 位元組一致地複製」的註解改為「各 CI repo 於執行時 checkout 釘選版本」；`CLAUDE.md` 的「接入後腳本改動需同步複製」改為釘選 SHA 的說法。
 - `2026-10-23-e2e-failure-ai-triage-design.md` 的非目標加註指向本 spec；`CLAUDE.md` 狀態段更新。
 
 ## 6. `claude -p` 的 Anthropic 認證接法——計畫第一步必須先做實驗
@@ -272,7 +283,7 @@ claude -p "<prompt>" \
 
 - th-beacon：payload 驗證與 `prUrl` 驗證的單元測試；handler 測試（驗簽、找不到 issue、三種 status、重複 `prUrl` 不重發通知、webhook 模式不通知）；Store 的 memory 與 supabase 實作；`pnpm typecheck`、`pnpm test` 通過。
 - 腳本：沿用 `tests/scripts/helpers.ts` 的做法，以 PATH 上的假 `claude`／`gh`／`git` 與本機 fake server 測試——已有 open PR 時不呼叫模型、越界改動被丟棄並回報 `failed`、`fixed=false` 回報 `no_fix`、成功時回報內容與 HMAC 正確、乾跑不產生任何外部呼叫、agent 行程拿不到 GitHub 權杖。
-- 實機驗收（Android 先行，通過後再接 iOS）：
+- 實機驗收（Android 先行，通過後再接 iOS）。**前提**：federation rule 只允許 `refs/heads/main`，所以必須在接入已推上 App repo 的 `main` 之後進行（含 th-beacon 先 push、workflow 內 SHA 已存在於遠端）；兩次 push 都需使用者明確同意。以下項目「須在 CI 實跑才能確認」的逐項判定標準見計畫 Task 11 Step 2（deploy key 讀取、`fetch-depth: 1`＋SHA＋ssh-key＋sparse-checkout 組合、`.beacon/` 不干擾建置、自架 runner 金鑰清理、`persist-credentials: false` 下以 App 權杖 push、空 HOME 下 WIF、`Read(**/.git/**)` deny、opus＋`--json-schema`＋`--append-system-prompt-file` 與權限旗標組合、無 `ai-fix` label 時 `gh pr create` 失敗）。這些在實跑前一律視為**未驗證**：
   1. 以乾跑模式手動觸發，確認 diff 與 PR 描述合理。
   2. 【須先由使用者決定路徑】路徑 A：使用者先為測試分支另建臨時 federation rule（subject prefix 指向該分支），之後在測試分支故意改壞一個 selector，於該分支手動觸發 E2E，確認：告警先到、PR 開回該測試分支且指派正確、diff 只含 AI 的改動、Discord 討論串出現 PR 訊息、issue 頁顯示連結、`/ai-stats` 出現 `ci_pr` 花費。路徑 B（不另建規則）：改為在 `main` 上以 `ai_fix_dry_run` 手動觸發，確認流程接線；再以第一個真實失敗確認完整開 PR 流程。不得為了驗收在 `main` 上故意改壞程式。採哪條路徑於實機驗收前由使用者決定；路徑 B 下第 3、4 步同樣待第一個真實失敗後再做。
   3. 不合併該 PR 再觸發一次，確認不會開第二個 PR、不呼叫模型。
@@ -289,6 +300,9 @@ claude -p "<prompt>" \
 
 ## 9. 已知取捨
 
+- **釘選 SHA 需人工更新**：th-beacon 改腳本後，兩個 App repo 的 `ref` 不會自動跟進（Dependabot 只管 `uses:`，不管 `ref:` 字串；Renovate 自訂 regex 未驗證）；忘了更新就繼續跑舊腳本。AI 改不到這個 SHA（`.github/**` 在禁改清單內）。被釘的 commit 必須維持可從 th-beacon 的某個 ref 到達，th-beacon 對該分支 force-push 或刪除可能使它失效。
+- **th-beacon 原始碼會出現在自架 runner 上**：iOS 的 `playback-smoke` 跑在自架 M2，job 期間 `.beacon/scripts/` 與 deploy key 暫存檔（`$RUNNER_TEMP/<uuid>`）都在該機器上；官方文件明載自架 runner 不保證乾淨環境。緩解：唯讀 deploy key、`persist-credentials: false`（不把 `core.sshCommand` 寫進 `.git/config`）、checkout 的 post 步驟會刪金鑰檔；runner 被強殺時 post 步驟不保證執行，殘留是否會在下個 job 開始時被清除未確認（待 CI 驗證）。
+- **deploy key 不過期**：沒有到期日、無 passphrase、不與組織成員資格綁定，輪替只能靠人工；GitHub 文件建議在需要時改用 GitHub App（短效權杖）。目前先接受。
 - 問題持續未修且每次都修不成時，每天會花一次修復費用（上限 `AI_FIX_MAX_BUDGET_USD`）。CI 端沒有跨 run 的狀態可記「上次修不成」，先接受；若花費統計顯示偏高再處理。
 - PR 未經 E2E 驗證。負責人審核時需自行判斷，PR 描述會明示。
 - **iOS 的 AI PR 照常自動觸發 `ci.yml`（使用者決定）**，而 iOS 的 `ci.yml` 跑在不重置的自架 M2 上：AI 產出的 Swift 程式碼（含測試）會在負責人審核前就在該機器上被編譯與執行。已評估過「`ai-fix/*` 分支跳過自動 CI、審後手動觸發」與「iOS 先不接」，使用者選擇接受此風險以換取省事。緩解只有兩項：build 設定檔在禁改清單內、agent 沒有 Bash 與網路工具。iOS 的 `ci.yml` 不需修改。
