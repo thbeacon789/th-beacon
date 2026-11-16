@@ -24,7 +24,7 @@ const HEALTH: Record<HealthStatus, { label: string; Icon: typeof HealthyIcon }> 
 const SEVERITIES = ['P0', 'P1', 'P2'] as const
 
 export default async function OverviewPage() {
-  // 與 requireUser 並行：middleware 已擋掉未登入者，這裡的白名單複查若不過會 redirect（throw），
+  // 與 requireUser 並行：proxy 已擋掉未登入者，這裡的白名單複查若不過會 redirect（throw），
   // 查到的資料不會被渲染。用一次多餘查詢換掉一次跨區往返。
   const [, overview] = await Promise.all([
     requireUser(),

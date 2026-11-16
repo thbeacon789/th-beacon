@@ -17,7 +17,7 @@ export async function createSessionClient() {
               cookieStore.set(name, value, options),
             )
           } catch {
-            // Server Component 內無法寫 cookie——由 middleware 負責刷新，安全忽略
+            // Server Component 內無法寫 cookie——由 proxy 負責刷新，安全忽略
           }
         },
       },

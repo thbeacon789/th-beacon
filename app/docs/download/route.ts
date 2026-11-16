@@ -2,7 +2,7 @@ import { requireUser } from '@/web/supabase-server'
 import { API_DOC_MARKDOWN } from '@/web/generated/api-doc'
 
 // 內容來自建置期產物（見 scripts/build-docs.mts），但仍需逐次驗證登入，
-// 故不做靜態化。middleware 已擋一層，這裡的 requireUser 是深度防禦：
+// 故不做靜態化。proxy 已擋一層，這裡的 requireUser 是深度防禦：
 // 白名單複查只在 requireUser 內做。
 export const dynamic = 'force-dynamic'
 
