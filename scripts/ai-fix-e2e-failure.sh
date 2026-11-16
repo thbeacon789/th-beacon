@@ -145,6 +145,13 @@ report_beacon() {
   [ -z "$DRY_RUN" ] || return 0
   [ -n "${BEACON_BASE_URL:-}" ] && [ -n "${BEACON_SECRET:-}" ] || return 0
   if [ -z "${BEACON_SERVICE:-}" ]; then echo "ai-fix: warning: BEACON_SERVICE not set, skip beacon report"; return 0; fi
+  # header 與 URL 的白名單：只接受英數 . _ -；https，或測試用的 http://127.0.0.1／localhost:<port>
+  if ! printf '%s' "$BEACON_SERVICE" | perl -0777 -ne 'exit(/\A[A-Za-z0-9._-]+\z/ ? 0 : 1)'; then
+    echo "ai-fix: warning: invalid BEACON_SERVICE, skip beacon report"; return 0
+  fi
+  if ! printf '%s' "$BEACON_BASE_URL" | perl -0777 -ne 'exit(/\A(?:https:\/\/[^\s]+|http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+\/?)\z/ ? 0 : 1)'; then
+    echo "ai-fix: warning: invalid BEACON_BASE_URL, skip beacon report"; return 0
+  fi
   local body
   body="$(jq -nc --arg hb "$NAME" --arg st "$STATUS" --arg pr "$PR_URL" --arg sm "$(clip 500 "$SUMMARY")" --arg ru "$RUN_URL" \
     '{heartbeat:$hb, status:$st} + (if $pr != "" then {prUrl:$pr} else {} end) + {summary:$sm, runUrl:$ru}')" \
@@ -177,11 +184,12 @@ g() {
     git -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"
 }
 # 只給 push 用：先清空 helper 清單，再只對 GitHub 主機掛一個從環境變數 GH_TOKEN 取權杖的 helper。
+# 同時清空 checkout 可能留在 http.<host>/.extraheader 的權杖（不依賴 persist-credentials: false）。
 # 單引號內的 ${GH_TOKEN} 不在此展開，由 git 啟動的 sh 在 helper 執行時才展開：權杖不進 argv、不寫入任何檔案。
 GIT_SERVER="${GITHUB_SERVER_URL:-https://github.com}"
-case "$GIT_SERVER" in https://*[!A-Za-z0-9.:-]*|https://) GIT_SERVER="https://github.com" ;; esac
+printf '%s' "$GIT_SERVER" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?$' || GIT_SERVER="https://github.com"
 g_push() {
-  GIT_TERMINAL_PROMPT=0 g -c credential.helper= \
+  GIT_TERMINAL_PROMPT=0 g -c credential.helper= -c "http.${GIT_SERVER}/.extraheader=" \
     -c "credential.${GIT_SERVER}.helper=!f() { echo username=x-access-token; echo \"password=\${GH_TOKEN}\"; }; f" "$@"
 }
 
@@ -189,6 +197,12 @@ g_push() {
 DIRTY="$(g status --porcelain 2>/dev/null)" || terminal failed "not a git repository"
 [ -z "$DIRTY" ] || terminal failed "working tree not clean before agent run"
 [ -z "$(g rev-parse --show-prefix 2>/dev/null)" ] || terminal failed "must run at repository root"
+# 在任何寫入型 git 操作與 OIDC 請求之前：.git 必須是真實目錄（非符號連結、非 gitfile／worktree），且就是 $PWD/.git；
+# 否則快照與還原的對象不可信
+GITDIR="$(g rev-parse --absolute-git-dir 2>/dev/null)" || terminal failed "cannot locate git dir"
+if [ ! -d .git ] || [ -L .git ] || [ "$GITDIR" != "$(pwd -P)/.git" ]; then
+  terminal failed ".git is not a plain directory at repository root"
+fi
 
 # ---------- 去重 ----------
 # 分支已有 open PR，或 AI_FIX_COOLDOWN_DAYS 天內有「未合併即關閉」的 PR（負責人已表態不要這個修法）→ 直接結束。
@@ -338,11 +352,6 @@ chmod 600 "$TOKEN_FILE"
 unset JWT
 
 # ---------- agent 前快照：git 設定類檔案、巢狀 .git、被忽略檔 ----------
-GITDIR="$(g rev-parse --absolute-git-dir 2>/dev/null)" || terminal failed "cannot locate git dir"
-# .git 必須是真實目錄（非符號連結、非 gitfile／worktree），且就是 $PWD/.git；否則快照與還原的對象不可信
-if [ ! -d .git ] || [ -L .git ] || [ "$GITDIR" != "$(pwd -P)/.git" ]; then
-  terminal failed ".git is not a plain directory at repository root"
-fi
 SNAP="$WORK/gitsnap"
 # .git 樹 manifest（路徑＋類型＋雜湊；符號連結記連結目標、不跟隨）。排除 objects/（但含 objects/info/）、index、logs/。
 git_meta_manifest() {
@@ -568,7 +577,7 @@ if ! head_still_ok || [ "$(g rev-parse HEAD 2>/dev/null)" != "$HEAD_BEFORE" ]; t
   terminal failed "HEAD changed before commit"
 fi
 g -c "user.name=${SLUG}[bot]" -c "user.email=$COMMIT_EMAIL" -c commit.gpgsign=false \
-  commit -q -m "$PR_TITLE_FULL" -m "$(clip 500 "$CHANGE_SUMMARY")" >/dev/null 2>"$WORK/commit.err" \
+  commit -q -m "$PR_TITLE_FULL" -m "摘要：$(clip 500 "$CHANGE_SUMMARY")" >/dev/null 2>"$WORK/commit.err" \
   || { discard_changes; terminal failed "git commit failed"; }
 # commit 後：仍在該分支，且新 commit 的唯一父 commit 就是 agent 執行前記下的 sha
 NEW_PARENTS="$(g rev-list --parents -n 1 HEAD 2>/dev/null)"
@@ -606,8 +615,20 @@ fi
 if [ -n "$CREATED" ]; then
   PR_URL="$(pr_url_from <"$PR_OUT")"
 else
-  # 第一次可能其實已建好 PR、只是後續步驟（如指派）失敗；查一次同分支的 open PR
-  PR_URL="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null | pr_url_from)"
+  # 第一次可能其實已建好 PR、只是後續步驟（如指派）失敗。只認「本次推送的 commit、同 repo、base 相符」的 open PR，
+  # 避免把並行的 run 或 fork 同名分支的 PR 當成自己的。
+  PR_URL="$(gh pr list --head "$BRANCH" --state open --json url,headRefOid,baseRefName,isCrossRepository 2>/dev/null \
+    | jq -r --arg sha "$(g rev-parse HEAD 2>/dev/null)" --arg base "$BASE_BRANCH" \
+      '[.[] | select(.headRefOid == $sha and .baseRefName == $base and (.isCrossRepository | not)) | .url][0] // empty' 2>/dev/null \
+    | pr_url_from)"
+  if [ -n "$PR_URL" ]; then
+    # 這條路徑的 PR 沒有指派 reviewer，補一則留言提及（失敗只警告）
+    case "$AI_FIX_REVIEWER" in
+      *[!A-Za-z0-9/_-]*) ;;
+      *) gh pr comment "$PR_URL" --body "@${AI_FIX_REVIEWER} 此 PR 由 AI 修復流程建立，但自動指派 reviewer 失敗，請協助審查。" >/dev/null 2>&1 \
+           || echo "ai-fix: warning: cannot comment on $PR_URL" ;;
+    esac
+  fi
 fi
 if [ -z "$PR_URL" ]; then
   if [ -n "$CREATED" ]; then

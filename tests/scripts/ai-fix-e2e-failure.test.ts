@@ -66,8 +66,12 @@ const rec = ${JSON.stringify(recDir)}
 const a = process.argv.slice(2)
 fs.appendFileSync(path.join(rec, 'gh.log'), JSON.stringify(a) + '\\n')
 const has = (f) => fs.existsSync(path.join(rec, f))
-if (a[0] === 'pr' && a[1] === 'list' && a.includes('--jq')) {
-  if (has('gh-existing-url')) process.stdout.write(fs.readFileSync(path.join(rec, 'gh-existing-url'), 'utf8'))
+if (a[0] === 'pr' && a[1] === 'list' && a.includes('url,headRefOid,baseRefName,isCrossRepository')) {
+  let t = has('gh-open-prs.json') ? fs.readFileSync(path.join(rec, 'gh-open-prs.json'), 'utf8') : '[]'
+  if (t.includes('@HEAD')) t = t.split('@HEAD').join(require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim())
+  process.stdout.write(t)
+} else if (a[0] === 'pr' && a[1] === 'comment') {
+  if (has('gh-fail-comment')) process.exit(1)
 } else if (a[0] === 'pr' && a[1] === 'list') process.stdout.write(fs.readFileSync(path.join(rec, 'gh-list.json'), 'utf8'))
 else if (a[0] === 'pr' && a[1] === 'create') {
   const n = fs.readdirSync(rec).filter((f) => f.startsWith('body-')).length
@@ -125,6 +129,15 @@ describe('ai-fix-e2e-failure.sh', () => {
       .sort()
       .map((f) => fs.readFileSync(path.join(rec, f), 'utf8'))
   const branchRef = 'refs/heads/ai-fix/android-e2e-prod'
+  // 同一個 it 內重跑前重置：回 main、刪遠端分支、清請求記錄
+  const fresh = () => {
+    sh(repo, 'switch', '-q', 'main')
+    sh(origin, 'update-ref', '-d', branchRef)
+    server!.requests.length = 0
+  }
+  const setOpenPrs = (v: Partial<{ url: string; headRefOid: string; baseRefName: string; isCrossRepository: boolean }>[]) =>
+    fs.writeFileSync(path.join(rec, 'gh-open-prs.json'), JSON.stringify(v))
+  const goodPr = { url: 'https://github.com/o/r/pull/77', headRefOid: '@HEAD', baseRefName: 'main', isCrossRepository: false }
 
   const baseEnv = (extra: Record<string, string> = {}): Record<string, string> => ({
     PATH: `${bin}:${process.env.PATH ?? ''}`,
@@ -796,10 +809,79 @@ describe('ai-fix-e2e-failure.sh', () => {
 
     it('gh pr create 失敗但 PR 其實已存在 → 取得該 PR 網址，視為 pr_opened', async () => {
       fs.writeFileSync(path.join(rec, 'gh-fail-all'), '')
-      fs.writeFileSync(path.join(rec, 'gh-existing-url'), 'https://github.com/o/r/pull/77\n')
+      setOpenPrs([goodPr])
       const r = await run(beacon())
       expect(r.stdout).toContain('STATUS=pr_opened')
       expect(JSON.parse(apiReqs()[0].body).prUrl).toBe('https://github.com/o/r/pull/77')
+    })
+
+    it.each([
+      ['headRefOid 不符', { headRefOid: '0'.repeat(40) }],
+      ['baseRefName 不符', { baseRefName: 'develop' }],
+      ['isCrossRepository=true', { isCrossRepository: true }],
+    ])('退路查到的 PR %s → failed，不當成 pr_opened', async (_n, override) => {
+      fs.writeFileSync(path.join(rec, 'gh-fail-all'), '')
+      setOpenPrs([{ ...goodPr, ...override }])
+      const r = await run(beacon())
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(r.stdout).toMatch(/SUMMARY=.*已推送/)
+      expect(JSON.parse(apiReqs()[0].body)).toMatchObject({ status: 'failed' })
+      expect(ghLog().some((a) => a[1] === 'comment')).toBe(false)
+    })
+
+    it('退路判成 pr_opened 時補一則 gh pr comment @ reviewer；comment 失敗只警告', async () => {
+      fs.writeFileSync(path.join(rec, 'gh-fail-all'), '')
+      setOpenPrs([goodPr])
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      const c = ghLog().find((a) => a[1] === 'comment')!
+      expect(c.slice(0, 3)).toEqual(['pr', 'comment', 'https://github.com/o/r/pull/77'])
+      expect(c[c.indexOf('--body') + 1]).toContain('@octocat')
+      fresh()
+      fs.writeFileSync(path.join(rec, 'gh-fail-comment'), '')
+      const r2 = await run()
+      expect(r2.stdout).toContain('STATUS=pr_opened')
+      expect(r2.stdout).toMatch(/warning/i)
+    })
+
+    it('M1：changeSummary 為 trailer 形狀時，commit 訊息不形成 trailer', async () => {
+      setPlan({
+        writes: { 'app/Login.kt': 'class Login2\n' },
+        stdout: successOut({ ...RESULT, changeSummary: 'Co-authored-by: Victim <v@x.com>\nSigned-off-by: X <x@x.com>' }),
+      })
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(sh(origin, 'log', '-1', '--format=%(trailers)', branchRef).trim()).toBe('')
+    })
+
+    it('M5：push 清空 checkout 可能留下的 extraheader，且只用白名單主機', async () => {
+      sh(repo, 'config', '--local', 'http.https://github.com/.extraheader', 'AUTHORIZATION: basic LEAKED')
+      const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim()
+      fs.writeFileSync(
+        path.join(bin, 'git'),
+        `#!/usr/bin/env node
+const { spawnSync } = require('child_process'), fs = require('fs'), path = require('path')
+const a = process.argv.slice(2)
+fs.appendFileSync(path.join(${JSON.stringify(rec)}, 'git.log'), JSON.stringify(a) + '\\n')
+const r = spawnSync(${JSON.stringify(real)}, a, { stdio: 'inherit' })
+process.exit(r.status === null ? 1 : r.status)
+`,
+        { mode: 0o755 },
+      )
+      const pushArgv = () =>
+        fs.readFileSync(path.join(rec, 'git.log'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[]).filter((x) => x.includes('push')).pop()!
+      await run()
+      let push = pushArgv()
+      expect(push).toContain('http.https://github.com/.extraheader=')
+      // 實際語意：這組 -c 之下，github.com 的有效 extraheader 為空
+      const eff = execFileSync('git', ['-c', 'http.https://github.com/.extraheader=', 'config', '--get-urlmatch', 'http.extraheader', 'https://github.com/o/r'], { cwd: repo, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } }).trim()
+      expect(eff).toBe('')
+      // 惡意 GITHUB_SERVER_URL 退回 github.com
+      fresh()
+      await run({ GITHUB_SERVER_URL: 'https://evil.com/x y' })
+      push = pushArgv()
+      expect(push.some((x) => x.startsWith('credential.https://github.com.helper='))).toBe(true)
+      expect(push.some((x) => x.includes('evil.com'))).toBe(false)
     })
 
     it('push 的 git 呼叫 argv 不含 GH_TOKEN／BEACON_SECRET，憑證由 helper 從環境變數取', async () => {
@@ -909,7 +991,8 @@ process.exit(r.status === null ? 1 : r.status)
         setPlan({ writes: { 'app/Login.kt': `x${String(cost)}\n` }, stdout: out })
         sh(repo, 'switch', '-q', 'main')
         sh(origin, 'update-ref', '-d', branchRef)
-        await run(beacon())
+        const r = await run(beacon())
+        expect(r.stdout).toContain('STATUS=pr_opened')
         expect(apiReqs().map((x) => x.path)).toEqual(['/api/ai-fix'])
       }
     })
@@ -943,17 +1026,43 @@ process.exit(r.status === null ? 1 : r.status)
     it('BEACON_BASE_URL 或 BEACON_SECRET 為空 → 不回報，其餘照跑', async () => {
       const r1 = await run({ BEACON_SERVICE: 'svc-a' })
       expect(r1.stdout).toContain('STATUS=pr_opened')
+      fresh()
       const r2 = await run({ ...beacon(), BEACON_SECRET: '' })
       expect(r2.code).toBe(0)
+      expect(r2.stdout).toContain('STATUS=pr_opened')
       expect(apiReqs()).toHaveLength(0)
+    })
+
+    it.each([
+      ['BEACON_SERVICE 含不合法字元', { BEACON_SERVICE: 'bad name\nX-Evil: 1' }, 'BEACON_SERVICE'],
+      ['BEACON_BASE_URL 為非本機 http', { BEACON_BASE_URL: 'http://evil.example.com' }, 'BEACON_BASE_URL'],
+      ['BEACON_BASE_URL 含空白', { BEACON_BASE_URL: 'https://x.example.com/a b' }, 'BEACON_BASE_URL'],
+    ])('M4：%s → 不回報、印 warning、其餘照跑', async (_n, env, name) => {
+      const r = await run({ ...beacon(), ...env })
+      expect(r.code).toBe(0)
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(r.stdout).toMatch(new RegExp(`warning: invalid ${name}`))
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('M4：http://localhost:<port> 允許回報', async () => {
+      const r = await run({ ...beacon(), BEACON_BASE_URL: server!.url.replace('127.0.0.1', 'localhost') })
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(apiReqs().length).toBeGreaterThan(0)
     })
 
     it('BEACON_SECRET 與 GH_TOKEN 不出現在 stdout／stderr（成功與失敗）', async () => {
       const outs = [await run(beacon())]
+      expect(outs[0].stdout).toContain('STATUS=pr_opened')
+      fresh()
       apiStatus = 500
       outs.push(await run(beacon()))
+      expect(outs[1].stdout).toContain('STATUS=pr_opened')
+      expect(outs[1].stdout).toMatch(/warning/i)
+      fresh()
       setPlan({ writes: { 'scripts/e2e.sh': 'evil\n' }, stdout: successOut() })
       outs.push(await run(beacon()))
+      expect(outs[2].stdout).toContain('STATUS=failed')
       for (const o of outs) {
         expect(o.stdout + o.stderr).not.toContain('beacon-secret')
         expect(o.stdout + o.stderr).not.toContain('ghs_SECRET')
@@ -995,6 +1104,8 @@ process.exit(r.status === null ? 1 : r.status)
       expect(r.code).toBe(0)
       expect(r.stdout).toContain('STATUS=failed')
       expect(calls()).toBe(0)
+      expect(server!.requests.filter((q) => q.path.startsWith('/oidc'))).toHaveLength(0)
+      expect(ghLog()).toHaveLength(0)
     })
 
     it('腳本不再含過時的「只比對 .git/config、hooks、info」註解', () => {
