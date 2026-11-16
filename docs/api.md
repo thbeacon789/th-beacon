@@ -398,7 +398,7 @@ curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/ai-usage \
 
 ## 8. `POST /api/ai-fix` — AI 修復 PR 結果回報
 
-CI 在 E2E 失敗後若由 AI 嘗試修復（開 PR），把結果回報到對應的 `test_failure` issue：存進 `issues.ai_fix_*` 四欄（issue 詳情頁顯示），並在該告警的 Discord 討論串通知負責人。**伺服器不呼叫 Claude、不持有 GitHub token**——開 PR 全在 CI 端完成，這個端點只收結果。
+CI 在 E2E 失敗後若由 AI 嘗試修復（開 PR），把結果回報到對應的 `test_failure` issue：存進 `issues.ai_fix_*` 四欄（issue 詳情頁顯示），並在該告警的 Discord 討論串通知負責人（可多人）。**伺服器不呼叫 Claude、不持有 GitHub token**——開 PR 全在 CI 端完成，這個端點只收結果。
 
 驗證：headers 與簽章算法同 §1。心跳名稱須已於 §3 登記。實作：`app/api/ai-fix/route.ts`、`src/ai-fix/handle-ai-fix.ts`、`src/ai-fix/payload.ts`。
 
@@ -429,7 +429,7 @@ CI 在 E2E 失敗後若由 AI 嘗試修復（開 PR），把結果回報到對�
 
 ### 通知規則
 
-同時滿足才會在該 issue 告警的討論串發訊息（內含 PR 連結、摘要，並 @ 服務負責人）：
+同時滿足才會在該 issue 告警的討論串發訊息（內含 PR 連結、摘要，並 @ 服務所有負責人）：
 
 - `status` 為 `pr_opened`，且 `prUrl` 與該 issue 上次記錄的 `prUrl` **不同**（同一 PR 重複回報不重發；換新 PR 會再發一則）
 - 伺服器為 Discord bot 模式（見 §6 的四個環境變數）；webhook 模式沒有討論串，不通知

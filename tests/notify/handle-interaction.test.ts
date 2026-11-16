@@ -19,7 +19,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 const event: CanonicalEvent = {
   serviceId: 's-1',

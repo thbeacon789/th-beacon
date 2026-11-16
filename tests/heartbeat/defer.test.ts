@@ -20,7 +20,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 const hb: Omit<StoredHeartbeat, 'serviceId'> = {
   id: 'hb-1',

@@ -75,7 +75,7 @@ export async function handleAiFix(
       if (root !== null && root.channelId !== '') {
         const result = await postInThread(bot, root, (replyTo) =>
           buildAiFixReply(
-            { prUrl, summary: report.summary, ownerDiscordId: auth.service.ownerDiscordId, runUrl: report.runUrl },
+            { prUrl, summary: report.summary, ownerDiscordIds: auth.service.ownerDiscordIds, runUrl: report.runUrl },
             replyTo,
           ),
         )

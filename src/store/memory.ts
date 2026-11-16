@@ -367,7 +367,7 @@ export class InMemoryStore implements Store {
     name: string,
     webhookSecret: string,
     description: string | null,
-    ownerDiscordId: string | null = null,
+    ownerDiscordIds: string[] = [],
   ): Promise<ServiceRecord | null> {
     for (const existing of this.services.values()) {
       if (existing.name === name) return null
@@ -381,7 +381,7 @@ export class InMemoryStore implements Store {
       poll: null,
       discordWebhookUrl: null,
       description,
-      ownerDiscordId,
+      ownerDiscordIds,
     }
     this.services.set(service.id, service)
     this.secrets.set(service.id, webhookSecret)
@@ -421,10 +421,10 @@ export class InMemoryStore implements Store {
     return true
   }
 
-  async updateServiceOwner(serviceId: string, ownerDiscordId: string | null): Promise<boolean> {
+  async updateServiceOwners(serviceId: string, ownerDiscordIds: string[]): Promise<boolean> {
     const service = this.services.get(serviceId)
     if (service === undefined) return false
-    this.services.set(serviceId, { ...service, ownerDiscordId })
+    this.services.set(serviceId, { ...service, ownerDiscordIds })
     return true
   }
 
@@ -467,7 +467,7 @@ export class InMemoryStore implements Store {
         name: service.name,
         hasWebhookSecret: (this.secrets.get(service.id) ?? null) !== null,
         description: service.description,
-        ownerDiscordId: service.ownerDiscordId,
+        ownerDiscordIds: service.ownerDiscordIds,
         createdAt: this.createdAts.get(service.id) ?? new Date(0).toISOString(),
         heartbeats: this.heartbeats
           .filter((h) => h.serviceId === service.id)

@@ -129,20 +129,21 @@ function neutralizeSummary(text: string): string {
 }
 
 /**
- * AI 修復 PR 通知：只 tag 負責人一人（allowed_mentions 僅放行該 id），
+ * AI 修復 PR 通知：tag 全部負責人（allowed_mentions 僅放行這些 id），
  * 摘要內的 @everyone／@role 因 parse: [] 不會被解析。
  */
 export function buildAiFixReply(
-  params: { prUrl: string; summary: string | null; ownerDiscordId: string | null; runUrl: string | null },
+  params: { prUrl: string; summary: string | null; ownerDiscordIds: string[]; runUrl: string | null },
   replyToMessageId?: string,
 ): DiscordReplyMessage {
   const lines = ['🤖 AI 已開修復 PR', params.prUrl]
   if (params.summary !== null && params.summary !== '') lines.push(neutralizeSummary(params.summary))
   if (params.runUrl !== null) lines.push(`CI run：${params.runUrl}`)
-  const owner = params.ownerDiscordId
-  const content = owner !== null ? `<@${owner}> ${lines.join('\n')}` : lines.join('\n')
+  const owners = params.ownerDiscordIds
+  const content =
+    owners.length > 0 ? `${owners.map((id) => `<@${id}>`).join(' ')} ${lines.join('\n')}` : lines.join('\n')
   const m = reply(content, replyToMessageId)
-  if (owner !== null) m.allowed_mentions = { parse: [], users: [owner] }
+  if (owners.length > 0) m.allowed_mentions = { parse: [], users: [...owners] }
   return m
 }
 

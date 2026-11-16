@@ -23,7 +23,7 @@ const base = {
   count: 7,
   firstSeen: 'f',
   lastSeen: 'l',
-  ownerDiscordId: '999',
+  ownerDiscordIds: ['999'],
 }
 const withBtn = () =>
   withAlertButtons(buildDiscordMessage(base), uuid, 1, ['ack', 'resolve'])
@@ -235,30 +235,35 @@ describe('renderPreviousIncidentRoot', () => {
 describe('buildAiFixReply', () => {
   const pr = 'https://github.com/o/r/pull/1'
   it('含 PR 連結、摘要；有 owner 時 content 以 <@owner> 開頭且只放行該 owner', () => {
-    const m = buildAiFixReply({ prUrl: pr, summary: '改了斷言', ownerDiscordId: '123', runUrl: null })
+    const m = buildAiFixReply({ prUrl: pr, summary: '改了斷言', ownerDiscordIds: ['123'], runUrl: null })
     expect(m.content.startsWith('<@123>')).toBe(true)
     expect(m.content).toContain('🤖 AI 已開修復 PR')
     expect(m.content).toContain(pr)
     expect(m.content).toContain('改了斷言')
     expect(m.allowed_mentions).toEqual({ parse: [], users: ['123'] })
   })
+  it('多位 owner：content 開頭依序 tag 全部，allowed_mentions 放行全部', () => {
+    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordIds: ['123', '456'], runUrl: null })
+    expect(m.content.startsWith('<@123> <@456> 🤖')).toBe(true)
+    expect(m.allowed_mentions).toEqual({ parse: [], users: ['123', '456'] })
+  })
   it('無 owner 時 allowed_mentions 為 {parse: []}', () => {
-    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: null })
+    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordIds: [], runUrl: null })
     expect(m.allowed_mentions).toEqual({ parse: [] })
     expect(m.content).not.toContain('<@')
   })
   it('summary 含 @everyone 與 ]( 時不放行 everyone，content 不含 ](', () => {
-    const m = buildAiFixReply({ prUrl: pr, summary: '@everyone [點我](https://evil.example)', ownerDiscordId: '123', runUrl: null })
+    const m = buildAiFixReply({ prUrl: pr, summary: '@everyone [點我](https://evil.example)', ownerDiscordIds: ['123'], runUrl: null })
     expect(m.allowed_mentions).toEqual({ parse: [], users: ['123'] })
     expect(m.content).not.toContain('](')
     expect(m.content).toContain('] (')
   })
   it('帶 runUrl 時含 run 連結；replyToMessageId 省略時無 message_reference', () => {
     const run = 'https://github.com/o/r/actions/runs/9'
-    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: run })
+    const m = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordIds: [], runUrl: run })
     expect(m.content).toContain(run)
     expect(m.message_reference).toBeUndefined()
-    const r = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordId: null, runUrl: null }, 'm-9')
+    const r = buildAiFixReply({ prUrl: pr, summary: null, ownerDiscordIds: [], runUrl: null }, 'm-9')
     expect(r.message_reference).toEqual({ message_id: 'm-9', fail_if_not_exists: false })
   })
 })

@@ -25,7 +25,8 @@ const IDLE: RegistrationState = { status: 'idle' }
 const DEFAULT_INTERVAL = 86400
 const DEFAULT_GRACE = 7200
 
-const OWNER_HINT = 'Discord 開發者模式下對使用者按右鍵 → 複製使用者 ID'
+const OWNER_HINT =
+  'Discord 開發者模式下對使用者按右鍵 → 複製使用者 ID；可填多人（最多 10 人），以逗號、空白或換行分隔'
 
 const NAME_TITLE = '小寫英數與連字號，須以英數開頭結尾'
 
@@ -155,15 +156,13 @@ export function RegisterServiceForm() {
         </label>
 
         <label>
-          負責人 Discord ID（選填）
-          <input
-            name="ownerDiscordId"
-            inputMode="numeric"
-            pattern="[0-9]{17,20}"
-            title="17–20 位數字"
-            placeholder="123456789012345678"
+          負責人 Discord ID（選填，可多人）
+          <textarea
+            name="ownerDiscordIds"
+            rows={2}
+            placeholder="123456789012345678, 234567890123456789"
           />
-          <span className="hint">{OWNER_HINT}。設定後，這個服務的告警會 tag 此人。</span>
+          <span className="hint">{OWNER_HINT}。設定後，這個服務的告警會 tag 這些人。</span>
         </label>
 
         <label className="reg-check">
@@ -333,11 +332,11 @@ export function EditDescriptionForm({
 export function EditOwnerForm({
   serviceId,
   serviceName,
-  ownerDiscordId,
+  ownerDiscordIds,
 }: {
   serviceId: string
   serviceName: string
-  ownerDiscordId: string | null
+  ownerDiscordIds: string[]
 }) {
   const [editing, setEditing] = useState(false)
   const [state, action] = useActionState(
@@ -353,27 +352,29 @@ export function EditOwnerForm({
     <div className="reg-description">
       {!editing ? (
         <>
-          {ownerDiscordId === null ? (
+          {ownerDiscordIds.length === 0 ? (
             <p className="reg-warn">尚未設定：告警不會 tag 任何人</p>
           ) : (
-            <p className="mono">{ownerDiscordId}</p>
+            ownerDiscordIds.map((id) => (
+              <p key={id} className="mono">
+                {id}
+              </p>
+            ))
           )}
           <button type="button" onClick={() => setEditing(true)}>
-            {ownerDiscordId === null ? '設定負責人' : '修改負責人'}
+            {ownerDiscordIds.length === 0 ? '設定負責人' : '修改負責人'}
           </button>
         </>
       ) : (
         <form action={action} className="reg-form">
           <input type="hidden" name="serviceId" value={serviceId} />
           <input type="hidden" name="serviceName" value={serviceName} />
-          <input
-            name="ownerDiscordId"
-            inputMode="numeric"
-            pattern="[0-9]{17,20}"
-            title="17–20 位數字"
-            placeholder="123456789012345678"
-            defaultValue={ownerDiscordId ?? ''}
-            aria-label={`「${serviceName}」的負責人 Discord ID`}
+          <textarea
+            name="ownerDiscordIds"
+            rows={3}
+            placeholder="123456789012345678, 234567890123456789"
+            defaultValue={ownerDiscordIds.join('\n')}
+            aria-label={`「${serviceName}」的負責人 Discord ID（可多人）`}
           />
           <span className="hint">{OWNER_HINT}。留空儲存＝清除負責人。</span>
           <div className="reg-actions">

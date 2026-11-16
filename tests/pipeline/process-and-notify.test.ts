@@ -18,7 +18,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: 'https://discord/webhook',
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({
@@ -62,7 +62,7 @@ describe('processAndNotify', () => {
   })
 
   it('服務有負責人：送出的 message tag 該負責人；無則不 tag', async () => {
-    store.seedService({ ...svc, id: 's-9', name: 'svc-owner', ownerDiscordId: '123456789012345678' })
+    store.seedService({ ...svc, id: 's-9', name: 'svc-owner', ownerDiscordIds: ['123456789012345678'] })
     const { deps, sent } = fakeSender()
     await processAndNotify(store, deps, event({ serviceId: 's-9', fingerprint: 'fp-9' }), now)
     expect(sent[0].message.content).toBe('<@123456789012345678>')
@@ -222,7 +222,7 @@ describe('processAndNotify（bot 模式）', () => {
   const min = (n: number) => new Date(now.getTime() + n * 60_000)
   beforeEach(() => {
     store = new InMemoryStore()
-    store.seedService({ ...svc, ownerDiscordId: '123456789012345678' })
+    store.seedService({ ...svc, ownerDiscordIds: ['123456789012345678'] })
   })
 
   it('首次告警帶按鈕並記 message id 與 payload', async () => {

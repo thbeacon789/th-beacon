@@ -332,11 +332,11 @@ export class SupabaseStore implements Store {
     name: string,
     webhookSecret: string,
     description: string | null,
-    ownerDiscordId: string | null = null,
+    ownerDiscordIds: string[] = [],
   ): Promise<ServiceRecord | null> {
     const { data, error } = await this.client
       .from('services')
-      .insert({ name, webhook_secret: webhookSecret, description, owner_discord_id: ownerDiscordId })
+      .insert({ name, webhook_secret: webhookSecret, description, owner_discord_ids: ownerDiscordIds })
       .select('*')
       .maybeSingle()
     // 交給 DB 的 unique 約束判重複，而不是先 select 再 insert——後者在兩人同時送出時
@@ -379,13 +379,13 @@ export class SupabaseStore implements Store {
     return data.length > 0
   }
 
-  async updateServiceOwner(serviceId: string, ownerDiscordId: string | null): Promise<boolean> {
+  async updateServiceOwners(serviceId: string, ownerDiscordIds: string[]): Promise<boolean> {
     const { data, error } = await this.client
       .from('services')
-      .update({ owner_discord_id: ownerDiscordId })
+      .update({ owner_discord_ids: ownerDiscordIds })
       .eq('id', serviceId)
       .select('id')
-    if (error) throw new Error(`updateServiceOwner failed: ${error.message}`)
+    if (error) throw new Error(`updateServiceOwners failed: ${error.message}`)
     return data.length > 0
   }
 
@@ -463,7 +463,7 @@ export class SupabaseStore implements Store {
       name: row.name,
       hasWebhookSecret: row.webhook_secret !== null,
       description: row.description,
-      ownerDiscordId: row.owner_discord_id,
+      ownerDiscordIds: row.owner_discord_ids,
       createdAt: row.created_at,
       heartbeats: byService.get(row.id) ?? [],
     }))

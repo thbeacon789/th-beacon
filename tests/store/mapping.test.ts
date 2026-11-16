@@ -57,7 +57,8 @@ const serviceRow: ServiceRow = {
   name: 'svc-a',
   webhook_secret: null,
   description: null,
-  owner_discord_id: null,
+  owner_discord_ids: [],
+  owner_discord_id: null, // 舊欄位待 migration 刪除；database.types.ts 重生後移除此行
   discord_webhook_url: null,
   health_window_minutes: 15,
   health_failure_threshold: 2,
@@ -164,7 +165,7 @@ describe('rowToService', () => {
       healthStatus: 'degraded',
       discordWebhookUrl: null,
       description: null,
-      ownerDiscordId: null,
+      ownerDiscordIds: [],
       poll: { lastPollAt: '2026-07-27T10:04:00+00:00', healthy: false, consecutiveFailures: 1 },
     })
   })

@@ -41,9 +41,22 @@ describe('buildDiscordMessage', () => {
   })
 
   it('有負責人：content 為 mention，allowed_mentions 只放行該使用者', () => {
-    const msg = buildDiscordMessage({ ...base, ownerDiscordId: '123456789012345678' })
+    const msg = buildDiscordMessage({ ...base, ownerDiscordIds: ['123456789012345678'] })
     expect(msg.content).toBe('<@123456789012345678>')
     expect(msg.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] })
+  })
+
+  it('多位負責人：content 以空格分隔 mention，allowed_mentions 放行全部', () => {
+    const ids = ['123456789012345678', '234567890123456789']
+    const msg = buildDiscordMessage({ ...base, ownerDiscordIds: ids })
+    expect(msg.content).toBe('<@123456789012345678> <@234567890123456789>')
+    expect(msg.allowed_mentions).toEqual({ parse: [], users: ids })
+  })
+
+  it('空陣列負責人：無 content', () => {
+    const msg = buildDiscordMessage({ ...base, ownerDiscordIds: [] })
+    expect(msg.content).toBeUndefined()
+    expect(msg.allowed_mentions).toEqual({ parse: [] })
   })
 
   it('uses severity colors and attaches dashboard url when provided', () => {

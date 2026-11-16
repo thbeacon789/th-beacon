@@ -6,7 +6,7 @@ import { buildDiscordMessage } from '@/notify/message'
 
 const payload: DiscordMessage = buildDiscordMessage({
   serviceName: 'svc',
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
   severity: 'P1',
   errorType: 'X',
   message: 'x'.repeat(300),

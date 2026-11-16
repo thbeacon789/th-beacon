@@ -15,7 +15,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 
 const event = (over: Partial<CanonicalEvent> = {}): CanonicalEvent => ({

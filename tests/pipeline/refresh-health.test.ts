@@ -14,7 +14,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 
 describe('refreshServiceHealth', () => {

@@ -3,7 +3,7 @@ import {
   validateServiceRegistration,
   validateHeartbeatRegistration,
   validateServiceDescription,
-  validateOwnerDiscordId,
+  validateOwnerDiscordIds,
   DESCRIPTION_MAX,
   NAME_PATTERN_SOURCE,
   INTERVAL_MIN,
@@ -19,7 +19,7 @@ describe('validateServiceRegistration', () => {
     const result = validateServiceRegistration({ name: '  my-service-2  ', description: DESC })
     expect(result).toEqual({
       ok: true,
-      value: { name: 'my-service-2', description: DESC, ownerDiscordId: null },
+      value: { name: 'my-service-2', description: DESC, ownerDiscordIds: [] },
     })
   })
 
@@ -152,16 +152,26 @@ describe('NAME_PATTERN_SOURCE（表單 <input pattern> 與後端驗證同源）'
   })
 })
 
-describe('validateOwnerDiscordId', () => {
+describe('validateOwnerDiscordIds', () => {
+  const A = '123456789012345678'
+  const B = '234567890123456789'
+  const C = '12345678901234567'
   it.each([
-    ['空字串', '', null],
-    ['只有空白', '   ', null],
-    ['undefined', undefined, null],
-    ['17 位', '12345678901234567', '12345678901234567'],
-    ['20 位', '12345678901234567890', '12345678901234567890'],
-    ['前後空白會 trim', '  123456789012345678  ', '123456789012345678'],
+    ['空字串', '', []],
+    ['只有空白', '   ', []],
+    ['undefined', undefined, []],
+    ['17 位', C, [C]],
+    ['20 位', '12345678901234567890', ['12345678901234567890']],
+    ['前後空白會 trim', `  ${A}  `, [A]],
+    ['逗號', `${A},${B}`, [A, B]],
+    ['全形逗號', `${A}，${B}`, [A, B]],
+    ['頓號', `${A}、${B}`, [A, B]],
+    ['空白', `${A} ${B}`, [A, B]],
+    ['換行', `${A}\n${B}\r\n${C}`, [A, B, C]],
+    ['混合分隔與多餘分隔符', ` ${A} ,, ${B}；`.replace('；', ''), [A, B]],
+    ['去重保留首次順序', `${B}, ${A}, ${B}, ${A}`, [B, A]],
   ])('接受：%s', (_label, raw, expected) => {
-    expect(validateOwnerDiscordId(raw)).toEqual({ ok: true, value: expected })
+    expect(validateOwnerDiscordIds(raw)).toEqual({ ok: true, value: expected })
   })
 
   it.each([
@@ -169,26 +179,54 @@ describe('validateOwnerDiscordId', () => {
     ['21 位', '123456789012345678901'],
     ['含非數字', '12345678901234567a'],
     ['含 @ 與角括號', '<@123456789012345678>'],
-    ['中間空白', '12345678901 2345678'],
   ])('拒絕：%s', (_label, raw) => {
-    const result = validateOwnerDiscordId(raw)
+    const result = validateOwnerDiscordIds(raw)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.errors[0]).toMatch(/Discord/)
+    if (!result.ok) {
+      expect(result.errors[0]).toMatch(/Discord/)
+      expect(result.errors[0]).toContain(raw)
+    }
   })
 
-  it('validateServiceRegistration 帶入並驗證 ownerDiscordId', () => {
+  it('多個值中只有部分不合法：錯誤訊息指出不合法的值', () => {
+    const result = validateOwnerDiscordIds(`${A}, abc, ${B}, 99`)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors[0]).toContain('abc')
+      expect(result.errors[0]).toContain('99')
+      expect(result.errors[0]).not.toContain(A)
+    }
+  })
+
+  it('最多 10 個：10 個通過、11 個拒絕', () => {
+    const ids = Array.from({ length: 11 }, (_, i) => `1000000000000000${i}`)
+    expect(validateOwnerDiscordIds(ids.slice(0, 10).join(','))).toEqual({
+      ok: true,
+      value: ids.slice(0, 10),
+    })
+    const over = validateOwnerDiscordIds(ids.join(','))
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.errors[0]).toMatch(/10/)
+  })
+
+  it('去重後才計算上限', () => {
+    const ids = Array.from({ length: 10 }, (_, i) => `1000000000000000${i}`)
+    expect(validateOwnerDiscordIds([...ids, ...ids].join(',')).ok).toBe(true)
+  })
+
+  it('validateServiceRegistration 帶入並驗證 ownerDiscordIds', () => {
     const ok = validateServiceRegistration({
       name: 'svc-x',
       description: DESC,
-      ownerDiscordId: ' 123456789012345678 ',
+      ownerDiscordIds: ` ${A}, ${B} `,
     })
     expect(ok).toEqual({
       ok: true,
-      value: { name: 'svc-x', description: DESC, ownerDiscordId: '123456789012345678' },
+      value: { name: 'svc-x', description: DESC, ownerDiscordIds: [A, B] },
     })
     expect(validateServiceRegistration({ name: 'svc-x', description: DESC }).ok).toBe(true)
     expect(
-      validateServiceRegistration({ name: 'svc-x', description: DESC, ownerDiscordId: 'abc' }).ok,
+      validateServiceRegistration({ name: 'svc-x', description: DESC, ownerDiscordIds: 'abc' }).ok,
     ).toBe(false)
   })
 })

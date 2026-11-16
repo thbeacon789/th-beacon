@@ -317,7 +317,7 @@ async function notifyStage(
   const quietRoot = bot !== null && root === null && issue.status === 'acknowledged' && decision.reason === 'first'
   const built = buildDiscordMessage({
     serviceName: service.name,
-    ownerDiscordId: quietRoot ? null : service.ownerDiscordId,
+    ownerDiscordIds: quietRoot ? [] : service.ownerDiscordIds,
     severity,
     errorType: issue.errorType,
     message: issue.message,

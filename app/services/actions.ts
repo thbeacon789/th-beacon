@@ -7,7 +7,7 @@ import { createServerStore } from '@/store/server'
 import {
   validateServiceRegistration,
   validateServiceDescription,
-  validateOwnerDiscordId,
+  validateOwnerDiscordIds,
   validateHeartbeatRegistration,
 } from '@/core/registration'
 import { isUuid } from '@/web/queries'
@@ -46,7 +46,7 @@ export async function registerServiceAction(
   const serviceInput = validateServiceRegistration({
     name: field(form, 'serviceName'),
     description: field(form, 'description'),
-    ownerDiscordId: field(form, 'ownerDiscordId'),
+    ownerDiscordIds: field(form, 'ownerDiscordIds'),
   })
   const wantsHeartbeat = field(form, 'withHeartbeat') === 'on'
   const heartbeatInput = wantsHeartbeat
@@ -78,7 +78,7 @@ export async function registerServiceAction(
   const service = await store.createService(serviceInput.value.name,
     secret,
     serviceInput.value.description,
-    serviceInput.value.ownerDiscordId,
+    serviceInput.value.ownerDiscordIds,
   )
   if (service === null) {
     return { status: 'error', errors: [`服務名稱「${serviceInput.value.name}」已經存在`] }
@@ -171,7 +171,7 @@ export async function updateServiceDescriptionAction(
   return { status: 'description-updated', serviceName }
 }
 
-/** 更新（或清空）服務負責人。通知會 tag 此 Discord 使用者；空值 = 不 tag。 */
+/** 更新（或清空）服務負責人。通知會 tag 這些 Discord 使用者；空值 = 不 tag。 */
 export async function updateServiceOwnerAction(
   _prev: RegistrationState,
   form: FormData,
@@ -182,10 +182,10 @@ export async function updateServiceOwnerAction(
   const serviceName = field(form, 'serviceName')
   if (!isUuid(serviceId)) return { status: 'error', errors: ['服務不存在'] }
 
-  const input = validateOwnerDiscordId(field(form, 'ownerDiscordId'))
+  const input = validateOwnerDiscordIds(field(form, 'ownerDiscordIds'))
   if (!input.ok) return { status: 'error', errors: input.errors }
 
-  const ok = await createServerStore().updateServiceOwner(serviceId, input.value)
+  const ok = await createServerStore().updateServiceOwners(serviceId, input.value)
   if (!ok) return { status: 'error', errors: ['服務不存在'] }
 
   revalidatePath('/services')

@@ -28,7 +28,7 @@ export interface ServiceRecord {
   poll: PollState | null
   discordWebhookUrl: string | null
   description: string | null
-  ownerDiscordId: string | null
+  ownerDiscordIds: string[]
 }
 
 export interface ServiceAuth {
@@ -117,7 +117,7 @@ export interface RegisteredService {
   name: string
   hasWebhookSecret: boolean
   description: string | null
-  ownerDiscordId: string | null
+  ownerDiscordIds: string[]
   createdAt: string
   heartbeats: StoredHeartbeat[]
 }
@@ -213,12 +213,12 @@ export interface Store {
     name: string,
     webhookSecret: string,
     description: string | null,
-    ownerDiscordId?: string | null,
+    ownerDiscordIds?: string[],
   ): Promise<ServiceRecord | null>
   /** 服務不存在時回 false */
   updateServiceDescription(serviceId: string, description: string | null): Promise<boolean>
-  /** 設定／清除（null）負責人。服務不存在時回 false */
-  updateServiceOwner(serviceId: string, ownerDiscordId: string | null): Promise<boolean>
+  /** 設定／清除（空陣列）負責人。服務不存在時回 false */
+  updateServiceOwners(serviceId: string, ownerDiscordIds: string[]): Promise<boolean>
   /** 同服務下名稱已存在時回 null */
   createHeartbeat(serviceId: string, heartbeat: NewHeartbeat): Promise<StoredHeartbeat | null>
   /** 服務不存在時回 false */

@@ -4,8 +4,8 @@
 export interface ServiceRegistrationInput {
   name: string
   description: string
-  /** Discord 使用者 ID（snowflake）；null = 未設定負責人 */
-  ownerDiscordId: string | null
+  /** Discord 使用者 ID（snowflake）清單；空陣列 = 未設定負責人 */
+  ownerDiscordIds: string[]
 }
 
 export interface HeartbeatRegistrationInput {
@@ -78,16 +78,25 @@ function validateDescriptionInto(raw: unknown, errors: string[]): string | null 
 }
 
 // Discord snowflake 目前 17–20 位數字；與 DB check constraint（^[0-9]{17,20}$）同源。
-// 空值 = 清除負責人，回 null。
+// 可多人，以逗號（含全形）、頓號、空白、換行分隔；空值 = 清除負責人，回 []。
 const OWNER_ID_PATTERN = /^[0-9]{17,20}$/
 
-export function validateOwnerDiscordId(raw: unknown): ValidationResult<string | null> {
-  const text = typeof raw === 'string' ? raw.trim() : ''
-  if (text === '') return { ok: true, value: null }
-  if (!OWNER_ID_PATTERN.test(text)) {
-    return { ok: false, errors: ['負責人 Discord ID 須為 17–20 位數字'] }
+export const OWNER_IDS_MAX = 10
+
+export function validateOwnerDiscordIds(raw: unknown): ValidationResult<string[]> {
+  const text = typeof raw === 'string' ? raw : ''
+  const ids = [...new Set(text.split(/[,，、\s]+/).filter((s) => s !== ''))]
+  const bad = ids.filter((id) => !OWNER_ID_PATTERN.test(id))
+  if (bad.length > 0) {
+    return {
+      ok: false,
+      errors: [`負責人 Discord ID 須為 17–20 位數字，不合法的值：${bad.join('、')}`],
+    }
   }
-  return { ok: true, value: text }
+  if (ids.length > OWNER_IDS_MAX) {
+    return { ok: false, errors: [`負責人 Discord ID 最多 ${OWNER_IDS_MAX} 個`] }
+  }
+  return { ok: true, value: ids }
 }
 
 export function validateServiceRegistration(
@@ -96,12 +105,12 @@ export function validateServiceRegistration(
   const errors: string[] = []
   const name = validateName(input.name, '服務名稱', errors)
   const description = validateDescriptionInto(input.description, errors)
-  const owner = validateOwnerDiscordId(input.ownerDiscordId)
+  const owner = validateOwnerDiscordIds(input.ownerDiscordIds)
   if (!owner.ok) errors.push(...owner.errors)
   if (name === null || description === null || !owner.ok || errors.length > 0) {
     return { ok: false, errors }
   }
-  return { ok: true, value: { name, description, ownerDiscordId: owner.value } }
+  return { ok: true, value: { name, description, ownerDiscordIds: owner.value } }
 }
 
 function validateSeconds(

@@ -20,7 +20,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
-  ownerDiscordId: null,
+  ownerDiscordIds: [],
 }
 
 const event: CanonicalEvent = {
@@ -85,7 +85,7 @@ describe('transitionIssue', () => {
     if (withRoot) {
       const base = buildDiscordMessage({
         serviceName: 'svc-a',
-        ownerDiscordId: '123456789012345678',
+        ownerDiscordIds: ['123456789012345678'],
         severity: issue.severity,
         errorType: 'X',
         message: 'x',

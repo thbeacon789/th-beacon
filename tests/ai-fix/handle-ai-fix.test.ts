@@ -26,7 +26,7 @@ const svc: ServiceRecord = {
   poll: null,
   discordWebhookUrl: null,
   description: null,
-  ownerDiscordId: '555',
+  ownerDiscordIds: ['555'],
 }
 
 function sign(sec: string, ts: string, raw: string): string {
@@ -87,7 +87,7 @@ describe('handleAiFix', () => {
         status: 'sent', countAtSend: 1, sentAt: '2026-11-13T09:00:30.000Z', kind: 'alert',
         incidentSeq: issue.reopenCount, discordChannelId: 'ch-1', discordMessageId: 'm-1',
         payload: buildDiscordMessage({
-          serviceName: 'svc-a', ownerDiscordId: '555', severity: issue.severity, errorType: 'test_failure',
+          serviceName: 'svc-a', ownerDiscordIds: ['555'], severity: issue.severity, errorType: 'test_failure',
           message: 'e2e failed', count: 1, firstSeen: 'f', lastSeen: 'l',
         }),
       })

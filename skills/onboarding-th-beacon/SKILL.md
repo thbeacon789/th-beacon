@@ -21,7 +21,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 
 | 步驟 | 誰做 | 內容 |
 | --- | --- | --- |
-| 1 | 使用者 | 到 `https://th-beacon.vercel.app/services` 登記：服務名稱、服務說明、**負責人 Discord ID**，並**勾選登記心跳**（名稱、interval、grace）。金鑰只顯示一次 |
+| 1 | 使用者 | 到 `https://th-beacon.vercel.app/services` 登記：服務名稱、服務說明、**負責人 Discord ID**（可多人），並**勾選登記心跳**（名稱、interval、grace）。金鑰只顯示一次 |
 | 2 | 使用者 | 在**自己的終端機**執行 `gh secret set BEACON_SECRET --repo <owner>/<repo>`（會隱藏輸入），或到 GitHub 網頁設定 |
 | 3 | 你 | 複製 script、改 workflow（見下） |
 | 4 | 你＋使用者 | 用 `gh workflow run` 觸發一次，`gh run view --log` 確認回報步驟收到 200 |
@@ -30,11 +30,11 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 
 ### 負責人與 Discord 告警
 
-負責人 Discord ID 是**數字 ID**（17–20 位），不是使用者名稱：Discord「使用者設定 → 進階」開啟開發者模式，對該成員按右鍵 →「複製使用者 ID」。留空也能登記，但告警就不會 tag 任何人；之後可在 `/services` 的服務卡片上補填或修改。
+負責人 Discord ID 是**數字 ID**（17–20 位），不是使用者名稱；可填多人（最多 10 個，以逗號、空白或換行分隔）：Discord「使用者設定 → 進階」開啟開發者模式，對該成員按右鍵 →「複製使用者 ID」。留空也能登記，但告警就不會 tag 任何人；之後可在 `/services` 的服務卡片上補填或修改。
 
 接好之後的告警長這樣，登記時一併告訴使用者：
 
-- 告警發到共用告警頻道，**每一則都 tag 負責人**，標題連到該筆 issue 頁面。
+- 告警發到共用告警頻道，**每一則都 tag 全部負責人**，標題連到該筆 issue 頁面。
 - 告警附「✋ 確認」「✅ 已解決」按鈕，頻道內任何人都能按。確認與解決的紀錄發在該告警開出的**討論串**裡；確認後冷卻期滿只靜默更新次數、不再 tag，只有嚴重度升級才再 tag。
 - 服務恢復（輪詢或心跳轉 pass）會自動解決並在討論串註記；同一問題解決後再發生，算新事故，重新告警並回覆指向上一則。
 

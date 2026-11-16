@@ -145,7 +145,7 @@ BEACON_SERVICE=<服務名稱> BEACON_SECRET=<金鑰> \\
                 <EditOwnerForm
                   serviceId={service.id}
                   serviceName={service.name}
-                  ownerDiscordId={service.ownerDiscordId}
+                  ownerDiscordIds={service.ownerDiscordIds}
                 />
               </section>
 
