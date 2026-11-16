@@ -1190,6 +1190,7 @@ process.exit(r.status === null ? 1 : r.status)
     it.each([
       ['gh pr list 非零退出', () => fs.writeFileSync(path.join(rec, 'gh-fail-list'), '')],
       ['gh pr list 輸出無法解析', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), 'not json')],
+      ['gh pr list exit 0 但輸出為空', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), '')],
     ])('%s → 印 warning、不回報、不呼叫 agent、exit 0（視同跳過）', async (_n, arrange) => {
       arrange()
       const r = await run(beacon())
@@ -1211,6 +1212,7 @@ process.exit(r.status === null ? 1 : r.status)
     const minimalEnv = (extra: Record<string, string> = {}): Record<string, string> => ({
       PATH: `${bin}:${process.env.PATH ?? ''}`,
       AI_FIX_REPORT_ONLY: 'failed',
+      GH_TOKEN: 'ghs_SECRET',
       BEACON_BASE_URL: server!.url,
       BEACON_SERVICE: 'svc-a',
       BEACON_SECRET: 'beacon-secret',
@@ -1235,10 +1237,13 @@ process.exit(r.status === null ? 1 : r.status)
         summary: 'ai-fix job 失敗，見 run',
         runUrl: 'https://github.com/o/r/actions/runs/1',
       })
-      expect(ghLog()).toHaveLength(0)
+      // 只允許一次唯讀的 open PR 查詢（不覆寫仍有效的 pr_opened）；沒有 create／comment 等寫入
+      expect(ghLog().map((a) => a.slice(0, 2).join(' '))).toEqual(['pr list'])
+      expect(ghLog()[0]).toEqual(expect.arrayContaining(['--head', 'ai-fix/android-e2e-prod', '--state', 'open']))
       expect(calls()).toBe(0)
       expect(oidcReqs()).toHaveLength(0)
       expect(r.stdout + r.stderr).not.toContain('beacon-secret')
+      expect(r.stdout + r.stderr).not.toContain('ghs_SECRET')
     })
 
     it('在 git repo 內也不碰 git：工作樹有未提交改動、分支不變、不建立 ai-fix 分支', async () => {
@@ -1271,6 +1276,61 @@ process.exit(r.status === null ? 1 : r.status)
       expect((await runBash(SCRIPT, ['a/b'], minimalEnv(), noRepo())).code).toBe(2)
       expect((await runBash(SCRIPT, [], minimalEnv(), noRepo())).code).toBe(2)
       expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('已有 open 的 AI PR → 印 warning、零 /api/ai-fix 請求（不覆寫 pr_opened）', async () => {
+      setPrList([{ number: 7 }])
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv(), noRepo())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning.*open/i)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it.each([
+      ['gh 非零退出', () => fs.writeFileSync(path.join(rec, 'gh-fail-list'), '')],
+      ['gh 輸出空字串', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), '')],
+      ['gh 輸出無法解析', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), 'not json')],
+      ['gh 輸出不是陣列', () => fs.writeFileSync(path.join(rec, 'gh-list.json'), '{}')],
+    ])('查詢不明（%s）→ 印 warning、零請求', async (_n, arrange) => {
+      arrange()
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv(), noRepo())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning/i)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('沒有 GH_TOKEN → 零請求、不呼叫 gh；沒有 gh 指令 → 零請求', async () => {
+      const env = minimalEnv()
+      delete env.GH_TOKEN
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], env, noRepo())
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/warning/i)
+      expect(apiReqs()).toHaveLength(0)
+      expect(ghLog()).toHaveLength(0)
+      // PATH 只留 jq／perl／curl／bash 所在的目錄不易精準構造，改以空 bin 目錄蓋掉假 gh：gh 找不到
+      const nogh = path.join(dir, 'nogh-bin')
+      fs.mkdirSync(nogh)
+      for (const t of ['jq', 'perl', 'curl', 'bash', 'env', 'date', 'mktemp', 'rm', 'chmod', 'printf', 'cat', 'tr', 'head', 'sed', 'grep', 'dirname', 'uname']) {
+        const real = execFileSync('which', [t], { encoding: 'utf8' }).trim()
+        if (real) fs.symlinkSync(real, path.join(nogh, t))
+      }
+      const r2 = await runBash(SCRIPT, ['android-e2e-prod'], { ...minimalEnv(), PATH: nogh }, noRepo())
+      expect(r2.code).toBe(0)
+      expect(r2.stdout).toMatch(/warning/i)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('乾跑（AI_FIX_DRY_RUN）→ 零請求', async () => {
+      const r = await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv({ AI_FIX_DRY_RUN: '1' }), noRepo())
+      expect(r.code).toBe(0)
+      expect(apiReqs()).toHaveLength(0)
+    })
+
+    it('有 GITHUB_REPOSITORY 時以 --repo 查詢（workflow 工作目錄不是 git repo）', async () => {
+      await runBash(SCRIPT, ['android-e2e-prod'], minimalEnv({ GITHUB_REPOSITORY: 'o/r' }), noRepo())
+      const a = ghLog()[0]
+      expect(a[a.indexOf('--repo') + 1]).toBe('o/r')
+      expect(apiReqs()).toHaveLength(1)
     })
 
     it('AI_FIX_REPORT_ONLY 不是 failed → 走正常流程（參數個數不符 → exit 2）', async () => {
@@ -1423,6 +1483,7 @@ process.exit(r.status === null ? 1 : r.status)
         {
           PATH: `${bin}:${process.env.PATH ?? ''}`,
           AI_FIX_REPORT_ONLY: 'failed',
+          GH_TOKEN: 'ghs_SECRET',
           BEACON_BASE_URL: server!.url,
           BEACON_SERVICE: 'svc-a',
           BEACON_SECRET: 'beacon-secret',

@@ -2,8 +2,10 @@
 # CI e2e 失敗的 AI 修復（去重、呼叫 agent、越界檢查、commit、推分支、開 PR、回報 th-beacon）。canonical 在 th-beacon，各 CI repo 於 workflow 執行時 checkout th-beacon 的釘選 commit 使用，不複製。
 # 用法：ai-fix-e2e-failure.sh <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>
 #   只回報失敗模式：AI_FIX_REPORT_ONLY=failed ai-fix-e2e-failure.sh <heartbeat-name>
-#     只需 BEACON_BASE_URL／BEACON_SERVICE／BEACON_SECRET／RUN_URL；直接 POST /api/ai-fix {status:"failed"} 後 exit 0。
-#     不檢查工作樹、不碰 git、不呼叫 gh／claude／OIDC，不在 git repo 內也能執行；缺 BEACON_* 或回報失敗只印 warning。
+#     需 BEACON_BASE_URL／BEACON_SERVICE／BEACON_SECRET／RUN_URL，另需 GH_TOKEN 與 gh（GITHUB_REPOSITORY 有設則以 --repo 查詢）。
+#     先以唯讀的 gh pr list 確認該分支沒有 open PR，才 POST /api/ai-fix {status:"failed"} 後 exit 0；
+#     有 open PR、查詢失敗／輸出空白或無法解析、缺 gh 或 GH_TOKEN、AI_FIX_DRY_RUN 為真 → 印 warning、不回報（不覆寫仍有效的 pr_opened）。
+#     不檢查工作樹、不碰 git、不呼叫 claude／OIDC，不在 git repo 內也能執行；缺 BEACON_* 或回報失敗只印 warning。
 #     供 workflow 的 ai-fix job 尾端 `if: failure()` step 使用（腳本開始前 job 就失敗時，th-beacon 否則收不到任何回報）。
 #
 # 必要 env：BASE_BRANCH（觸發 run 的分支，PR base）、RUN_URL、AI_FIX_REVIEWER、GH_TOKEN（只給 gh／git 用，不傳給 agent）、
@@ -128,6 +130,7 @@ REFRESH_PID=""
 stop_background() {
   if [ -n "$REFRESH_PID" ]; then
     kill -KILL -- "-$REFRESH_PID" 2>/dev/null
+    kill -KILL "$REFRESH_PID" 2>/dev/null # setsid 失敗時沒有獨立群組，群組 kill 會 ESRCH，再對 pid 本身補一次，免得 wait 卡住
     { wait "$REFRESH_PID"; } 2>/dev/null
     REFRESH_PID=""
   fi
@@ -233,6 +236,23 @@ if [ -n "$REPORT_ONLY" ]; then
   for v in BEACON_BASE_URL BEACON_SERVICE BEACON_SECRET; do
     if [ -z "${!v:-}" ]; then echo "ai-fix: warning: $v not set, skip beacon report"; exit 0; fi
   done
+  # 不覆寫仍有效的 pr_opened：伺服器對非 pr_opened 的回報會把 prUrl 存成 null，PR 連結就遺失，
+  # 之後主腳本每天因已有 open PR 去重跳過、不回報，頁面一直顯示「修復失敗」。
+  # 只有明確查到「沒有 open PR」（合法的空陣列）才回報；其餘（有 open PR、查詢失敗、輸出空白或無法解析、
+  # 沒有 gh／GH_TOKEN）一律不回報——寧可少一筆失敗回報。
+  if [ -n "${AI_FIX_DRY_RUN:-}" ]; then echo "ai-fix: dry run, skip report-only beacon report"; exit 0; fi
+  if ! command -v gh >/dev/null 2>&1 || [ -z "${GH_TOKEN:-}" ]; then
+    echo "ai-fix: warning: gh or GH_TOKEN unavailable, cannot check open AI PR, skip beacon report"; exit 0
+  fi
+  # workflow 的工作目錄不是 git repo，所以有 GITHUB_REPOSITORY 時以 --repo 指定
+  OPEN_PRS="$(gh pr list ${GITHUB_REPOSITORY:+--repo "$GITHUB_REPOSITORY"} --head "ai-fix/$NAME" --state open --json number 2>/dev/null)" \
+    || { echo "ai-fix: warning: cannot list open AI PRs, skip beacon report (not overwriting)"; exit 0; }
+  OPEN_N="$(printf '%s' "$OPEN_PRS" | jq -r 'if type == "array" then length else error("not an array") end' 2>/dev/null)" || OPEN_N=""
+  case "$OPEN_N" in
+    0) ;;
+    ''|*[!0-9]*) echo "ai-fix: warning: cannot parse open AI PR list, skip beacon report (not overwriting)"; exit 0 ;;
+    *) echo "ai-fix: warning: open AI PR exists for ai-fix/$NAME, skip beacon report (not overwriting)"; exit 0 ;;
+  esac
   STATUS="failed"
   SUMMARY="ai-fix job 失敗，見 run"
   echo "ai-fix: report-only mode, reporting failed for $NAME"
@@ -282,6 +302,7 @@ DUP="$(printf '%s' "$PR_LIST" | jq -r --argjson d "$COOLDOWN_DAYS" '
     or (.mergedAt == null and .closedAt != null
         and ((now - (.closedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) < ($d * 86400))))' 2>/dev/null)" \
   || dedup_unknown "cannot parse PR list for dedup"
+case "$DUP" in true|false) ;; *) dedup_unknown "empty or unexpected PR list for dedup" ;; esac # 輸出為空時 jq 無輸出也回 0
 if [ "$DUP" = "true" ]; then
   echo "ai-fix: skip, open PR or recently rejected PR exists for $BRANCH"
   exit 0
@@ -502,7 +523,7 @@ my ($limit, $flag, @cmd) = @ARGV;
 my $pid = fork();
 defined $pid or exit 127;
 if ($pid == 0) { setsid(); exec { $cmd[0] } @cmd; exit 127; }
-sub killgrp { kill $_[0], -$pid; }
+sub killgrp { kill $_[0], -$pid; kill $_[0], $pid; } # 第二個 kill：setsid 失敗時沒有獨立群組
 for my $s (qw(TERM INT HUP)) { $SIG{$s} = sub { killgrp("KILL"); exit 143; }; }
 my ($deadline, $kill_at, $timedout, $status) = (time + $limit, 0, 0, 0);
 while (1) {
