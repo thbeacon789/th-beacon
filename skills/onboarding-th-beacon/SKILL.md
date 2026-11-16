@@ -103,6 +103,7 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
 - 已接好 AI 判讀（`diagnose-e2e-failure.sh`，其輸出含 `needsCodeChange`）與心跳，且上述 th-beacon checkout 已就緒。心跳名稱對應的 `test_failure` issue 是回報的對象。
 - GitHub App（例如公司已建的 `trustnel-ai-fix`，或自建）已安裝到目標 repo：Repository permissions 只給 Contents、Pull requests 的讀寫，**不含 Workflows**。
 - 目標 repo secrets：`AI_FIX_APP_CLIENT_ID`、`AI_FIX_APP_PRIVATE_KEY`（另需前述 `BEACON_SCRIPTS_DEPLOY_KEY`、`BEACON_SECRET`）；variable：`AI_FIX_REVIEWER`（PR 審核者的 GitHub 帳號，須有該 repo 寫入權限）。
+- 停用開關：建立 repo variable `AI_FIX_ENABLED`，值設為 `true` 才啟用 `ai-fix` job（不存在＝關閉）。建議等 th-beacon 部署完成、對線上 `/api/ai-fix` 的煙霧請求確認不是 307（無 active issue 時預期 404 `no_active_issue`）之後再建立。
 - label `ai-fix` **必須先建**：缺 label 時腳本的 `gh pr create` 會失敗。
 - Anthropic WIF 認證（診斷已在用）；federation rule 的 subject 只允許 `main`，所以 `ai-fix` 要在 `main` 上才換得到權杖，在測試分支上會 401，除非另建該分支的臨時 rule。
 
@@ -163,7 +164,8 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
     needs: <e2e job id>
     # 用 !cancelled() 而非 always()：手動取消整個 run 時不應再啟動修復；上游失敗時照常執行。
     # 必須包 ${{ }}：以 ! 開頭的純字串在 YAML 會被誤解析。
-    if: ${{ !cancelled() && needs.<e2e job id>.outputs.needs_fix == 'true' }}
+    # repo variable AI_FIX_ENABLED 設為 true 才啟用；要緊急停用就把它改掉或刪除，不必改 workflow。
+    if: ${{ !cancelled() && vars.AI_FIX_ENABLED == 'true' && needs.<e2e job id>.outputs.needs_fix == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -245,6 +247,25 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
             <known-env-issues.md 相對 app/ 的路徑> \
             "$RUNNER_TEMP/ai-fix-input/diagnosis.json" \
             "$RUNNER_TEMP/ai-fix-input/ai-fix-redacted.log"
+
+      # job 在腳本開始前就失敗（App 權杖、artifact 下載、bot id 解析、腳本缺 env）時，th-beacon 否則收不到任何回報。
+      # 以「只回報失敗」模式補報；不設 working-directory（app/ 可能不存在）。
+      # 已知限制：th-beacon checkout 本身失敗時腳本不存在，無法回報。
+      - name: Report ai-fix job failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          BEACON_BASE_URL: ${{ vars.BEACON_BASE_URL }}
+          BEACON_SERVICE: <beacon-service>
+          BEACON_SECRET: ${{ secrets.BEACON_SECRET }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          SCRIPT="$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh"
+          if [ ! -f "$SCRIPT" ]; then
+            echo "找不到 $SCRIPT（th-beacon checkout 可能失敗），無法回報"
+            exit 0
+          fi
+          AI_FIX_REPORT_ONLY=failed bash "$SCRIPT" <heartbeat-name>
 ```
 
 - `ANTHROPIC_*` 四個值來自目標 repo 的 repository variables（診斷步驟已在用同一組，WIF 由公司的 Anthropic 組織設定，不是 secret）；`BEACON_BASE_URL` 也是 variable，`BEACON_SECRET` 沿用心跳那把。`<known-env-issues.md>` 是目標 repo 已有的已知環境問題清單，路徑相對 `app/`。
@@ -253,7 +274,11 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
 - `create-github-app-token@v3` 不給 `owner`／`repositories` 即只含當前 repo。若 actionlint 對 `client-id` 報未知輸入，是其中繼資料過舊的誤報。
 - 腳本的必要 env 與回報用 env（缺任一 `BEACON_*` 則不回報）以腳本檔頭註解為準；`workflow_dispatch` 需有 boolean input `ai_fix_dry_run`（見下）。
 
-**乾跑**：手動觸發時設 `AI_FIX_DRY_RUN=1`（建議在 `workflow_dispatch` 加 boolean input `ai_fix_dry_run`）。乾跑不呼叫模型、不 push、不開 PR、不回報，只驗證 checkout、權杖與環境接線；第一次接入務必先乾跑。
+**乾跑**：手動觸發時設 `AI_FIX_DRY_RUN=1`（建議在 `workflow_dispatch` 加 boolean input `ai_fix_dry_run`）。乾跑**會呼叫模型**（依預設最高可能花到預算上限 `AI_FIX_MAX_BUDGET_USD`，預設 US$5）與 GitHub 的唯讀查詢（`gh pr list`），只是不 push、不開 PR、不回報 th-beacon，所以這筆花費不會出現在 `/ai-stats`。用來驗證 checkout、權杖、環境接線與 agent 產出的 diff；第一次接入務必先乾跑。
+
+**如何停用**：首選把 repo variable `AI_FIX_ENABLED` 改成非 `true` 或刪除（立即生效，不必改 workflow）；備援是把 `ai-fix` job 的 `if` 改為 `false`。伺服器端不需要回滾：`/api/ai-fix` 只寫 `ai_fix_*` 四欄，不影響告警流程。
+
+**選填 env（用預設值即可）**：`AI_FIX_AGENT_TIMEOUT_SEC`（agent 逾時，預設 1500 秒）、`AI_FIX_JWT_REFRESH_SEC`（agent 執行期間重取 OIDC JWT 的間隔，預設 240 秒；federation rule 的權杖壽命 600 秒，agent 可能跑更久）。
 
 **待驗證**：agent 的權限旗標（唯讀搜尋範圍、寫入限制）在 CI 上的實際行為尚未實跑確認，接入後第一次實跑要檢查越界檢查與 PR 內容。
 
