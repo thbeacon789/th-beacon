@@ -130,7 +130,9 @@ e2e-prod.yml
 claude -p "<prompt>" \
   --permission-mode dontAsk \
   --tools "Read,Edit,Write,Glob,Grep" \
-  --allowedTools "Read,Edit,Write,Glob,Grep" \
+  --allowedTools "Read,Glob,Grep,Edit(./**)" \
+  --disallowedTools "Edit(**/.git/**)" "Write(**/.git/**)" "Read(**/.git/**)" \
+  --settings '{"permissions":{"blockWritesOutsideWorkingDirectories":true,"blockReadsOutsideWorkingDirectories":true}}' \
   --model "$AI_FIX_MODEL" \
   --max-budget-usd "$AI_FIX_MAX_BUDGET_USD" \
   --max-turns "$AI_FIX_MAX_TURNS" \
