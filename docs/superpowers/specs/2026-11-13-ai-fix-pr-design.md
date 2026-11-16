@@ -82,7 +82,7 @@ e2e-prod.yml
 │    新增：job output `needs_fix`；上傳 artifact `ai-fix-input`（遮蔽後的 log ＋ diagnosis.json）
 │
 └─ job: ai-fix（新增，ubuntu-latest）
-     if: always() && needs.playback-smoke.outputs.needs_fix == 'true'
+     if: ${{ !cancelled() && needs.playback-smoke.outputs.needs_fix == 'true' }}
      permissions: id-token: write, contents: read
      checkout App 到 app/ ＋ checkout th-beacon 釘選版本到 beacon/（並列）→ 下載 ai-fix-input（到 runner.temp）
      → 換 GitHub App 權杖 → 安裝 Claude Code CLI（釘版本）
@@ -102,7 +102,7 @@ e2e-prod.yml
   - `ai-fix`（兩個平台都跑 `ubuntu-latest`）：App checkout 到 `app/`（`ref: ${{ github.sha }}`、`persist-credentials: false`），th-beacon checkout 到 `beacon/`，兩者並列；執行腳本的步驟設 `working-directory: app`，以 `"$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh"` 呼叫；`known-env-issues` 檔路徑相對於 `app/`；artifact 下載到 `${{ runner.temp }}/ai-fix-input`。**理由**：腳本要求 cwd 是 App repo 根且工作樹乾淨（巢狀的 `.beacon/` 會讓它判為不乾淨），且 agent 被限制在 cwd（`app/`）內，碰不到位於 `app/` 之外、正在執行的腳本。
   - `path` 必須在 workspace 內，所以 th-beacon 不可能放在 App 工作樹之外；這就是 `ai-fix` 必須用「並列＋`working-directory`」而非巢狀的原因。
 - **版本釘選與更新**：`ref` 一律寫完整 commit SHA（寫在 workflow 檔字面值，不放 repo variable，讓變更進 PR diff），且該 commit 必須已存在於 th-beacon 的遠端（所以接入前 th-beacon 須先 push）。更新程序：th-beacon 改腳本並 push → 人工在兩個 App repo 把 `ref` 改成新 SHA。`.github/**` 在 AI 禁改清單內，AI 改不到這個 SHA。
-- `playback-smoke` 在此情境必為失敗，故 `ai-fix` 的 `if` 必須帶 `always()`，否則會被隱含的 `success()` 跳過。
+- `playback-smoke` 在此情境必為失敗，故 `ai-fix` 的 `if` 必須帶狀態函式，否則會被隱含的 `success()` 跳過；採 `!cancelled()` 而非 `always()`，使用者手動取消整個 run 時不再啟動修復（2026-11-16 審查後修訂）。同理，`playback-smoke` 內任何「失敗後才執行」的 step（判讀、寫 `needs_fix`、上傳 `ai-fix-input`）的 `if` 都必須顯式帶 `failure() || cancelled()`：step 的 `if` 沒有狀態函式時同樣隱含 `success()`。
 - 設定 `needs_fix` 的 step 放在 Diagnose 之後，條件與 Diagnose 相同（`failure() || cancelled()`），且不得受後續 step（回報心跳、上傳產物）失敗影響。
 - **基底分支＝觸發該次 run 的分支**（`github.ref_name`），不是寫死預設分支：`ai-fix` checkout 該次 run 的 commit，PR 的 base 也指向同一分支。排程執行時即為 `main`；手動在測試分支觸發時，PR 開回測試分支（前提：使用者已為該測試分支另建一條臨時 federation rule，subject prefix 指向該分支；否則該分支上的 job 在換發權杖時會 401，見 §6 實測結論。），不會把測試分支的其他 commit 夾帶進對 `main` 的 PR。注意兩個 repo 的 `ci.yml` 只對 base 為 `main` 的 PR 觸發，測試分支上的 PR 不會自動跑 CI。
 
