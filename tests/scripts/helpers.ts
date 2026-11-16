@@ -52,9 +52,15 @@ export interface RunResult {
 }
 
 /** 乾淨 env（不洩漏開發者本機的 ANTHROPIC_*），非同步執行以免擋住同進程的假 server。 */
-export function runBash(script: string, args: string[], env: Record<string, string>): Promise<RunResult> {
+export function runBash(
+  script: string,
+  args: string[],
+  env: Record<string, string>,
+  cwd?: string,
+): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn('bash', [script, ...args], {
+      cwd,
       env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...env },
     })
     let stdout = ''
