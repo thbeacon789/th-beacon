@@ -94,7 +94,7 @@ e2e-prod.yml
 
 - `playback-smoke` 在此情境必為失敗，故 `ai-fix` 的 `if` 必須帶 `always()`，否則會被隱含的 `success()` 跳過。
 - 設定 `needs_fix` 的 step 放在 Diagnose 之後，條件與 Diagnose 相同（`failure() || cancelled()`），且不得受後續 step（回報心跳、上傳產物）失敗影響。
-- **基底分支＝觸發該次 run 的分支**（`github.ref_name`），不是寫死預設分支：`ai-fix` checkout 該次 run 的 commit，PR 的 base 也指向同一分支。排程執行時即為 `main`；手動在測試分支觸發時，PR 開回測試分支，不會把測試分支的其他 commit 夾帶進對 `main` 的 PR。注意兩個 repo 的 `ci.yml` 只對 base 為 `main` 的 PR 觸發，測試分支上的 PR 不會自動跑 CI。
+- **基底分支＝觸發該次 run 的分支**（`github.ref_name`），不是寫死預設分支：`ai-fix` checkout 該次 run 的 commit，PR 的 base 也指向同一分支。排程執行時即為 `main`；手動在測試分支觸發時，PR 開回測試分支（前提：使用者已為該測試分支另建一條臨時 federation rule，subject prefix 指向該分支；否則該分支上的 job 在換發權杖時會 401，見 §6 實測結論。），不會把測試分支的其他 commit 夾帶進對 `main` 的 PR。注意兩個 repo 的 `ci.yml` 只對 base 為 `main` 的 PR 觸發，測試分支上的 PR 不會自動跑 CI。
 
 ### 5.2 判讀腳本變更（`scripts/diagnose-e2e-failure.sh`）
 
@@ -232,11 +232,11 @@ claude -p "<prompt>" \
 
 ### 實測結論（2026-11-16）
 
-實驗在 Android repo 的 `main` 上以臨時 `workflow_dispatch` workflow 跑（Run：<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43843940999>、<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43844213015>）。**前置事實**：Anthropic federation rule 的 subject prefix 是 `repo:trustnel/trustnel-viewer-android:ref:refs/heads/main` 且要求 `repository_owner = trustnel`，因此**只有跑在 `main` 的 workflow 能換到權杖**（非 main 分支回 401）；修復腳本須跑在 main 上的 workflow（schedule／workflow_dispatch／main 的 push）。
+實驗在 Android repo 的 `main` 上以臨時 `workflow_dispatch` workflow 跑（Run：<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43843940999>、<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43844213015>）。**前置事實**：Anthropic federation rule 的 subject prefix 是 `repo:trustnel/trustnel-viewer-android:ref:refs/heads/main` 且要求 `repository_owner = trustnel`、token lifetime 600 秒（以上來源：使用者提供的 Console federation rule 設定截圖，非實測）；因此**只有跑在 `main` 的 workflow 能換到權杖**（非 main 分支回 401）。因 federation rule 只允許 `refs/heads/main`，非 main 分支上的判讀與修復都換不到權杖；`BASE_BRANCH=github.ref_name` 的設計不變，影響見 §5.1 與 §7 的加註。修復腳本須跑在 main 上的 workflow（schedule／workflow_dispatch／main 的 push）。
 
 - **`AUTH_MODE=native-wif`**（步驟 1 成功，不需步驟 2）。非 `--bare`，CLI 原生以 `ANTHROPIC_IDENTITY_TOKEN_FILE` ＋四個 WIF 變數換權杖。**絕不使用 `ANTHROPIC_API_KEY`**。
-- **釘死版本**：`@anthropic-ai/claude-code@2.1.325`（`npm install -g`，並設 `DISABLE_AUTOUPDATER=1`；當日 npm latest 即此版）。
-- **傳給 agent 的環境變數**：`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_ORGANIZATION_ID`、`ANTHROPIC_SERVICE_ACCOUNT_ID`、`ANTHROPIC_WORKSPACE_ID`、`ANTHROPIC_IDENTITY_TOKEN_FILE`（指向 0600 檔，內容為向 `ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com` 取得的 JWT；腳本須在每次呼叫前重新取一次，JWT 與換出的權杖都有時效）、`DISABLE_AUTOUPDATER=1`，以及 `ANTHROPIC_API_KEY=""`。workflow 需 `permissions: id-token: write`。
+- **釘死版本**：`@anthropic-ai/claude-code@2.1.325`（`npm install -g`；實驗 workflow 內確實安裝並印出 `2.1.325`。實驗當日 `npm view` 顯示 latest 同為此版，是查詢結果而非 workflow 內實測）。
+- **傳給 agent 的環境變數**：`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_ORGANIZATION_ID`、`ANTHROPIC_SERVICE_ACCOUNT_ID`、`ANTHROPIC_WORKSPACE_ID`、`ANTHROPIC_IDENTITY_TOKEN_FILE`（指向 0600 檔，內容為向 `ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com` 取得的 JWT；腳本在每次呼叫前重新取一次，實驗即如此做；JWT／權杖有時效是推論（rule 的 token lifetime 為 600 秒），未實測過期行為）、`DISABLE_AUTOUPDATER=1`（實驗有設，但未單獨驗證其效果；用途出自官方慣例，未實測）以及 `ANTHROPIC_API_KEY=""`。workflow 需 `permissions: id-token: write`。
 - **確切指令**：
 
   ```
@@ -247,20 +247,22 @@ claude -p "<prompt>" \
     [--json-schema '<schema>'] [--append-system-prompt-file CLAUDE.md] < prompt.txt
   ```
 
+  使用 `--json-schema` 時必須同時帶 `--output-format json`：實測的 `structured_output` 都是在這個組合下觀察到；不帶 json 輸出格式的情形未實測，一律同時帶。
+
 - **關閉 repo 設定**：`--setting-sources user` 實測讓專案 `.claude/settings.json` 的 hooks 不執行（`/tmp/hook-ran` 不存在；不加該旗標則存在），且專案 `.mcp.json` 不載入（init 的 `mcp_servers` 為 `[]`）。
 - **`CLAUDE.md`：`--setting-sources user` 下不會自動載入**（暗號測試回 `UNKNOWN`；不加旗標則回 `BEACON-42`）。需以 `--append-system-prompt-file CLAUDE.md` 顯式附上（實測回 `BEACON-42`）。
 - **Bash**：`--tools "Read,Edit,Write,Glob,Grep"` 後 init 的 `tools` 僅 `["Edit","Glob","Grep","Read","Write"]`，要求執行 `echo hi` 時 agent 回報沒有 Bash 工具，無任何 `tool_use`。
 - **stdin**：不給 positional prompt、以 stdin 餵 226,960 bytes 可行（`START=<ALPHA-111> END=<OMEGA-999>` 首尾皆讀到，約 US$0.058）；搭配 `--tools` 與 `--append-system-prompt-file` 亦可。
-- **`--output-format json` 欄位**（皆 exit code 與判定實測）：
+- **`--output-format json` 欄位**（以下除標明者外，皆為本次實驗實測的 exit code 與欄位）：
 
   | 情境 | `subtype` | `is_error` | `terminal_reason` | `total_cost_usd` | `result` 鍵 | `structured_output` 鍵 | `errors` 鍵 | exit |
   |---|---|---|---|---|---|---|---|---|
   | 成功 | `success` | false | `completed` | 實際花費 | 有 | 無（`--json-schema` 成功時才有，值為物件，`result` 為其 JSON 字串） | 無 | 0 |
-  | 超出 `--max-budget-usd` | `error_max_budget_usd` | true | `budget_exhausted` | 略高於上限（0.002 → 0.002135） | **無** | 無 | `["Reached maximum budget ($0.002)"]` | 1 |
-  | 超出 `--max-turns` | `error_max_turns` | true | `max_turns` | 實際花費 | **無** | 無 | `["Reached maximum number of turns (2)"]` | 1 |
-  | 認證失敗（前次實測） | `success`（誤導） | true | `api_error` | 0 | 有（錯誤文字） | 無 | — | 1 |
+  | 超出 `--max-budget-usd` | `error_max_budget_usd` | true | `budget_exhausted` | 略高於上限（0.002 → 0.002135） | **無** | 未帶 schema，未觀察 | `["Reached maximum budget ($0.002)"]` | 1 |
+  | 超出 `--max-turns` | `error_max_turns` | true | `max_turns` | 實際花費 | **無** | 未帶 schema，未觀察 | `["Reached maximum number of turns (2)"]` | 1 |
+  | 認證失敗（來自前一次實驗分支批次，401 時） | `success`（誤導） | true | `api_error` | 0 | 有（錯誤文字） | 無 | — | 1 |
 
-  判斷成敗請同時看 `is_error`／exit code，不能只看 `subtype`；預算與回合上限都不會產生 `result`／`structured_output`。
+  `--max-budget-usd` 不是硬上限（上限 0.002 實花 0.002135），且過小的值可能不觸發（上限 0.01 的多檔讀取任務花 0.0098 完成、未觸發）。判斷成敗請同時看 `is_error`／exit code，不能只看 `subtype`；預算與回合上限都不會產生 `result`／`structured_output`。
 - 實驗用模型 `claude-haiku-5-5` 可用。
 
 ## 7. 測試與驗收
@@ -269,10 +271,10 @@ claude -p "<prompt>" \
 - 腳本：沿用 `tests/scripts/helpers.ts` 的做法，以 PATH 上的假 `claude`／`gh`／`git` 與本機 fake server 測試——已有 open PR 時不呼叫模型、越界改動被丟棄並回報 `failed`、`fixed=false` 回報 `no_fix`、成功時回報內容與 HMAC 正確、乾跑不產生任何外部呼叫、agent 行程拿不到 GitHub 權杖。
 - 實機驗收（Android 先行，通過後再接 iOS）：
   1. 以乾跑模式手動觸發，確認 diff 與 PR 描述合理。
-  2. 在測試分支故意改壞一個 selector，於該分支手動觸發 E2E，確認：告警先到、PR 開回該測試分支且指派正確、diff 只含 AI 的改動、Discord 討論串出現 PR 訊息、issue 頁顯示連結、`/ai-stats` 出現 `ci_pr` 花費。
+  2. 【須先由使用者決定路徑】路徑 A：使用者先為測試分支另建臨時 federation rule（subject prefix 指向該分支），之後在測試分支故意改壞一個 selector，於該分支手動觸發 E2E，確認：告警先到、PR 開回該測試分支且指派正確、diff 只含 AI 的改動、Discord 討論串出現 PR 訊息、issue 頁顯示連結、`/ai-stats` 出現 `ci_pr` 花費。路徑 B（不另建規則）：改為在 `main` 上以 `ai_fix_dry_run` 手動觸發，確認流程接線；再以第一個真實失敗確認完整開 PR 流程。不得為了驗收在 `main` 上故意改壞程式。採哪條路徑於實機驗收前由使用者決定；路徑 B 下第 3、4 步同樣待第一個真實失敗後再做。
   3. 不合併該 PR 再觸發一次，確認不會開第二個 PR、不呼叫模型。
   4. 關閉該 PR（不合併）再觸發一次，確認冷卻期內不重開。
-  5. 「PR 自動觸發 `ci.yml`」只在 base 為 `main` 時成立，測試分支驗不到；以第一個真實失敗產生的 PR 確認，確認前在回報中標注「未驗證」。
+  5. 「PR 自動觸發 `ci.yml`」只在 base 為 `main` 時成立，測試分支驗不到（且測試分支需有路徑 A 的臨時規則才換得到權杖）；以第一個真實失敗產生的 PR 確認，確認前在回報中標注「未驗證」。
 
 ## 8. 留給建造者決定
 
