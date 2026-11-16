@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI e2e 失敗的 AI 修復（去重、呼叫 agent、越界檢查、commit、推分支、開 PR、回報 th-beacon）。canonical 在 th-beacon，各 CI repo 位元組一致地複製。
+# CI e2e 失敗的 AI 修復（去重、呼叫 agent、越界檢查、commit、推分支、開 PR、回報 th-beacon）。canonical 在 th-beacon，各 CI repo 於 workflow 執行時 checkout th-beacon 的釘選 commit 使用，不複製。
 # 用法：ai-fix-e2e-failure.sh <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>
 #
 # 必要 env：BASE_BRANCH（觸發 run 的分支，PR base）、RUN_URL、AI_FIX_REVIEWER、GH_TOKEN（只給 gh／git 用，不傳給 agent）、

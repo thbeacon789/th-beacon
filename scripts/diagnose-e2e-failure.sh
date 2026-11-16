@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI e2e 失敗的 AI 判讀。canonical 在 th-beacon，各 CI repo 位元組一致地複製（以 cmp 檢查）。
+# CI e2e 失敗的 AI 判讀。canonical 在 th-beacon，各 CI repo 於 workflow 執行時 checkout th-beacon 的釘選 commit 使用，不複製。
 # 用法：diagnose-e2e-failure.sh <platform> <known-issues-file> <output-file> <log-file>...
 #
 # 認證（擇一）：

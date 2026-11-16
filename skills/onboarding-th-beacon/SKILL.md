@@ -13,7 +13,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - `POST /api/ingest`：推送錯誤事件
 - `POST /api/ai-usage`：回報 AI 用量（token 或金額），選填
 
-**契約不要猜。** headers、簽章算法、payload、回應碼都寫在本目錄的 `api-reference.md`，簽章細節錯一點就是 401。回報用的 script 也直接複製本目錄現成的，不要自己重寫。
+**契約不要猜。** headers、簽章算法、payload、回應碼都寫在本目錄的 `api-reference.md`，簽章細節錯一點就是 401。回報用的 script 一律用 th-beacon 現成的（workflow 執行時 checkout 釘選版本，見「接線」），不要自己重寫，也不要複製進目標 repo。
 
 ## 分工：人做登記，你做接線
 
@@ -23,7 +23,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 | --- | --- | --- |
 | 1 | 使用者 | 到 `https://th-beacon.vercel.app/services` 登記：服務名稱、服務說明、**負責人 Discord ID**（可多人），並**勾選登記心跳**（名稱、interval、grace）。金鑰只顯示一次 |
 | 2 | 使用者 | 在**自己的終端機**執行 `gh secret set BEACON_SECRET --repo <owner>/<repo>`（會隱藏輸入），或到 GitHub 網頁設定 |
-| 3 | 你 | 複製 script、改 workflow（見下） |
+| 3 | 你＋使用者 | 建 deploy key 並設 `BEACON_SCRIPTS_DEPLOY_KEY`、在 workflow 加 th-beacon checkout 並改回報步驟（見下） |
 | 4 | 你＋使用者 | 用 `gh workflow run` 觸發一次，`gh run view --log` 確認回報步驟收到 200 |
 
 一開始就把步驟 1、2 交代清楚，並把你建議的值一起給：服務名稱、心跳名稱，以及 interval／grace（daily 排程建議 `86400`／`3600`）。workflow 裡的名稱必須與登記的**完全相同**。
@@ -42,7 +42,34 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 
 ## 接線
 
-1. 把本目錄的 `scripts/heartbeat-to-beacon.sh` 複製到目標 repo 的 `scripts/`。若服務執行期也要推錯誤（不是 CI 測試結果），一併複製 `report-to-beacon.sh`，並用第 3 參數指定 `errorType`（省略時為 `test_failure`，執行期錯誤不要省略）。本目錄的 script 是 symlink，複製時一律用 `cp -L <本目錄>/scripts/<檔名> scripts/` 逐檔複製，不要 `cp -R` 整個目錄（會複製成失效的 symlink）。複製後用 `test ! -L scripts/<檔名>` 確認是實體檔。執行時一律用 `bash scripts/xxx.sh` 呼叫。
+1. **腳本在 workflow 執行時 checkout th-beacon 的釘選 commit 取得，不複製進目標 repo。** 腳本的 canonical 只在 th-beacon，目標 repo 的 `scripts/` 不放它們的副本，也就沒有版本漂移。步驟：
+   - (a) **deploy key**：為目標 repo 在 `thbeacon789/th-beacon` 新增一把**唯讀**的 deploy key。使用者在自己的終端機產生：`ssh-keygen -t ed25519 -N "" -f <暫存檔>`，公鑰貼到 th-beacon 的 Settings → Deploy keys，**不勾** Allow write access。deploy key 只對單一 repo 有效、不可跨 repo 重用，**每個目標 repo 各一把**。
+   - (b) **secret**：私鑰存入目標 repo 的 secret `BEACON_SCRIPTS_DEPLOY_KEY`（例如 `gh secret set BEACON_SCRIPTS_DEPLOY_KEY --repo <owner>/<repo> < <暫存檔>`，由使用者在自己的終端機執行），之後**刪除暫存檔**。私鑰不經過對話。
+   - (c) **checkout 步驟**：在目標 repo 自己的 checkout **之後**（順序不可反：之後若再對根目錄 checkout，`clean` 會把 `.beacon/` 連同巢狀 repo 一起刪掉），加入：
+
+```yaml
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout th-beacon scripts
+        uses: actions/checkout@v4
+        with:
+          repository: thbeacon789/th-beacon
+          ref: <完整 40 碼 commit SHA>      # 字面值，見 (e)
+          ssh-key: ${{ secrets.BEACON_SCRIPTS_DEPLOY_KEY }}
+          path: .beacon
+          sparse-checkout: scripts
+          fetch-depth: 1
+          persist-credentials: false
+```
+
+   腳本一律以 `bash ./.beacon/scripts/<name>.sh` 呼叫（不依賴 sparse checkout 後的執行位元）。cwd 仍是目標 repo 根，其他相對路徑不變。若服務執行期也要推錯誤（不是 CI 測試結果），改用 `report-to-beacon.sh` 並以第 3 參數指定 `errorType`（省略時為 `test_failure`，執行期錯誤不要省略）。`path` 必須在 workspace 內，所以 th-beacon 不能放在目標 repo 工作樹之外。
+   - (d) **清掉舊複製品**：目標 repo 若已有 th-beacon 腳本的複製品（`heartbeat-to-beacon.sh`、`diagnose-e2e-failure.sh`、`report-to-beacon.sh` 等），一併刪除並確認 `.github`、`scripts` 內沒有其他引用；目標 repo 自己的腳本不動。
+   - (e) **SHA 更新程序**：`ref` 一律寫完整 40 碼 commit SHA，**寫在 workflow 檔字面值，不放 repo variable**（讓變更進 PR diff 受審查）。該 commit 必須已存在於 th-beacon 的遠端。th-beacon 改腳本並 push 後，取新 SHA：`git ls-remote git@github.com:thbeacon789/th-beacon.git refs/heads/main`（或 `gh api repos/thbeacon789/th-beacon/commits/main --jq .sha`），再人工修改各目標 repo workflow 內的 `ref:` 並走 PR 審查。沒有自動更新機制（Dependabot 只管 `uses:`），忘了更新就是繼續跑舊腳本。
+   - **待驗證（尚未在 CI 實跑確認，以第一個接入的 repo 實測為準）**：deploy key＋`fetch-depth: 1`＋指定 SHA＋`sparse-checkout` 這個組合對私有 repo 是否成功（失敗時退路是 `fetch-depth: 0`）；自架 runner 上 checkout 寫入 `$RUNNER_TEMP` 的金鑰暫存檔，在 job 被取消或 runner 被殺時是否被清理（action 的 post 步驟負責刪，不保證一定執行）；`.beacon/` 這個未追蹤目錄是否影響目標 repo 的建置工具。
+   - **陷阱**：`persist-credentials: false` 兩個 checkout 都要加；deploy key 無到期日、無 passphrase，輪替靠人；`GITHUB_TOKEN` 讀不到另一個擁有者的私有 repo，所以跨擁有者只能用 deploy key。fork PR 拿不到 secret，所以回報步驟只用在排程或手動觸發的 job。
+   - 只有在**完全無法 checkout th-beacon**（例如接入方拿不到 deploy key）時才退而複製：本目錄的 script 是 symlink，須用 `cp -L <本目錄>/scripts/<檔名> <目標>/scripts/` 逐檔複製（不要 `cp -R`），並自行承擔版本漂移；這不是預設做法。
 2. 在測試 job 的最後加上回報步驟：
 
 ```yaml
@@ -53,7 +80,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
           BEACON_SERVICE: order-api            # 與 /services 登記的服務名稱完全相同
           BEACON_SECRET: ${{ secrets.BEACON_SECRET }}
         run: |
-          bash scripts/heartbeat-to-beacon.sh nightly-e2e \
+          bash ./.beacon/scripts/heartbeat-to-beacon.sh nightly-e2e \
             "${{ job.status == 'success' && 'pass' || 'fail' }}" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 ```
@@ -61,11 +88,32 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - 回報失敗要讓 step 變紅（script 內建 `curl --fail-with-body`）。**不要**包 `|| true`，也不要吞掉錯誤，否則接錯了只會變成每天的「心跳逾期」假告警，查不到原因。
 - 不要自己加重試迴圈：fail 重送會累計到同一筆 issue 的 count。
 - 第 4 參數 `summary` 選填，會出現在告警內容裡。若能從測試輸出取得失敗數（例如 `"3 of 120 failed"`），建議傳入。
-- 第 5 參數（AI 診斷 `diagnosis`）選填，使用者沒要求就不要接。要接時，用本目錄的 `scripts/diagnose-e2e-failure.sh` 產生診斷檔，**位元組一致地複製**，不要修改。它需要 Anthropic WIF 認證，所需環境變數見 script 開頭註解。
+- 第 5 參數（AI 診斷 `diagnosis`）選填，使用者沒要求就不要接。要接時，用 checkout 出來的 `./.beacon/scripts/diagnose-e2e-failure.sh` 產生診斷檔（同一份釘選版本，不要複製或修改）。它需要 Anthropic WIF 認證，所需環境變數見 script 開頭註解。
 - 要記錄 AI 花費時，diagnose 步驟另設 `BEACON_AI_USAGE_URL`（＋同一組 `BEACON_SERVICE`／`BEACON_SECRET`）；不設則不回報，不影響診斷。
 - `job.status` 為 `cancelled` 時會送出 fail。這是刻意的：nightly 被取消就代表沒有測試結果，需要人看。
 - 回報 step 失敗會讓整個 job 變紅，這也是刻意的：接線出錯必須看得見。
 - ubuntu runner 預設就有 `jq`、`openssl`、`curl`。
+
+## AI 修復 PR（選用）
+
+E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job 嘗試改檔、開修復 PR，並把結果回報 th-beacon（`POST /api/ai-fix`，契約見 `api-reference.md` §8；issue 頁會顯示、告警討論串會通知負責人）。使用者沒要求就不要接。
+
+**前置條件**
+- 已接好 AI 判讀（`diagnose-e2e-failure.sh`，其輸出含 `needsCodeChange`）與心跳，且上述 th-beacon checkout 已就緒。心跳名稱對應的 `test_failure` issue 是回報的對象。
+- GitHub App（例如公司已建的 `trustnel-ai-fix`，或自建）已安裝到目標 repo：Repository permissions 只給 Contents、Pull requests 的讀寫，**不含 Workflows**。
+- 目標 repo secrets：`AI_FIX_APP_CLIENT_ID`、`AI_FIX_APP_PRIVATE_KEY`（另需前述 `BEACON_SCRIPTS_DEPLOY_KEY`、`BEACON_SECRET`）；variable：`AI_FIX_REVIEWER`（PR 審核者的 GitHub 帳號，須有該 repo 寫入權限）。
+- label `ai-fix` **必須先建**：缺 label 時腳本的 `gh pr create` 會失敗。
+- Anthropic WIF 認證（診斷已在用）；federation rule 的 subject 只允許 `main`，所以 `ai-fix` 要在 `main` 上才換得到權杖，在測試分支上會 401，除非另建該分支的臨時 rule。
+
+**job 配置**
+- `playback-smoke`：Diagnose 步驟加 env `DIAGNOSE_REDACTED_OUT`（遮蔽後 log 的輸出路徑）；其後新增 `id: needs-fix` 的步驟，以 `jq -e '.category == "app" and .needsCodeChange == true'` 檢查 `diagnosis.json`，成立才寫出 job output `needs_fix=true`，並上傳 artifact `ai-fix-input`（遮蔽後 log＋`diagnosis.json`，保留 7 天）。
+- `ai-fix` job（`ubuntu-latest`；`if: always() && needs.<job>.outputs.needs_fix == 'true'`，要帶 `always()`，否則 E2E 失敗時會被隱含的 `success()` 跳過；`permissions: id-token: write, contents: read`）。**目錄配置與上面不同**：腳本要求 cwd 是目標 repo 根且工作樹乾淨，agent 又被限制在 cwd 內，所以目標 repo checkout 到 `app/`、th-beacon checkout 到 `beacon/`，**兩者並列、不可巢狀**，修復步驟設 `working-directory: app`，以 `bash "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh" <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>` 呼叫。artifact 下載到 `${{ runner.temp }}/ai-fix-input`（不可下載進 `app/`）。App 的 checkout 用 `ref: ${{ github.sha }}`、`persist-credentials: false`。
+- 權杖用 `actions/create-github-app-token`（輸出 `token`、`app-slug`）；CLI 用 `npm install -g @anthropic-ai/claude-code@<釘選版本>`。完整可用的 YAML 範本見 th-beacon 計畫 `docs/superpowers/plans/2026-11-13-ai-fix-pr.md` 的 Task 9 Step 4。
+- 此 job **不得**帶入任何 E2E 帳密 secret；`GH_TOKEN` 只給腳本。腳本的必要 env（`BASE_BRANCH`、`RUN_URL`、`AI_FIX_REVIEWER`、`GH_TOKEN`、`ANTHROPIC_*` 的 WIF 變數）與回報用 env（`BEACON_BASE_URL`、`BEACON_SERVICE`、`BEACON_SECRET`，缺任一則不回報）以腳本檔頭註解為準。
+
+**乾跑**：手動觸發時設 `AI_FIX_DRY_RUN=1`（建議在 `workflow_dispatch` 加 boolean input `ai_fix_dry_run`）。乾跑不呼叫模型、不 push、不開 PR、不回報，只驗證 checkout、權杖與環境接線；第一次接入務必先乾跑。
+
+**待驗證**：agent 的權限旗標（唯讀搜尋範圍、寫入限制）在 CI 上的實際行為尚未實跑確認，接入後第一次實跑要檢查越界檢查與 PR 內容。
 
 **心跳 fail 已經會告警**，一般不需要再推 ingest。只有服務在執行期（非 CI）要回報錯誤時才用 `/api/ingest`。此時 `message` 必須是固定字串，次數、時間、URL 一律放進 `metadata`，否則每次回報都會長出一筆新 issue。
 
@@ -74,7 +122,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 使用者只想看告警長怎樣、或驗證 Discord 按鈕時，登記一個獨立的測試服務，別拿正式服務送假錯誤（會弄髒它的健康燈號與 issue 紀錄）：
 
 1. 使用者到 `/services` 登記，名稱建議 `beacon-selftest`，填負責人 Discord ID，**不勾心跳**（沒有 CI，勾了會每天逾期告警）。金鑰顯示後**複製到剪貼簿**。
-2. 使用者在 repo 根目錄（th-beacon 本身，或已複製 `report-to-beacon.sh` 的 repo）用 `!` 前綴執行，金鑰從剪貼簿讀：
+2. 使用者在 repo 根目錄（th-beacon 本身，或已 checkout th-beacon 腳本的 repo（腳本路徑換成 `./.beacon/scripts/report-to-beacon.sh`））用 `!` 前綴執行，金鑰從剪貼簿讀：
 
 ```bash
 ! BEACON_URL=https://th-beacon.vercel.app/api/ingest BEACON_SERVICE=beacon-selftest BEACON_SECRET="$(pbpaste)" bash scripts/report-to-beacon.sh "Discord 告警流程測試" "" selftest
