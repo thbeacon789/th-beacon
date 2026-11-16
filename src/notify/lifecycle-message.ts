@@ -10,6 +10,8 @@ type Source = 'manual' | 'poll' | 'heartbeat'
 const REOPENED_FIELD = '↻ Reopened'
 const AUTO_SOURCE: Record<Exclude<Source, 'manual'>, string> = { poll: '輪詢', heartbeat: '心跳' }
 
+const FOLLOW_UP_FOOTER = '↑ Acknowledge／Resolve 按鈕在原告警訊息（點上方引用跳轉）'
+
 const SEVERITY_MARK_RE = /^(?:🔴|🟠|🔵) /u
 
 /** 狀態前綴取代標題開頭的嚴重度色塊，避免兩個色塊並列。 */
@@ -148,6 +150,8 @@ export function buildFollowUpAlert(alert: DiscordMessage, replyToMessageId: stri
   const m = structuredClone(alert)
   delete m.components
   m.message_reference = { message_id: replyToMessageId, fail_if_not_exists: false }
+  // 按鈕只在根訊息；Discord 的回覆引用本身可點擊跳轉，故只需文字指引
+  m.embeds[0].footer = { text: FOLLOW_UP_FOOTER }
   return m
 }
 

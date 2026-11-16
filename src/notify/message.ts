@@ -53,6 +53,7 @@ export interface DiscordMessage {
       color: number
       url?: string
       fields: DiscordEmbedField[]
+      footer?: { text: string }
     },
   ]
 }

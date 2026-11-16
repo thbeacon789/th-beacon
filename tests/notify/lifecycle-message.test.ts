@@ -141,6 +141,12 @@ describe('reply builders', () => {
     expect(m.message_reference?.message_id).toBe('m9')
     expect(m.components).toBeUndefined()
   })
+  it('buildFollowUpAlert 以 footer 指引到根訊息操作按鈕，且不改動原物件', () => {
+    const alert = withBtn()
+    const m = buildFollowUpAlert(alert, 'm9')
+    expect(m.embeds[0].footer?.text).toBe('↑ Acknowledge／Resolve 按鈕在原告警訊息（點上方引用跳轉）')
+    expect(alert.embeds[0].footer).toBeUndefined()
+  })
 })
 
 describe('renderRoot', () => {
