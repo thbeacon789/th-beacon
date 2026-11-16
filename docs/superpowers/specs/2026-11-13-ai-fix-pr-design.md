@@ -230,6 +230,39 @@ claude -p "<prompt>" \
 
 同一個實驗順便確認：`--output-format json` 在超出 `--max-budget-usd` 時的實際欄位、`--tools` 限制後 agent 確實沒有 Bash。
 
+### 實測結論（2026-11-16）
+
+實驗在 Android repo 的 `main` 上以臨時 `workflow_dispatch` workflow 跑（Run：<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43843940999>、<https://github.com/trustnel/trustnel-viewer-android/actions/runs/43844213015>）。**前置事實**：Anthropic federation rule 的 subject prefix 是 `repo:trustnel/trustnel-viewer-android:ref:refs/heads/main` 且要求 `repository_owner = trustnel`，因此**只有跑在 `main` 的 workflow 能換到權杖**（非 main 分支回 401）；修復腳本須跑在 main 上的 workflow（schedule／workflow_dispatch／main 的 push）。
+
+- **`AUTH_MODE=native-wif`**（步驟 1 成功，不需步驟 2）。非 `--bare`，CLI 原生以 `ANTHROPIC_IDENTITY_TOKEN_FILE` ＋四個 WIF 變數換權杖。**絕不使用 `ANTHROPIC_API_KEY`**。
+- **釘死版本**：`@anthropic-ai/claude-code@2.1.325`（`npm install -g`，並設 `DISABLE_AUTOUPDATER=1`；當日 npm latest 即此版）。
+- **傳給 agent 的環境變數**：`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_ORGANIZATION_ID`、`ANTHROPIC_SERVICE_ACCOUNT_ID`、`ANTHROPIC_WORKSPACE_ID`、`ANTHROPIC_IDENTITY_TOKEN_FILE`（指向 0600 檔，內容為向 `ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com` 取得的 JWT；腳本須在每次呼叫前重新取一次，JWT 與換出的權杖都有時效）、`DISABLE_AUTOUPDATER=1`，以及 `ANTHROPIC_API_KEY=""`。workflow 需 `permissions: id-token: write`。
+- **確切指令**：
+
+  ```
+  claude -p [--output-format json] --setting-sources user \
+    --model <model> --max-budget-usd <N> --max-turns <N> \
+    --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk \
+    --allowedTools "Read,Edit,Write,Glob,Grep" \
+    [--json-schema '<schema>'] [--append-system-prompt-file CLAUDE.md] < prompt.txt
+  ```
+
+- **關閉 repo 設定**：`--setting-sources user` 實測讓專案 `.claude/settings.json` 的 hooks 不執行（`/tmp/hook-ran` 不存在；不加該旗標則存在），且專案 `.mcp.json` 不載入（init 的 `mcp_servers` 為 `[]`）。
+- **`CLAUDE.md`：`--setting-sources user` 下不會自動載入**（暗號測試回 `UNKNOWN`；不加旗標則回 `BEACON-42`）。需以 `--append-system-prompt-file CLAUDE.md` 顯式附上（實測回 `BEACON-42`）。
+- **Bash**：`--tools "Read,Edit,Write,Glob,Grep"` 後 init 的 `tools` 僅 `["Edit","Glob","Grep","Read","Write"]`，要求執行 `echo hi` 時 agent 回報沒有 Bash 工具，無任何 `tool_use`。
+- **stdin**：不給 positional prompt、以 stdin 餵 226,960 bytes 可行（`START=<ALPHA-111> END=<OMEGA-999>` 首尾皆讀到，約 US$0.058）；搭配 `--tools` 與 `--append-system-prompt-file` 亦可。
+- **`--output-format json` 欄位**（皆 exit code 與判定實測）：
+
+  | 情境 | `subtype` | `is_error` | `terminal_reason` | `total_cost_usd` | `result` 鍵 | `structured_output` 鍵 | `errors` 鍵 | exit |
+  |---|---|---|---|---|---|---|---|---|
+  | 成功 | `success` | false | `completed` | 實際花費 | 有 | 無（`--json-schema` 成功時才有，值為物件，`result` 為其 JSON 字串） | 無 | 0 |
+  | 超出 `--max-budget-usd` | `error_max_budget_usd` | true | `budget_exhausted` | 略高於上限（0.002 → 0.002135） | **無** | 無 | `["Reached maximum budget ($0.002)"]` | 1 |
+  | 超出 `--max-turns` | `error_max_turns` | true | `max_turns` | 實際花費 | **無** | 無 | `["Reached maximum number of turns (2)"]` | 1 |
+  | 認證失敗（前次實測） | `success`（誤導） | true | `api_error` | 0 | 有（錯誤文字） | 無 | — | 1 |
+
+  判斷成敗請同時看 `is_error`／exit code，不能只看 `subtype`；預算與回合上限都不會產生 `result`／`structured_output`。
+- 實驗用模型 `claude-haiku-5-5` 可用。
+
 ## 7. 測試與驗收
 
 - th-beacon：payload 驗證與 `prUrl` 驗證的單元測試；handler 測試（驗簽、找不到 issue、三種 status、重複 `prUrl` 不重發通知、webhook 模式不通知）；Store 的 memory 與 supabase 實作；`pnpm typecheck`、`pnpm test` 通過。
