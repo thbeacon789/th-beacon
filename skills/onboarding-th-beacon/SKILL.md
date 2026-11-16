@@ -12,6 +12,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - `POST /api/heartbeat`：CI 每次跑完都回報 pass／fail，用來證明排程有在跑
 - `POST /api/ingest`：推送錯誤事件
 - `POST /api/ai-usage`：回報 AI 用量（token 或金額），選填
+- `POST /api/ai-fix`：回報 AI 修復 PR 的結果，選填（由 `ai-fix-e2e-failure.sh` 自動呼叫，接入者不必手寫）
 
 **契約不要猜。** headers、簽章算法、payload、回應碼都寫在本目錄的 `api-reference.md`，簽章細節錯一點就是 401。回報用的 script 一律用 th-beacon 現成的（workflow 執行時 checkout 釘選版本，見「接線」），不要自己重寫，也不要複製進目標 repo。
 
@@ -67,9 +68,9 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
    腳本一律以 `bash ./.beacon/scripts/<name>.sh` 呼叫（不依賴 sparse checkout 後的執行位元）。cwd 仍是目標 repo 根，其他相對路徑不變。若服務執行期也要推錯誤（不是 CI 測試結果），改用 `report-to-beacon.sh` 並以第 3 參數指定 `errorType`（省略時為 `test_failure`，執行期錯誤不要省略）。`path` 必須在 workspace 內，所以 th-beacon 不能放在目標 repo 工作樹之外。
    - (d) **清掉舊複製品**：目標 repo 若已有 th-beacon 腳本的複製品（`heartbeat-to-beacon.sh`、`diagnose-e2e-failure.sh`、`report-to-beacon.sh` 等），一併刪除並確認 `.github`、`scripts` 內沒有其他引用；目標 repo 自己的腳本不動。
    - (e) **SHA 更新程序**：`ref` 一律寫完整 40 碼 commit SHA，**寫在 workflow 檔字面值，不放 repo variable**（讓變更進 PR diff 受審查）。該 commit 必須已存在於 th-beacon 的遠端。th-beacon 改腳本並 push 後，取新 SHA：`git ls-remote git@github.com:thbeacon789/th-beacon.git refs/heads/main`（或 `gh api repos/thbeacon789/th-beacon/commits/main --jq .sha`），再人工修改各目標 repo workflow 內的 `ref:` 並走 PR 審查。沒有自動更新機制（Dependabot 只管 `uses:`），忘了更新就是繼續跑舊腳本。
-   - **待驗證（尚未在 CI 實跑確認，以第一個接入的 repo 實測為準）**：deploy key＋`fetch-depth: 1`＋指定 SHA＋`sparse-checkout` 這個組合對私有 repo 是否成功（失敗時退路是 `fetch-depth: 0`）；自架 runner 上 checkout 寫入 `$RUNNER_TEMP` 的金鑰暫存檔，在 job 被取消或 runner 被殺時是否被清理（action 的 post 步驟負責刪，不保證一定執行）；`.beacon/` 這個未追蹤目錄是否影響目標 repo 的建置工具。
+   - **待驗證（尚未在 CI 實跑確認，以第一個接入的 repo 實測為準）**：deploy key＋`fetch-depth: 1`＋指定 SHA＋`sparse-checkout` 這個組合對私有 repo 是否成功（失敗時退路是 `fetch-depth: 0`）；自架 runner 上 checkout 寫入 `$RUNNER_TEMP` 的金鑰暫存檔，在 job 被取消或 runner 被殺時是否被清理（action 的 post 步驟負責刪，不保證一定執行；驗證前，自架 runner 上的 job 視為有金鑰殘留風險，建議改用 ephemeral runner 或在 job 結尾加 `if: always()` 的清理步驟）；`.beacon/` 這個未追蹤目錄是否影響目標 repo 的建置工具。
    - **陷阱**：`persist-credentials: false` 兩個 checkout 都要加；deploy key 無到期日、無 passphrase，輪替靠人；`GITHUB_TOKEN` 讀不到另一個擁有者的私有 repo，所以跨擁有者只能用 deploy key。fork PR 拿不到 secret，所以回報步驟只用在排程或手動觸發的 job。
-   - 只有在**完全無法 checkout th-beacon**（例如接入方拿不到 deploy key）時才退而複製：本目錄的 script 是 symlink，須用 `cp -L <本目錄>/scripts/<檔名> <目標>/scripts/` 逐檔複製（不要 `cp -R`），並自行承擔版本漂移；這不是預設做法。
+   - 只有在**完全無法 checkout th-beacon**（例如接入方拿不到 deploy key）時才退而複製：本目錄的 script 是 symlink，須用 `cp -L <本目錄>/scripts/<檔名> <目標>/scripts/` 逐檔複製（不要 `cp -R`），並自行承擔版本漂移；這不是預設做法，**須先徵得使用者同意，agent 不得自行決定改用**。
 2. 在測試 job 的最後加上回報步驟：
 
 ```yaml
@@ -105,11 +106,152 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
 - label `ai-fix` **必須先建**：缺 label 時腳本的 `gh pr create` 會失敗。
 - Anthropic WIF 認證（診斷已在用）；federation rule 的 subject 只允許 `main`，所以 `ai-fix` 要在 `main` 上才換得到權杖，在測試分支上會 401，除非另建該分支的臨時 rule。
 
-**job 配置**
-- `playback-smoke`：Diagnose 步驟加 env `DIAGNOSE_REDACTED_OUT`（遮蔽後 log 的輸出路徑）；其後新增 `id: needs-fix` 的步驟，以 `jq -e '.category == "app" and .needsCodeChange == true'` 檢查 `diagnosis.json`，成立才寫出 job output `needs_fix=true`，並上傳 artifact `ai-fix-input`（遮蔽後 log＋`diagnosis.json`，保留 7 天）。
-- `ai-fix` job（`ubuntu-latest`；`if: always() && needs.<job>.outputs.needs_fix == 'true'`，要帶 `always()`，否則 E2E 失敗時會被隱含的 `success()` 跳過；`permissions: id-token: write, contents: read`）。**目錄配置與上面不同**：腳本要求 cwd 是目標 repo 根且工作樹乾淨，agent 又被限制在 cwd 內，所以目標 repo checkout 到 `app/`、th-beacon checkout 到 `beacon/`，**兩者並列、不可巢狀**，修復步驟設 `working-directory: app`，以 `bash "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh" <platform> <heartbeat-name> <known-env-issues.md> <diagnosis.json> <redacted-log>` 呼叫。artifact 下載到 `${{ runner.temp }}/ai-fix-input`（不可下載進 `app/`）。App 的 checkout 用 `ref: ${{ github.sha }}`、`persist-credentials: false`。
-- 權杖用 `actions/create-github-app-token`（輸出 `token`、`app-slug`）；CLI 用 `npm install -g @anthropic-ai/claude-code@<釘選版本>`。完整可用的 YAML 範本見 th-beacon 計畫 `docs/superpowers/plans/2026-11-13-ai-fix-pr.md` 的 Task 9 Step 4。
-- 此 job **不得**帶入任何 E2E 帳密 secret；`GH_TOKEN` 只給腳本。腳本的必要 env（`BASE_BRANCH`、`RUN_URL`、`AI_FIX_REVIEWER`、`GH_TOKEN`、`ANTHROPIC_*` 的 WIF 變數）與回報用 env（`BEACON_BASE_URL`、`BEACON_SERVICE`、`BEACON_SECRET`，缺任一則不回報）以腳本檔頭註解為準。
+**job 配置**：兩段 YAML 皆以已接入的 repo 為範本（見各接入 repo 的 `.github/workflows/e2e-prod.yml`），尖括號為佔位符，`<40 碼 SHA>` 與 th-beacon checkout 的 `ref` 必須同值。
+
+(1) E2E job 側（`<e2e job id>` 為跑 E2E 的 job；Diagnose 與 Report heartbeat 步驟沿用上面的寫法，只補下列差異）：
+
+```yaml
+  <e2e job id>:
+    # needs_fix 由 needs-fix step 設定：判讀為 app 類且需改程式時為 'true'
+    outputs:
+      needs_fix: ${{ steps.needs-fix.outputs.needs_fix }}
+    permissions:
+      id-token: write      # 判讀與 ai-fix 以 GitHub OIDC 換 Anthropic 憑證（WIF）
+      contents: read
+    steps:
+      # ...checkout、th-beacon checkout、E2E 步驟...
+      - name: Diagnose failure with Claude
+        if: failure() || cancelled()
+        continue-on-error: true
+        env:
+          # ...原本的 ANTHROPIC_*（WIF）、DIAGNOSE_*、BEACON_* env...
+          DIAGNOSE_REDACTED_OUT: ${{ runner.temp }}/ai-fix-redacted.log   # 新增：遮蔽後的 log，供 ai-fix 當輸入
+        run: |
+          ./.beacon/scripts/diagnose-e2e-failure.sh <platform> <known-env-issues.md> \
+            "${RUNNER_TEMP}/diagnosis.json" <log 檔...>
+
+      # 判讀為「app 類且需要改程式」才讓 ai-fix 接手；只讀 diagnosis.json，檔案不存在或解析失敗視為不成立
+      - name: Decide whether AI fix is needed
+        id: needs-fix
+        if: failure() || cancelled()
+        continue-on-error: true
+        run: |
+          if jq -e '.category == "app" and .needsCodeChange == true' "${RUNNER_TEMP}/diagnosis.json" >/dev/null 2>&1; then
+            echo "needs_fix=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload AI fix input
+        if: (failure() || cancelled()) && steps.needs-fix.outputs.needs_fix == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-fix-input
+          path: |
+            ${{ runner.temp }}/ai-fix-redacted.log
+            ${{ runner.temp }}/diagnosis.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # ...Report heartbeat（if: always()）...
+```
+
+**陷阱（原因）**：E2E job 中所有「失敗後才執行」的 step（判讀、needs-fix、上傳 artifact）的 `if:` 都必須顯式帶 `failure() || cancelled()`。step 的 `if` 沒有狀態函式時隱含 `success()`，job 失敗時整個 step 會被跳過；上傳 step 的 `needs_fix == 'true'` 只在 job 已失敗時才成立，漏寫狀態函式會永遠跳過。`needs-fix` 只寫字面值 `needs_fix=true`，不內插任何不可信內容。
+
+(2) 完整的 `ai-fix` job（`ubuntu-latest`，兩個平台都一樣；`<heartbeat-name>`、`<beacon-service>` 與登記一致）：
+
+```yaml
+  ai-fix:
+    needs: <e2e job id>
+    # 用 !cancelled() 而非 always()：手動取消整個 run 時不應再啟動修復；上游失敗時照常執行。
+    # 必須包 ${{ }}：以 ! 開頭的純字串在 YAML 會被誤解析。
+    if: ${{ !cancelled() && needs.<e2e job id>.outputs.needs_fix == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # 目標 repo 與 th-beacon 並列、不可巢狀：腳本要求 cwd（app/）是乾淨的 repo 根，且 agent 被限制在 cwd 內
+      - name: Checkout app
+        uses: actions/checkout@v4
+        with:
+          path: app
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Checkout th-beacon scripts      # 參數同上面 (c)，只有 path 不同
+        uses: actions/checkout@v4
+        with:
+          repository: thbeacon789/th-beacon
+          ref: <40 碼 SHA>
+          ssh-key: ${{ secrets.BEACON_SCRIPTS_DEPLOY_KEY }}
+          path: beacon
+          sparse-checkout: scripts
+          fetch-depth: 1
+          persist-credentials: false
+
+      # 不可下載進 app/，否則腳本的「工作樹乾淨」檢查會失敗
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-fix-input
+          path: ${{ runner.temp }}/ai-fix-input
+
+      # 釘選 CLI 版本並關閉自動更新，避免 agent 行為隨上游漂移（版本以已接入 repo 的 workflow 為準）
+      - name: Install Claude Code CLI
+        env:
+          DISABLE_AUTOUPDATER: "1"
+        run: npm install -g @anthropic-ai/claude-code@2.1.325
+
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.AI_FIX_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AI_FIX_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Resolve bot user id
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          ID="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" || ID=""
+          if ! [[ "$ID" =~ ^[0-9]+$ ]]; then
+            echo "無法取得 bot user id（取得值：'${ID}'）" >&2
+            exit 1
+          fi
+          echo "user-id=${ID}" >> "$GITHUB_OUTPUT"
+
+      - name: AI fix
+        working-directory: app
+        env:
+          DISABLE_AUTOUPDATER: "1"
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AI_FIX_REVIEWER: ${{ vars.AI_FIX_REVIEWER }}
+          AI_FIX_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          AI_FIX_APP_USER_ID: ${{ steps.bot.outputs.user-id }}
+          AI_FIX_DRY_RUN: ${{ inputs.ai_fix_dry_run && '1' || '' }}
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          BEACON_BASE_URL: ${{ vars.BEACON_BASE_URL }}
+          BEACON_SERVICE: <beacon-service>
+          BEACON_SECRET: ${{ secrets.BEACON_SECRET }}
+        run: |
+          bash "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh" <platform> <heartbeat-name> \
+            <known-env-issues.md 相對 app/ 的路徑> \
+            "$RUNNER_TEMP/ai-fix-input/diagnosis.json" \
+            "$RUNNER_TEMP/ai-fix-input/ai-fix-redacted.log"
+```
+
+- `ANTHROPIC_*` 四個值來自目標 repo 的 repository variables（診斷步驟已在用同一組，WIF 由公司的 Anthropic 組織設定，不是 secret）；`BEACON_BASE_URL` 也是 variable，`BEACON_SECRET` 沿用心跳那把。`<known-env-issues.md>` 是目標 repo 已有的已知環境問題清單，路徑相對 `app/`。
+- 安裝 CLI 放在產生 App 權杖**之前**；bot user id 必須以 `^[0-9]+$` 驗證、失敗即中止（它會組成 commit 作者 email）。所有 checkout 都 `persist-credentials: false`；push 的憑證由腳本自行處理，**不需要 `gh auth setup-git`**。
+- 此 job **不得**帶入任何 E2E 帳密 secret（`TRUSTNEL_*` 之類）；`GH_TOKEN` 只給腳本。`run:` 內不用 `${{ }}` 內插不可信值，一律經 `env:`。
+- `create-github-app-token@v3` 不給 `owner`／`repositories` 即只含當前 repo。若 actionlint 對 `client-id` 報未知輸入，是其中繼資料過舊的誤報。
+- 腳本的必要 env 與回報用 env（缺任一 `BEACON_*` 則不回報）以腳本檔頭註解為準；`workflow_dispatch` 需有 boolean input `ai_fix_dry_run`（見下）。
 
 **乾跑**：手動觸發時設 `AI_FIX_DRY_RUN=1`（建議在 `workflow_dispatch` 加 boolean input `ai_fix_dry_run`）。乾跑不呼叫模型、不 push、不開 PR、不回報，只驗證 checkout、權杖與環境接線；第一次接入務必先乾跑。
 
@@ -122,7 +264,7 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
 使用者只想看告警長怎樣、或驗證 Discord 按鈕時，登記一個獨立的測試服務，別拿正式服務送假錯誤（會弄髒它的健康燈號與 issue 紀錄）：
 
 1. 使用者到 `/services` 登記，名稱建議 `beacon-selftest`，填負責人 Discord ID，**不勾心跳**（沒有 CI，勾了會每天逾期告警）。金鑰顯示後**複製到剪貼簿**。
-2. 使用者在 repo 根目錄（th-beacon 本身，或已 checkout th-beacon 腳本的 repo（腳本路徑換成 `./.beacon/scripts/report-to-beacon.sh`））用 `!` 前綴執行，金鑰從剪貼簿讀：
+2. 使用者在 th-beacon repo 根目錄用 `!` 前綴執行（本機試跑，直接用 repo 內的 `scripts/`；若在已 checkout 腳本的目標 repo 本機試跑，路徑換成 `./.beacon/scripts/report-to-beacon.sh`），金鑰從剪貼簿讀：
 
 ```bash
 ! BEACON_URL=https://th-beacon.vercel.app/api/ingest BEACON_SERVICE=beacon-selftest BEACON_SECRET="$(pbpaste)" bash scripts/report-to-beacon.sh "Discord 告警流程測試" "" selftest
