@@ -243,12 +243,15 @@ claude -p "<prompt>" \
   claude -p [--output-format json] --setting-sources user \
     --model <model> --max-budget-usd <N> --max-turns <N> \
     --tools "Read,Edit,Write,Glob,Grep" --permission-mode dontAsk \
-    --allowedTools "Read,Edit,Write,Glob,Grep" \
+    --allowedTools "Read,Glob,Grep,Edit(./**)" \
+    --disallowedTools "Edit(**/.git/**)" "Write(**/.git/**)" "Read(**/.git/**)" \
+    --settings '{"permissions":{"blockWritesOutsideWorkingDirectories":true,"blockReadsOutsideWorkingDirectories":true}}' \
     [--json-schema '<schema>'] [--append-system-prompt-file CLAUDE.md] < prompt.txt
   ```
 
   使用 `--json-schema` 時必須同時帶 `--output-format json`：實測的 `structured_output` 都是在這個組合下觀察到；不帶 json 輸出格式的情形未實測，一律同時帶。
 
+- **寫入邊界實測**（2026-11-16，本機 CLI 2.1.325、`claude-haiku-5-5`，各案例僅跑一次；來源：`.superpowers/sdd/2026-11-13-ai-fix-pr/write-boundary-experiment.md` 的結論）：基準旗標（無條件 `--allowedTools Write,Edit`）下，`.git/` 內寫入被 CLI 保護路徑擋下，但 `../x`、cwd 外絕對路徑、`$HOME` 新檔**全都寫得進去**，Read／Glob／Grep 可讀 cwd 外與 `.git/config`。改用上列組合（`Edit(./**)` 取代無條件 Write／Edit，疊加 `.git` deny 與兩個 block 設定）後，實測 cwd 外寫入（相對、絕對、`$HOME`）與經目錄符號連結的寫出皆被擋，cwd 內可寫，cwd 外讀取被擋。**未測項目**：檔案型符號連結、硬連結、巢狀 `.git` 的 deny 規則（`**/.git/**` 涵蓋巢狀 repo 為推論）、`Read(**/.git/**)` deny（待 CI 乾跑驗證）；`HOME` 換成空目錄時 WIF 認證是否正常也未在本機實測（本機認證走 Keychain）。此外腳本在 agent 前後比對整棵 `.git` 樹，並以 `GIT_CONFIG_GLOBAL=/dev/null` 隔絕全域 git 設定，作為第二層防護。
 - **關閉 repo 設定**：`--setting-sources user` 實測讓專案 `.claude/settings.json` 的 hooks 不執行（`/tmp/hook-ran` 不存在；不加該旗標則存在），且專案 `.mcp.json` 不載入（init 的 `mcp_servers` 為 `[]`）。
 - **`CLAUDE.md`：`--setting-sources user` 下不會自動載入**（暗號測試回 `UNKNOWN`；不加旗標則回 `BEACON-42`）。需以 `--append-system-prompt-file CLAUDE.md` 顯式附上（實測回 `BEACON-42`）。
 - **Bash**：`--tools "Read,Edit,Write,Glob,Grep"` 後 init 的 `tools` 僅 `["Edit","Glob","Grep","Read","Write"]`，要求執行 `echo hi` 時 agent 回報沒有 Bash 工具，無任何 `tool_use`。

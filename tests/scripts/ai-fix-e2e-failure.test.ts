@@ -221,7 +221,12 @@ describe('ai-fix-e2e-failure.sh', () => {
       expect(a).toContain('-p')
       expect(flag('--permission-mode')).toBe('dontAsk')
       expect(flag('--tools')).toBe('Read,Edit,Write,Glob,Grep')
-      expect(flag('--allowedTools')).toBe('Read,Edit,Write,Glob,Grep')
+      expect(flag('--allowedTools')).toBe('Read,Glob,Grep,Edit(./**)')
+      const di = a.indexOf('--disallowedTools')
+      expect(a.slice(di + 1, di + 4)).toEqual(['Edit(**/.git/**)', 'Write(**/.git/**)', 'Read(**/.git/**)'])
+      const settings = JSON.parse(flag('--settings')!)
+      expect(settings.permissions.blockWritesOutsideWorkingDirectories).toBe(true)
+      expect(settings.permissions.blockReadsOutsideWorkingDirectories).toBe(true)
       expect(flag('--model')).toBe('claude-opus-5-5')
       expect(flag('--max-budget-usd')).toBe('5')
       expect(flag('--max-turns')).toBe('40')
@@ -580,6 +585,60 @@ describe('ai-fix-e2e-failure.sh', () => {
       const r = await run()
       expect(r.stdout).toContain('STATUS=failed')
       expect(calls()).toBe(0)
+    })
+  })
+
+  describe('寫入邊界（fix round 2）', () => {
+    const headFile = () => fs.readFileSync(path.join(repo, '.git/HEAD'), 'utf8')
+    const ORIG_HEAD = 'ref: refs/heads/ai-fix/android-e2e-prod\n'
+
+    it('agent 的 HOME 是 $WORK 下用完即丟的目錄，不是呼叫端的 HOME，結束後已清除', async () => {
+      await run()
+      const h = agentEnv().env.HOME
+      expect(h).toBeTruthy()
+      expect(h).not.toBe(process.env.HOME)
+      expect(h).toContain('ai-fix.')
+      expect(fs.existsSync(h)).toBe(false)
+    })
+
+    it('agent 寫 .git/commondir → failed、檔案移除、git-common-dir 仍為原值', async () => {
+      const before = sh(repo, 'rev-parse', '--git-common-dir').trim()
+      const elsewhere = path.join(dir, 'elsewhere')
+      fs.mkdirSync(elsewhere)
+      setPlan({ writes: { 'app/Login.kt': 'x\n', '.git/commondir': elsewhere + '\n' }, stdout: successOut() })
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(fs.existsSync(path.join(repo, '.git/commondir'))).toBe(false)
+      expect(sh(repo, 'rev-parse', '--git-common-dir').trim()).toBe(before)
+    })
+
+    it('agent 改 .git/HEAD → failed 且還原', async () => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n', '.git/HEAD': 'ref: refs/heads/other\n' }, stdout: successOut() })
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(headFile()).toBe(ORIG_HEAD)
+      expect(sh(repo, 'symbolic-ref', 'HEAD').trim()).toBe('refs/heads/ai-fix/android-e2e-prod')
+    })
+
+    it('agent 新增 .git/worktrees/x/gitdir → failed 且移除', async () => {
+      setPlan({ writes: { 'app/Login.kt': 'x\n', '.git/worktrees/x/gitdir': '/tmp/evil/.git\n' }, stdout: successOut() })
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(fs.existsSync(path.join(repo, '.git/worktrees'))).toBe(false)
+    })
+
+    it('全域 git 設定的 fsmonitor／clean filter 不會被腳本的 git 指令執行', async () => {
+      const marker = path.join(dir, 'global-fsmonitor-ran')
+      const gc = path.join(dir, 'global.gitconfig')
+      const attrs = path.join(dir, 'global.attributes')
+      fs.writeFileSync(attrs, '* filter=pwn\n')
+      fs.writeFileSync(
+        gc,
+        `[core]\n\tfsmonitor = touch ${marker}; false\n\tattributesFile = ${attrs}\n[filter "pwn"]\n\tclean = touch ${marker}; cat\n`,
+      )
+      const r = await run({ GIT_CONFIG_GLOBAL: gc })
+      expect(r.stdout).toContain('STATUS=ready')
+      expect(fs.existsSync(marker)).toBe(false)
     })
   })
 })

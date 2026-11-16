@@ -21,7 +21,13 @@
 #   - .git/config、.git/hooks、.git/info 等設定類檔案：agent 前後比對雜湊，不一致即 failed 並還原（先於任何 git 指令）。
 #   - 新出現的巢狀 .git、被 .gitignore 忽略的新檔：視為越界、failed，並只刪除這些新檔。
 #   - 殘餘限制：agent 執行前就存在的被忽略檔（如建置產物），其內容被改動無法便宜地偵測。
-#   - 未設 GIT_CONFIG_NOSYSTEM／GIT_CONFIG_GLOBAL，以免干擾 7b 的 gh auth setup-git 憑證設定。
+#   - 寫入範圍從源頭限制：--allowedTools 只給 Edit(./**)（涵蓋 Write）、--disallowedTools 擋 .git、
+#     --settings 開 blockWrites／blockReadsOutsideWorkingDirectories；agent 的 HOME 是用完即丟的空目錄。
+#     （Read(**/.git/**) deny 未實測，待 CI 乾跑驗證）
+#   - 整棵 .git 樹（排除 objects/ 但含 objects/info/、index、logs/）在 agent 前後比對 manifest，不一致即 failed 並還原。
+#   - g() 隔絕全域／系統 git 設定（GIT_CONFIG_GLOBAL=/dev/null、GIT_CONFIG_NOSYSTEM=1）。
+#   - 殘餘限制：cwd 內任何受版控檔案 agent 都讀得到；改動後腳本不執行 repo 內任何程式；
+#     檔案型符號連結與硬連結未測。
 # 相容 bash 3.2（macOS）與 bash 5（ubuntu）。JWT 只存在 0600 暫存檔，不印出。
 set -uo pipefail
 
@@ -90,8 +96,13 @@ terminal() { # $1=STATUS $2=SUMMARY
   exit 0
 }
 
-# agent 結束後所有 git 呼叫都走這裡：關掉 fsmonitor 與 hooks
-g() { git -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
+# 本腳本（7a）所有 git 呼叫都走這裡：關掉 fsmonitor 與 hooks，並隔絕全域／系統設定
+# （全域設定可能含 filter／textconv／fsmonitor 等會執行外部指令的項目）。
+# 約定：7b 的 push 需要憑證時，另寫一個「顯式帶入憑證」的包裝，不靠全域設定；不要放寬這個 g()。
+g() {
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    git -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"
+}
 
 # ---------- 工作樹乾淨檢查（不乾淨時不動任何檔案）----------
 DIRTY="$(g status --porcelain 2>/dev/null)" || terminal failed "not a git repository"
@@ -248,33 +259,34 @@ unset JWT
 # ---------- agent 前快照：git 設定類檔案、巢狀 .git、被忽略檔 ----------
 GITDIR="$(g rev-parse --absolute-git-dir 2>/dev/null)" || terminal failed "cannot locate git dir"
 SNAP="$WORK/gitsnap"
-META_PATHS="config config.worktree hooks info objects/info/alternates"
+# .git 樹 manifest（路徑＋類型＋雜湊；符號連結記連結目標、不跟隨）。排除 objects/（但含 objects/info/）、index、logs/。
 git_meta_manifest() {
   ( cd "$GITDIR" 2>/dev/null || exit 0
-    find $META_PATHS \( -type f -o -type l \) -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do
+    { find . -path ./objects -prune -o -path ./logs -prune -o -path ./index -prune -o -print
+      find ./objects/info -print 2>/dev/null; } | LC_ALL=C sort | while IFS= read -r f; do
       if [ -L "$f" ]; then printf 'L %s %s\n' "$(readlink "$f")" "$f"
+      elif [ -d "$f" ]; then printf 'D %s\n' "$f"
       else printf '%s %s\n' "$($HASHER "$f" 2>/dev/null | awk '{print $1}')" "$f"; fi
     done )
 }
+# .git 頂層項目（排除 objects／logs／index）＋ objects/info
+git_top_entries() { ( cd "$GITDIR" && ls -A ) | grep -v -x -e objects -e logs -e index; }
 restore_git_meta() {
-  for mp in $META_PATHS; do
-    rm -rf "${GITDIR:?}/$mp"
-    if [ -e "$SNAP/$mp" ] || [ -L "$SNAP/$mp" ]; then
-      mkdir -p "$(dirname "$GITDIR/$mp")"
-      cp -RPp "$SNAP/$mp" "$GITDIR/$mp"
-    fi
+  git_top_entries | while IFS= read -r e; do rm -rf "${GITDIR:?}/$e"; done
+  rm -rf "${GITDIR:?}/objects/info"
+  for e in $(ls -A "$SNAP"); do
+    [ "$e" = "objects" ] && continue
+    cp -RPp "$SNAP/$e" "$GITDIR/$e"
   done
+  if [ -e "$SNAP/objects/info" ]; then mkdir -p "$GITDIR/objects"; cp -RPp "$SNAP/objects/info" "$GITDIR/objects/info"; fi
 }
 list_nested_git() { find . -path ./.git -prune -o -name .git -print -prune 2>/dev/null | LC_ALL=C sort; }
 list_ignored() { g ls-files -o -i --exclude-standard -z 2>/dev/null | tr '\0' '\n' | LC_ALL=C sort; }
 
 mkdir -p "$SNAP"
-for mp in $META_PATHS; do
-  if [ -e "$GITDIR/$mp" ] || [ -L "$GITDIR/$mp" ]; then
-    mkdir -p "$(dirname "$SNAP/$mp")"
-    cp -RPp "$GITDIR/$mp" "$SNAP/$mp"
-  fi
-done
+git_top_entries | while IFS= read -r e; do cp -RPp "$GITDIR/$e" "$SNAP/$e"; done
+if [ -e "$GITDIR/objects/info" ]; then mkdir -p "$SNAP/objects"; cp -RPp "$GITDIR/objects/info" "$SNAP/objects/info"; fi
+HEAD_BEFORE="$(g rev-parse HEAD 2>/dev/null)" || terminal failed "cannot resolve HEAD"
 git_meta_manifest >"$WORK/meta.before"
 list_nested_git >"$WORK/nested.before"
 list_ignored >"$WORK/ignored.before"
@@ -282,15 +294,20 @@ list_ignored >"$WORK/ignored.before"
 # ---------- 呼叫 agent ----------
 ARGS=(-p --output-format json --setting-sources user
   --permission-mode dontAsk
-  --tools "Read,Edit,Write,Glob,Grep" --allowedTools "Read,Edit,Write,Glob,Grep"
+  --tools "Read,Edit,Write,Glob,Grep"
+  --allowedTools "Read,Glob,Grep,Edit(./**)"
+  --disallowedTools "Edit(**/.git/**)" "Write(**/.git/**)" "Read(**/.git/**)"
+  --settings '{"permissions":{"blockWritesOutsideWorkingDirectories":true,"blockReadsOutsideWorkingDirectories":true}}'
   --model "$MODEL" --max-budget-usd "$MAX_BUDGET" --max-turns "$MAX_TURNS"
   --json-schema "$SCHEMA")
 REPO_ROOT="$(g rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$REPO_ROOT" ] && [ -f "$REPO_ROOT/CLAUDE.md" ] && ARGS+=(--append-system-prompt-file "$REPO_ROOT/CLAUDE.md")
 
+AGENT_HOME="$WORK/agent-home"
+mkdir "$AGENT_HOME" && chmod 700 "$AGENT_HOME"
 # env -i＋白名單：GH_TOKEN、BEACON_SECRET、E2E 帳密等一律不傳入；用 stdin 餵 prompt（避免超過單一參數上限）
 AGENT_OUT="$WORK/agent.out"
-env -i PATH="$PATH" HOME="${HOME:-}" ${TMPDIR:+TMPDIR="$TMPDIR"} \
+env -i PATH="$PATH" HOME="$AGENT_HOME" ${TMPDIR:+TMPDIR="$TMPDIR"} \
   ANTHROPIC_FEDERATION_RULE_ID="$ANTHROPIC_FEDERATION_RULE_ID" \
   ANTHROPIC_ORGANIZATION_ID="$ANTHROPIC_ORGANIZATION_ID" \
   ANTHROPIC_SERVICE_ACCOUNT_ID="$ANTHROPIC_SERVICE_ACCOUNT_ID" \
@@ -298,6 +315,7 @@ env -i PATH="$PATH" HOME="${HOME:-}" ${TMPDIR:+TMPDIR="$TMPDIR"} \
   ANTHROPIC_IDENTITY_TOKEN_FILE="$TOKEN_FILE" \
   ANTHROPIC_API_KEY="" DISABLE_AUTOUPDATER=1 \
   claude "${ARGS[@]}" <"$PROMPT" >"$AGENT_OUT" 2>"$WORK/agent.err"
+rm -rf "$AGENT_HOME"
 # 不依賴 exit code：認證失敗、超限時 claude 會非零退出，但仍照常解析 stdout
 
 # ---------- agent 後防護（先於任何 git 指令）----------
@@ -306,6 +324,11 @@ git_meta_manifest >"$WORK/meta.after"
 if ! cmp -s "$WORK/meta.before" "$WORK/meta.after"; then
   restore_git_meta
   VIOL="agent modified git config/hooks (restored)"
+fi
+if [ -z "$VIOL" ]; then
+  if [ "$(g symbolic-ref HEAD 2>/dev/null)" != "refs/heads/$BRANCH" ] || [ "$(g rev-parse HEAD 2>/dev/null)" != "$HEAD_BEFORE" ]; then
+    VIOL="agent moved HEAD"
+  fi
 fi
 # 以下 git 指令都在還原設定之後，且經 g() 關掉 fsmonitor／hooks
 list_nested_git >"$WORK/nested.after"
