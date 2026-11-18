@@ -404,6 +404,25 @@ esac`,
     expect(sentinels(a)).toHaveLength(3)
   })
 
+  it('admins：include 路徑的非正規寫法（//、/./、/../）只輸出哨兵', async () => {
+    const a = await adminsOf('#include //proc/kmsg\n#include /./proc/kmsg\n#include /etc/../proc/kmsg\n')
+    expect(sentinels(a)).toHaveLength(3)
+  })
+
+  it('admins：includedir 下的 symlink 不被解析，只輸出哨兵；一般檔照常解析', async () => {
+    const a = await adminsOf('#includedir /var/inc\n', {
+      'var/inc/real': 'realuser ALL=(ALL) ALL\n',
+      'var/secret-target': 'leaked ALL=(ALL) ALL\n',
+    })
+    fs.symlinkSync(path.join(root, 'var/secret-target'), path.join(root, 'var/inc/link'))
+    const r = await run()
+    const b = parseVmDump(r.stdout, NONCE).inventory.admins
+    expect(a).toContain('realuser')
+    expect(b).toContain('realuser')
+    expect(b).not.toContain('leaked')
+    expect(sentinels(b)).toHaveLength(2) // includedir 行與 symlink 各一個
+  })
+
   it('log：設定的 journal unit 不存在 → 該來源為 error', async () => {
     setupFakes()
     const r = await run({ BEACON_LOG_SOURCES_B64: b64('ghost\tjournal\tghost.service\napp\tjournal\tapp.service\n') })

@@ -112,6 +112,11 @@ sudoers_file() {
   local inc_re='^/[A-Za-z0-9_./@+-]+$'
   local gt
   gt=$(printf '\076')
+  # symlink 不讀取（可能指向任意檔），只輸出以路徑字串為雜湊的哨兵
+  if [ -L "$f" ]; then
+    echo "?sudoers:$(hstr "$f")"
+    return 0
+  fi
   [ -f "$f" ] && [ -r "$f" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"
@@ -125,12 +130,14 @@ sudoers_file() {
           arg=$(printf '%s\n' "$line" | awk '{ print $2 }')
           # /proc、/sys、/dev 下的特殊檔可能阻塞讀取，不跟進（用原始路徑判斷）
           case "$arg" in /proc | /proc/* | /sys | /sys/* | /dev | /dev/*) arg="" ;; esac
+          # 非正規寫法（//、/./、/../ 或以 /. /.. 結尾）沒有正當理由，視同特殊路徑
+          case "$arg" in *//* | */./* | */../* | */. | */..) arg="" ;; esac
           if [[ $arg =~ $inc_re ]]; then
             arg="${arg%/}"
             case "$first" in
               '#includedir' | '@includedir')
                 # /etc/sudoers.d 已由預設列舉處理，不重複
-                if [ "$arg" != "/etc/sudoers.d" ]; then
+                if [ "$arg" != "/etc/sudoers.d" ] && [ ! -L "$R$arg" ]; then
                   for g in "$R$arg"/*; do
                     base="${g##*/}"
                     # sudo 的 includedir 規則：略過檔名含 . 或以 ~ 結尾者

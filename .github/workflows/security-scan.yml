@@ -39,6 +39,10 @@ jobs:
     needs: targets
     if: needs.targets.outputs.count != '0'
     runs-on: ubuntu-latest
+    # 依目標種類分 environment：讓 GCP workload identity 的 attribute condition 可以只信任
+    # security-vm 這個 environment 的 OIDC sub，hosted job 的權杖因此換不到 GCP 權限。
+    # kind 來自版控的 security/targets.json，值只會是 vm 或 hosted。
+    environment: ${{ matrix.target.kind == 'vm' && 'security-vm' || 'security-hosted' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false

@@ -399,7 +399,7 @@ Payload：
 - 變動會持續顯示約七天（比對基準為七天窗內最舊的一筆）。
 - 少見但合法的 sudoers 寫法第一次出現時會被標成「新增管理員」一次，之後成為基準。
 - 收集腳本從未在真實 Ubuntu 上執行過，只在 macOS 以假指令驗證（見 §11）。
-- hosted 稽核的防線與殘留：稽核暫存目錄裡的 `package.json` 是淨化過的（只留 dependencies 類三個鍵），pnpm 版本由 workflow 自己釘住，不受目標 repo 的 `packageManager` 欄位影響，子行程只拿最小環境，所以目標 repo 無法經由 `package.json` 讓 runner 執行任意程式或取得 runner 上的秘密。殘留：稽核工具仍會解析目標 repo 的 lockfile（內容來自目標 repo）；能寫入目標 repo 的人可以讓稽核結果失真。
+- hosted 稽核的防線與殘留：已確立的是稽核暫存目錄裡的 `package.json` 經淨化（只留 dependencies 類三個鍵）、pnpm 版本由 workflow 自己釘住而不受目標 repo 的 `packageManager` 欄位影響、子行程只拿最小環境。**未實測**：稽核工具（`pnpm audit`／`npm audit`）對 lockfile 內容的處理，即是否真的不會依 lockfile 抓取或執行任何東西（見 §11）；能寫入目標 repo 的人至少可以讓稽核結果失真。最後一道防線是 §11「啟用前必做」的 environment 分離，使 hosted job 的權杖換不到正式機權限。
 - **快照與 ingest 共用同一把服務金鑰**：這把金鑰也存在於被監控的服務自身（它用來推 `/api/ingest`）。取得它的人可以推送偽造的「全部正常」快照。`scannedAt` 的 2 小時下限擋住回填舊基準，但擋不住偽造當下的快照。根本解法是掃描器使用只存在於 GitHub secrets 的獨立金鑰；本版未做，列為後續工作。
 - **OS Login VM 上的可見度**：管理員授權放在被 sudoers include 引入的目錄，跟進一層後可見；SSH 金鑰經 `AuthorizedKeysCommand` 提供者仍不可見（只有設定變更會以 `CONFIG:` 哨兵浮現）。
 - **log 量基準偏高**：收集端不輸出零筆的小時，中位數只算有 log 的小時，因此基準偏高、偵測偏保守。
@@ -458,7 +458,10 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 
 ### 啟用前必做
 
-- **hosted 與 vm 目標必須使用不同的 GitHub environment，並讓 GCP workload identity 的 attribute condition 只信任 vm 那個 environment。** 原因：hosted 稽核的最底層防線仍假設「`pnpm audit`／`npm audit` 不會依 lockfile 的內容抓取或執行任何東西」，這一點未實測；一旦不成立，hosted job 的 OIDC 權杖能否換到正式機的權限，就只取決於這一項設定。未完成前不要在 `security/targets.json` 填入任何 vm 目標。
+- **hosted 與 vm 目標必須使用不同的 GitHub environment，且 GCP 端只信任 vm 那個。** 原因：hosted 稽核的最底層防線仍假設「`pnpm audit`／`npm audit` 不會依 lockfile 的內容抓取或執行任何東西」，這一點未實測；一旦不成立，hosted job 的 OIDC 權杖能否換到正式機的權限，就只取決於這一項設定。未完成前不要在 `security/targets.json` 填入任何 vm 目標。步驟：
+  1. workflow 已依目標種類使用 `security-vm`／`security-hosted` 兩個 environment（首次執行時 GitHub 會自動建立，也可事先在 repo 設定中建立並加上保護規則）。
+  2. 使用者要做的：在 GCP workload identity provider 的 attribute condition 中，把 OIDC `sub` 限定為 `repo:<owner>/<repo>:environment:security-vm`。**【未確認】** 使用 environment 時 `sub` 的確切格式請以 GitHub 官方文件為準。
+  3. 建議把只有 vm 目標需要的 secrets／variables 設成 `security-vm` 的 environment 層級。
 
 ### 一般事項
 
