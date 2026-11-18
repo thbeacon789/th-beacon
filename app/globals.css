@@ -1536,3 +1536,119 @@ tbody tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============================================================
+   Security
+   ============================================================ */
+.security-todos {
+  margin-bottom: var(--space-6);
+}
+.security-todos > h2 {
+  margin-bottom: var(--space-3);
+}
+.security-todos ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.security-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.security-todo:last-child {
+  border-bottom: 0;
+}
+.security-todo-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.security-todo-service {
+  margin-right: var(--space-3);
+  color: var(--gold);
+}
+.security-todo-rec {
+  margin-top: var(--space-1);
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+.security-sev-high {
+  background: var(--pink);
+}
+.security-sev-medium {
+  background: var(--yellow);
+}
+.security-sev-low {
+  background: var(--lilac);
+}
+.security-matrix {
+  min-width: 60rem;
+}
+.security-matrix tbody th {
+  position: sticky;
+  left: 0;
+  background: var(--bg); /* 不透明，橫捲時才能遮住後方欄位 */
+  font-weight: 400;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.security-matrix thead th:first-child {
+  left: 0;
+  z-index: 1;
+}
+.security-matrix tbody tr:last-child th {
+  border-bottom: 0;
+}
+.security-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.security-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  flex: none;
+}
+.security-cell .security-dot {
+  margin-right: 0;
+}
+.security-dot-ok {
+  background: var(--green);
+}
+.security-dot-warn {
+  background: var(--yellow);
+}
+.security-dot-bad {
+  background: var(--pink);
+}
+.security-dot-unknown {
+  background: var(--fg-muted);
+}
+.security-dot-na {
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+}
+.security-spark rect {
+  fill: var(--lilac);
+}
+.security-spark rect.is-anomalous {
+  fill: var(--pink);
+}
+.security-stale {
+  margin-left: var(--space-2);
+  color: var(--yellow);
+  font-size: 0.8rem;
+}
+@media (max-width: 40rem) {
+  .security-todo {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+}
