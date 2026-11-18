@@ -475,7 +475,7 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 
 ```jsonc
 {
-  "scannedAt": "2026-11-18T22:03:11Z",   // 必填，可解析的日期；不可晚於現在超過 10 分鐘
+  "scannedAt": "2026-11-18T22:03:11Z",   // 必填，帶時區的 ISO 8601；不可晚於現在超過 10 分鐘，也不可早於現在超過 2 小時
   "kind": "vm",                           // 必填，"vm" | "hosted"
   "checks": {                             // 必填，三項都要有
     "ports":   { "status": "bad",  "summary": "3306 對外" },
@@ -491,7 +491,7 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
       "recommendation": "改為僅內網或防火牆白名單"   // 可為空字串
     }
   ],
-  "certs": [ { "domain": "example.com", "notAfter": "2027-01-18T00:00:00Z" } ],
+  "certs": [ { "domain": "example.com", "notAfter": "2027-01-18T00:00:00Z", "trusted": true } ],   // trusted（布林）、error（字串，≤ 120 字）選填
   "exposure": [
     {
       "domain": "example.com",
@@ -528,6 +528,9 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
 | `exposure[].sensitivePaths`、`exposure[].headers` | 必填；`headers` 的五個鍵（`hsts`、`contentTypeOptions`、`frameProtection`、`csp`、`referrerPolicy`）都必須是布林 |
 | `exposure[].sensitivePaths[].path` | 必須以 `/` 開頭 |
+| `scannedAt` | 須為嚴格 ISO 8601 且帶時區（`YYYY-MM-DDTHH:MM:SS(.fff)?` 後接 `Z` 或 `±HH:MM`）；不得晚於現在 10 分鐘，**不得早於現在 2 小時**（`MAX_SCAN_AGE_HOURS`，擋住回填過去快照來偽造變動比對基準）。超出回 422 |
+| `certs[].notAfter`、`logVolume[].hourly[].hour` | 同上，須為帶時區的 ISO 8601；`"1"`、`"2026"` 這類寬鬆字串回 422 |
+| `certs[].trusted`、`certs[].error` | 選填。`trusted` 為布林；`error` 為字串，最長 120 字。`trusted: false` 時 `cert` 狀態至少 `bad`（「憑證不受信任」）；未帶則只看到期日 |
 | 整個 body | 原始內容超過 512 KB 回 413（驗簽後、解析前檢查） |
 
 ### 哪些狀態由 beacon 計算
@@ -535,7 +538,9 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 payload **只送事實與 `ports`／`updates`／`logins` 三項判讀**。以下四項的狀態**不由 payload 提供**，送了也不採用：
 
 - `logVolume`、`exposure`、`changes`：寫入時由 beacon 依規則計算（log 量對照近 7 天基準、暴露路徑與安全標頭、與 7 天窗內最舊一筆 `inventory` 的差異），結果併入回應的 `checks` 並存入快照。
-- `cert`：讀取時依 `certs` 的到期日推導，不存。
+- `cert`：讀取時依 `certs` 的到期日與 `trusted` 推導，不存。
+
+快照保留 90 天，但**每個服務最新的一筆一律保留**，即使早於界線。
 
 ### 成功回應 `201`
 
@@ -556,7 +561,7 @@ payload **只送事實與 `ports`／`updates`／`logins` 三項判讀**。以下
 | `401` | `{"error":"unauthorized"}` | 見 §1（服務不存在或無金鑰、簽章錯誤、時間戳超出容許範圍） |
 | `413` | `{"error":"payload too large"}` | body 超過 512 KB |
 | `400` | `{"error":"invalid JSON"}` | body 不是合法 JSON |
-| `422` | `{"error":"invalid payload","details":[...]}` | 欄位驗證失敗（`scannedAt` 太晚、`kind` 不合法、字串超長…） |
+| `422` | `{"error":"invalid payload","details":[...]}` | 欄位驗證失敗（`scannedAt` 太晚或早於現在超過 2 小時、日期格式不嚴格、`kind` 不合法、字串超長…） |
 
 ### 金鑰輪替
 
@@ -564,11 +569,11 @@ payload **只送事實與 `ports`／`updates`／`logins` 三項判讀**。以下
 
 ### 範例
 
-一般情況由 `scripts/security/scan.mts` 送出，不需手寫。手寫版本（最小合法 hosted 快照）：
+一般情況由 `scripts/security/scan.mts` 送出，不需手寫。手寫版本（最小合法 hosted 快照）。**勿對正式服務執行**：這會寫入一筆假的「全部正常」快照；請改用本地或測試服務名稱，並把 `scannedAt` 換成現在時間（不得早於現在 2 小時）：
 
 ```bash
 TS="$(date +%s)"
-BODY='{"scannedAt":"2026-11-18T22:03:11Z","kind":"hosted","checks":{"ports":{"status":"na","summary":""},"updates":{"status":"ok","summary":"無已知漏洞"},"logins":{"status":"na","summary":""}},"findings":[],"certs":[{"domain":"example.com","notAfter":"2027-01-18T00:00:00Z"}],"exposure":[]}'
+BODY="$(printf '%s' '{"scannedAt":"SCANNED_AT","kind":"hosted","checks":{"ports":{"status":"na","summary":""},"updates":{"status":"ok","summary":"無已知漏洞"},"logins":{"status":"na","summary":""}},"findings":[],"certs":[{"domain":"example.com","notAfter":"2027-01-18T00:00:00Z"}],"exposure":[]}' | sed "s/SCANNED_AT/$(date -u +%Y-%m-%dT%H:%M:%SZ)/")"
 SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
 
 curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/security-scan \
