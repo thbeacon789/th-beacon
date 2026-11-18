@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { summarizeLogins } from '@/core/security/collect/logins'
+import { filterScannerLogins, summarizeLogins } from '@/core/security/collect/logins'
 
 const lines = [
   '2026-11-18T02:13:44+0000 host sshd[1234]: Failed password for invalid user admin from 203.0.113.9 port 51234 ssh2',
@@ -46,7 +46,38 @@ describe('summarizeLogins', () => {
     expect(summarizeLogins([])).toEqual({ failed: 0, topSources: [], topUsers: [], accepted: [] })
   })
 
-  it('非 IP 的來源略過', () => {
-    expect(summarizeLogins(['t h sshd[1]: Invalid user x from <script> port 22']).failed).toBe(0)
+  it('來源不是 IP 格式的失敗仍計入 failed，但不進 topSources', () => {
+    const s = summarizeLogins(['t h sshd[1]: Invalid user x from <script> port 22'])
+    expect(s.failed).toBe(1)
+    expect(s.topSources).toEqual([])
+    expect(s.topUsers).toEqual([{ user: 'x', count: 1 }])
+  })
+
+  it('Connection closed by authenticating／invalid user 計為失敗', () => {
+    const s = summarizeLogins([
+      't h sshd[1]: Connection closed by authenticating user root 203.0.113.9 port 5 [preauth]',
+      't h sshd-session[1]: Connection closed by invalid user bob 203.0.113.9 port 6 [preauth]',
+      't h sshd[1]: Connection closed by 203.0.113.9 port 7 [preauth]',
+    ])
+    expect(s.failed).toBe(2)
+    expect(s.topSources).toEqual([{ ip: '203.0.113.9', count: 2 }])
+  })
+})
+
+describe('filterScannerLogins', () => {
+  const base = summarizeLogins([
+    't h sshd[1]: Accepted publickey for scanner from 1.1.1.1 port 1 ssh2',
+    't h sshd[2]: Accepted publickey for scanner from 1.1.1.1 port 2 ssh2',
+    't h sshd[3]: Accepted publickey for deploy from 2.2.2.2 port 3 ssh2',
+  ])
+  it('移除屬於忽略帳號的成功登入並回報筆數', () => {
+    const r = filterScannerLogins(base, ['scanner'])
+    expect(r.ignoredScannerLogins).toBe(2)
+    expect(r.summary.accepted.map((a) => a.user)).toEqual(['deploy'])
+    expect(r.summary.failed).toBe(base.failed)
+  })
+  it('未設定忽略帳號時原樣回傳、筆數為 0', () => {
+    expect(filterScannerLogins(base, undefined)).toEqual({ summary: base, ignoredScannerLogins: 0 })
+    expect(filterScannerLogins(base, [])).toEqual({ summary: base, ignoredScannerLogins: 0 })
   })
 })

@@ -62,6 +62,19 @@ describe('probeDomain', () => {
     }
   })
 
+  it('單一路徑連線被重置：exposed 仍為 false，probeErrors 為 1；404 不算失敗', async () => {
+    const baseUrl = await start((req, res) => {
+      if (req.url === '/') res.end('home')
+      else if (req.url === '/.env') req.socket.destroy()
+      else { res.statusCode = 404; res.end('nope') }
+    })
+    const paths = [...PATHS, { path: '/.git/config', signature: '^\\[core\\]' }]
+    const r = await probeDomain('app.example.test', paths, { baseUrl, timeoutMs: 300 })
+    expect(r.probeErrors).toBe(1)
+    expect(exposedOf(r, '/.env')).toBe(false)
+    expect(exposedOf(r, '/.git/config')).toBe(false)
+  })
+
   it('由回應標頭判定五個布林，CSP 的 frame-ancestors 算防嵌入', async () => {
     const baseUrl = await start((_req, res) => {
       res.setHeader('strict-transport-security', 'max-age=1')

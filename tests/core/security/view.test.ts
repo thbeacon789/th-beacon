@@ -50,6 +50,26 @@ describe('evaluateCert', () => {
     expect(r.check).toEqual({ status: 'bad', summary: '已過期' })
     expect(r.findings[0]).toMatchObject({ check: 'cert', severity: 'high', title: 'a.com 的 SSL 憑證已過期' })
   })
+  it('不受信任但還有 90 天：bad，summary 為「憑證不受信任」，並有 high 發現', () => {
+    const r = evaluateCert([{ domain: 'a.com', notAfter: inDays(90), trusted: false, error: 'SELF_SIGNED' }], now)
+    expect(r.check).toEqual({ status: 'bad', summary: '憑證不受信任' })
+    expect(r.findings).toEqual([{
+      check: 'cert', severity: 'high',
+      title: 'a.com 的 SSL 憑證不受信任（SELF_SIGNED）',
+      recommendation: '檢查憑證鏈與網域名稱是否相符，重新簽發憑證',
+    }])
+  })
+  it('不受信任且未帶 error：原因顯示「未知原因」；已過期時兩筆發現都列出', () => {
+    const r = evaluateCert([{ domain: 'a.com', notAfter: now.toISOString(), trusted: false }], now)
+    expect(r.check.status).toBe('bad')
+    expect(r.findings.map((f) => f.title)).toEqual(['a.com 的 SSL 憑證不受信任（未知原因）', 'a.com 的 SSL 憑證已過期'])
+  })
+  it('trusted 為 true 或未帶：行為與到期判定相同', () => {
+    expect(evaluateCert([{ domain: 'a.com', notAfter: inDays(90), trusted: true }], now).check.status).toBe('ok')
+    expect(evaluateCert([{ domain: 'a.com', notAfter: inDays(90) }], now)).toEqual(
+      evaluateCert([{ domain: 'a.com', notAfter: inDays(90), trusted: true }], now),
+    )
+  })
   it('多張憑證取最早到期者', () => {
     const r = evaluateCert(
       [{ domain: 'late.com', notAfter: inDays(100) }, { domain: 'early.com', notAfter: inDays(5) }],

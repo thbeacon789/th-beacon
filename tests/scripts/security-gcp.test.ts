@@ -37,6 +37,15 @@ describe('buildRemoteCommand', () => {
       expect(() => buildRemoteCommand('x', NONCE, [{ name: 'n', type: 'journal', unit: v }]), `unit=${JSON.stringify(v)}`).toThrow()
     }
     expect(() => buildRemoteCommand('x', NONCE, [{ name: 'n', type: 'file' }])).toThrow()
+  })
+
+  it('logSources 規則與 shell 端一致：file 路徑須以 / 開頭，unit 不含 / 且不以 - 開頭', () => {
+    const t = (s: Parameters<typeof buildRemoteCommand>[2]) => () => buildRemoteCommand('x', NONCE, s)
+    expect(t([{ name: 'n', type: 'file', path: 'relative.log' }])).toThrow()
+    expect(t([{ name: 'n', type: 'journal', unit: 'a/b' }])).toThrow()
+    expect(t([{ name: 'n', type: 'journal', unit: '-x.service' }])).toThrow()
+    expect(t([{ name: 'n', type: 'journal', unit: 'ssh@1.service' }])).not.toThrow()
+    expect(t([{ name: 'n.a-b_c', type: 'file', path: '/var/log/a@b/x-1.log' }])).not.toThrow()
     expect(() => buildRemoteCommand('x', NONCE, [{ name: 'n', type: 'journal' }])).toThrow()
   })
 })

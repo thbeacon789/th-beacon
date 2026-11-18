@@ -80,6 +80,16 @@ describe('parseSecurityScanPayload', () => {
     expect(bad((p) => { p.scannedAt = 'nope' }).ok).toBe(false)
   })
 
+  it('憑證的 trusted／error 選填欄位：接受合法值，拒絕型別錯誤', () => {
+    const r = bad((p) => { p.certs = [{ domain: 'a.com', notAfter: '2027-01-01T00:00:00.000Z', trusted: false, error: ' DEPTH_ZERO_SELF_SIGNED_CERT ' }] })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.certs[0]).toEqual({ domain: 'a.com', notAfter: '2027-01-01T00:00:00.000Z', trusted: false, error: 'DEPTH_ZERO_SELF_SIGNED_CERT' })
+    expect(bad((p) => { p.certs[0].trusted = 'yes' }).ok).toBe(false)
+    expect(bad((p) => { p.certs[0].error = 5 }).ok).toBe(false)
+    expect(bad((p) => { p.certs[0].error = 'x'.repeat(121) }).ok).toBe(false)
+    expect(bad((p) => { p.certs[0].trusted = true }).ok).toBe(true)
+  })
+
   it('拒絕超過 30 筆 findings', () => {
     const f = { check: 'ports', severity: 'low', title: 't', recommendation: '' }
     expect(bad((p) => { p.findings = Array.from({ length: 31 }, () => f) }).ok).toBe(false)

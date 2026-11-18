@@ -60,7 +60,12 @@ export function assemblePayload(args: {
     exposure,
   }
   if (target.kind === 'vm' && vm) {
-    payload.logVolume = vm.logVolume.map(stripVolume)
+    const volumes = vm.logVolume.map(stripVolume)
+    // 設定的來源在收集結果中缺席（例如被 shell 端略過）：補成 error，不可讓它悄悄消失
+    for (const s of target.logSources ?? []) {
+      if (!volumes.some((v) => v.source === s.name)) volumes.push({ source: s.name, error: true })
+    }
+    payload.logVolume = volumes
     payload.inventory = applyChangesIgnore(vm.inventory, target.changesIgnore)
   }
   return payload

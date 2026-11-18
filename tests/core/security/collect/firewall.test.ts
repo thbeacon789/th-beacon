@@ -53,6 +53,24 @@ describe('publicListeners', () => {
     expect(publicListeners([l(443)], [rule({ network: 'projects/p/global/networks/other' })], inst)).toEqual([])
   })
 
+  it('IPProtocol 為 "6" 視同 tcp、"17" 視同 udp', () => {
+    expect(ports(publicListeners([l(443)], [rule({ allowed: [{ IPProtocol: '6', ports: ['443'] }] })], inst))).toEqual([443])
+    expect(publicListeners([l(443)], [rule({ allowed: [{ IPProtocol: '17', ports: ['443'] }] })], inst)).toEqual([])
+    expect(ports(publicListeners([l(53, '0.0.0.0', 'udp')], [rule({ allowed: [{ IPProtocol: '17', ports: ['53'] }] })], inst))).toEqual([53])
+  })
+
+  it('IPProtocol 缺漏或非字串時視為適用，不 throw', () => {
+    const r1 = rule({ allowed: [{ ports: ['443'] }] })
+    const r2 = rule({ allowed: [{ IPProtocol: 6, ports: ['443'] }] })
+    expect(ports(publicListeners([l(443)], [r1], inst))).toEqual([443])
+    expect(ports(publicListeners([l(443)], [r2], inst))).toEqual([443])
+  })
+
+  it('ports 為空陣列視同全部埠；來源 ::/0 也算對外', () => {
+    expect(ports(publicListeners([l(1234)], [rule({ allowed: [{ IPProtocol: 'tcp', ports: [] }] })], inst))).toEqual([1234])
+    expect(ports(publicListeners([l(443)], [rule({ sourceRanges: ['::/0'] })], inst))).toEqual([443])
+  })
+
   it('同 proto+port 只回報一次', () => {
     expect(publicListeners([l(443), l(443, '::')], [rule()], inst)).toHaveLength(1)
   })

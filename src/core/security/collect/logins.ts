@@ -15,6 +15,8 @@ const LINE_RE = /^(\S+)\s+\S+\s+sshd(?:-session)?\[\d+\]:\s+(.*)$/
 const FAILED_RE = /^Failed password for (?:invalid user )?(.+) from (\S+) port \d+/
 const INVALID_RE = /^Invalid user (.+) from (\S+) port \d+/
 const ACCEPTED_RE = /^Accepted (\S+) for (.+) from (\S+) port \d+/
+// 連線在認證前被關閉：與同一連線的 Invalid user 行可能重複計入失敗，可接受（寧可多報）
+const CLOSED_RE = /^Connection closed by (?:authenticating|invalid) user (.+) (\S+) port \d+/
 const IP_RE = /^[0-9a-fA-F:.]{2,45}$/
 
 function top<T extends string>(m: Map<string, number>, key: T): Array<Record<T, string> & { count: number }> {
@@ -34,13 +36,13 @@ export function summarizeLogins(authLines: string[]): LoginSummary {
     const head = LINE_RE.exec(line)
     if (!head) continue
     const [, at, msg] = head
-    const fail = FAILED_RE.exec(msg) ?? INVALID_RE.exec(msg)
+    const fail = FAILED_RE.exec(msg) ?? INVALID_RE.exec(msg) ?? CLOSED_RE.exec(msg)
     if (fail) {
       const ip = fail[2]
-      if (!IP_RE.test(ip)) continue
       const user = fail[1].slice(0, MAX_USER)
+      // 來源不是合法 IP 格式的失敗仍要計入 failed（不可因格式怪異而少報），只是不進 topSources
       failed += 1
-      sources.set(ip, (sources.get(ip) ?? 0) + 1)
+      if (IP_RE.test(ip)) sources.set(ip, (sources.get(ip) ?? 0) + 1)
       users.set(user, (users.get(user) ?? 0) + 1)
       continue
     }
@@ -50,4 +52,18 @@ export function summarizeLogins(authLines: string[]): LoginSummary {
     }
   }
   return { failed, topSources: top(sources, 'ip'), topUsers: top(users, 'user'), accepted }
+}
+
+/**
+ * 掃描器自己每天登入 VM，會出現在 accepted 裡：把屬於 ignoreUsers 的項目移除，
+ * 並回報移除的筆數，讓判讀知道有預期內的登入被濾掉。
+ */
+export function filterScannerLogins(
+  summary: LoginSummary,
+  ignoreUsers: string[] | undefined,
+): { summary: LoginSummary; ignoredScannerLogins: number } {
+  const ignore = new Set(ignoreUsers ?? [])
+  if (ignore.size === 0) return { summary, ignoredScannerLogins: 0 }
+  const accepted = summary.accepted.filter((a) => !ignore.has(a.user))
+  return { summary: { ...summary, accepted }, ignoredScannerLogins: summary.accepted.length - accepted.length }
 }

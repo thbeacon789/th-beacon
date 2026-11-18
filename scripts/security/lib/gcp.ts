@@ -26,6 +26,11 @@ const check = (what: string, v: string): void => {
   if (!SAFE_RE.test(v)) throw new Error(`${what} 含不允許的字元`)
 }
 
+// 與 scripts/security/collect-vm.sh 的驗證規則完全一致：設定錯誤要在這裡大聲失敗，不要到 shell 端被靜默略過
+const LOG_NAME_RE = /^[A-Za-z0-9_.-]+$/
+const LOG_PATH_RE = /^[A-Za-z0-9_.@/-]+$/
+const LOG_UNIT_RE = /^[A-Za-z0-9_.@-]+$/
+
 const GCP_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i
 
 /** 以 - 開頭的值會被 gcloud 當成旗標，故三個欄位都須通過驗證 */
@@ -48,6 +53,12 @@ export function buildRemoteCommand(
     if (value === undefined) throw new Error('logSources 缺少 path 或 unit')
     check('logSources.name', s.name)
     check('logSources.target', value)
+    if (!LOG_NAME_RE.test(s.name)) throw new Error('logSources.name 格式不符')
+    if (s.type === 'file') {
+      if (!value.startsWith('/') || !LOG_PATH_RE.test(value)) throw new Error('logSources.path 須以 / 開頭且只含 A-Za-z0-9_.@/-')
+    } else if (!LOG_UNIT_RE.test(value) || value.startsWith('-')) {
+      throw new Error('logSources.unit 只可含 A-Za-z0-9_.@-，且不可以 - 開頭')
+    }
     lines.push(`${s.name}\t${s.type}\t${value}`)
   }
   const scriptB64 = Buffer.from(scriptContent).toString('base64')

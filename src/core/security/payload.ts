@@ -122,7 +122,17 @@ function parseCerts(v: unknown, errors: string[]): CertFact[] | null {
     let notAfter: string | null = null
     if (validDate(c.notAfter)) notAfter = c.notAfter.trim()
     else errors.push(`${p}.notAfter 必須是可解析的日期`)
-    if (domain !== null && notAfter !== null) out.push({ domain, notAfter })
+    const cert: CertFact | null = domain !== null && notAfter !== null ? { domain, notAfter } : null
+    if (c.trusted !== undefined) {
+      if (typeof c.trusted === 'boolean') {
+        if (cert) cert.trusted = c.trusted
+      } else errors.push(`${p}.trusted 必須是布林`)
+    }
+    if (c.error !== undefined) {
+      const e = str(c.error, `${p}.error`, errors, { max: 120, allowEmpty: true })
+      if (e !== null && cert && e.length > 0) cert.error = e
+    }
+    if (cert) out.push(cert)
   })
   return out
 }

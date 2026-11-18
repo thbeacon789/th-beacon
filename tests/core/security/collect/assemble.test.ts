@@ -44,6 +44,19 @@ describe('applyChangesIgnore', () => {
   })
 })
 
+describe('assemblePayload logSources', () => {
+  it('設定的 log 來源在 vm.logVolume 缺席時補成 error', () => {
+    const target: TargetConfig = {
+      ...base, kind: 'vm',
+      logSources: [{ name: 'ghost', type: 'journal', unit: 'ghost.service' }, ...vm.logVolume.map((v) => ({ name: v.source, type: 'journal' as const, unit: 'x' }))],
+    }
+    const p = assemblePayload({ scannedAt: now.toISOString(), target, judgment, certs, exposure, vm })
+    expect(p.logVolume).toContainEqual({ source: 'ghost', error: true })
+    expect(p.logVolume!.filter((v) => v.source === 'ghost')).toHaveLength(1)
+    for (const v of vm.logVolume) expect(p.logVolume!.filter((x) => x.source === v.source)).toHaveLength(1)
+  })
+})
+
 describe('unknownJudgment', () => {
   it('vm 三項皆 unknown', () => {
     const j = unknownJudgment('vm')

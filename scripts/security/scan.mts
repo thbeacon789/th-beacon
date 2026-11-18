@@ -12,9 +12,10 @@ import { parseVmDump } from '../../src/core/security/collect/vm-dump.ts'
 import type { VmFacts } from '../../src/core/security/collect/vm-dump.ts'
 import { publicListeners } from '../../src/core/security/collect/firewall.ts'
 import type { FirewallRule, InstanceInfo } from '../../src/core/security/collect/firewall.ts'
-import { summarizeLogins } from '../../src/core/security/collect/logins.ts'
+import { filterScannerLogins, summarizeLogins } from '../../src/core/security/collect/logins.ts'
 import { detectPackageManager, parseNpmAudit, parsePnpmAudit } from '../../src/core/security/collect/audit.ts'
 import type { AuditSummary } from '../../src/core/security/collect/audit.ts'
+import { parseSecurityScanPayload } from '../../src/core/security/payload.ts'
 import { assemblePayload, unknownJudgment } from '../../src/core/security/collect/assemble.ts'
 import type { Judgment, TargetConfig } from '../../src/core/security/collect/assemble.ts'
 import type { CertFact, CheckResult, ExposureFact } from '../../src/core/security/types.ts'
@@ -41,6 +42,7 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'
 const brief = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 200)
 
 interface ExternalResult { certs: CertFact[]; exposure: ExposureFact[]; incomplete: boolean }
+type Probed = Awaited<ReturnType<typeof probeDomain>>
 
 /** 任一設定的 domain 缺憑證或缺 exposure 事實即視為外部檢查不完整 */
 function reportIncomplete(domains: string[], certs: CertFact[], exposure: ExposureFact[]): boolean {
@@ -72,6 +74,7 @@ async function externalChecks(target: TargetConfig, dryDir: string | undefined):
   })
   const certs: CertFact[] = []
   const exposure: ExposureFact[] = []
+  let probeErrors = 0
   await Promise.all(
     domains.map(async (domain) => {
       const [cert, probe, legacy] = await Promise.allSettled([
@@ -79,12 +82,17 @@ async function externalChecks(target: TargetConfig, dryDir: string | undefined):
       ])
       if (cert.status === 'fulfilled') certs.push(cert.value)
       if (probe.status === 'fulfilled') {
-        exposure.push({ ...probe.value, legacyTls: legacy.status === 'fulfilled' ? legacy.value : null })
+        const { probeErrors: failed, ...fact }: Probed = probe.value
+        probeErrors += failed
+        exposure.push({ ...fact, legacyTls: legacy.status === 'fulfilled' ? legacy.value : null })
       }
     }),
   )
   // 格式不符而被略過的 domain 不在 certs／exposure 內，同樣會被判為不完整
-  return { certs, exposure, incomplete: reportIncomplete(target.domains.filter(isValidDomain), certs, exposure) || domains.length !== target.domains.length }
+  // 敏感路徑請求失敗（逾時、連線錯誤）無法證明沒有暴露，同樣視為外部檢查不完整
+  if (probeErrors > 0) console.error(`外部檢查不完整：${probeErrors} 個敏感路徑請求失敗`)
+  const incomplete = reportIncomplete(target.domains.filter(isValidDomain), certs, exposure)
+  return { certs, exposure, incomplete: incomplete || domains.length !== target.domains.length || probeErrors > 0 }
 }
 
 interface VmCollected { vm: VmFacts; facts: unknown }
@@ -111,7 +119,8 @@ function collectVm(target: TargetConfig, dryDir: string | undefined): VmCollecte
     throw new ExitError(1, `VM 收集缺漏區段：${vm.missingSections.join(', ')}`)
   }
   const ports = publicListeners(vm.listeners, rules, instance)
-  const logins = summarizeLogins(vm.authLines) // 只送摘要，不送 authLines 原始行
+  // 只送摘要，不送 authLines 原始行；掃描器自己的例行登入先濾掉，並告知模型濾掉幾筆
+  const { summary: logins, ignoredScannerLogins } = filterScannerLogins(summarizeLogins(vm.authLines), target.changesIgnore?.users)
   console.log(`收集完成：對外埠 ${ports.length}、可更新 ${vm.updates.upgradable}、登入失敗 ${logins.failed}`)
   return {
     vm,
@@ -121,6 +130,7 @@ function collectVm(target: TargetConfig, dryDir: string | undefined): VmCollecte
       updates: vm.updates,
       ssh: vm.ssh,
       logins,
+      ignoredScannerLogins,
     },
   }
 }
@@ -233,14 +243,27 @@ async function main(): Promise<number> {
   }
   console.log(`判讀：${line('ports')} ${line('updates')} ${line('logins')}，發現 ${judgment.findings.length} 筆`)
 
-  const payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm })
+  // 推送前先用伺服端同一套驗證檢查：模型輸出的邊界情況（如空白 title）不可讓整筆快照
+  // （含憑證與暴露面事實）一起被 422 丟掉。
+  let payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm })
+  let check = parseSecurityScanPayload(payload, new Date())
+  if (!check.ok && auditNote === null && !judgeFailed) {
+    console.error(`判讀輸出未通過驗證，改用 unknown：${check.errors.slice(0, 5).join('；')}`)
+    judgment = unknownJudgment(target.kind)
+    judgeFailed = true
+    payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm })
+    check = parseSecurityScanPayload(payload, new Date())
+  }
+  if (!check.ok) {
+    throw new ExitError(1, `payload 驗證失敗，不推送：${check.errors.join('；')}`)
+  }
   const scan = await postSigned(`${beaconUrl}/api/security-scan`, service, secret, payload)
   if (scan.status !== 200 && scan.status !== 201) {
     throw new ExitError(1, `推送快照失敗：HTTP ${scan.status} ${scan.body}`)
   }
   console.log(`快照已推送：HTTP ${scan.status}`)
 
-  if (!judgeFailed && usage) {
+  if (usage) {
     try {
       const u = await postSigned(`${beaconUrl}/api/ai-usage`, service, secret, {
         source: 'ci_security', model: usage.model, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,

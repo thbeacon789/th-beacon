@@ -47,6 +47,22 @@ export const CHECK_LABEL: Record<CheckKey, string> = {
 }
 
 export function evaluateCert(certs: CertFact[], now: Date): Evaluation {
+  const expiry = evaluateCertExpiry(certs, now)
+  if (certs.length === 0) return expiry
+  // 不受信任的憑證（自簽、鏈不完整、主機名不符）即使還沒到期也不能顯示為正常
+  const untrusted = certs.filter((c) => c.trusted === false)
+  if (untrusted.length === 0) return expiry
+  const trustFindings: Finding[] = untrusted.map((c) => ({
+    check: 'cert',
+    severity: 'high',
+    title: `${c.domain} 的 SSL 憑證不受信任（${c.error && c.error.length > 0 ? c.error : '未知原因'}）`,
+    recommendation: '檢查憑證鏈與網域名稱是否相符，重新簽發憑證',
+  }))
+  // 不受信任即為 bad（已是最差，取較差者的結果必為此項）；到期判定照常進行，兩筆發現都列出
+  return { check: { status: 'bad', summary: '憑證不受信任' }, findings: [...trustFindings, ...expiry.findings] }
+}
+
+function evaluateCertExpiry(certs: CertFact[], now: Date): Evaluation {
   if (certs.length === 0) return { check: { status: 'unknown', summary: '未檢查' }, findings: [] }
   const earliest = certs.reduce((a, b) => (Date.parse(b.notAfter) < Date.parse(a.notAfter) ? b : a))
   const diff = Date.parse(earliest.notAfter) - now.getTime()

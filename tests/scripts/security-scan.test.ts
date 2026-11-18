@@ -97,6 +97,25 @@ describe('scripts/security/scan.mts', () => {
     expect(body.checks.updates.status).toBe('warn')
   })
 
+  it('判讀輸出有空白 title：仍推送快照（憑證與暴露面保留），三項為 unknown，exit 1', async () => {
+    await start(okHandler)
+    const d = fixture('vm', (x) => {
+      const p = path.join(x, 'judgment.json')
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+      j.findings[0].title = '   '
+      fs.writeFileSync(p, JSON.stringify(j))
+    })
+    const r = await run(['--target', 'vmsvc', '--dry-run', d])
+    expect(r.code, r.stdout + r.stderr).toBe(1)
+    expect(scans()).toHaveLength(1)
+    const body = JSON.parse(scans()[0].body)
+    for (const k of ['ports', 'updates', 'logins']) expect(body.checks[k].status).toBe('unknown')
+    expect(body.findings).toEqual([])
+    expect(body.certs.length).toBeGreaterThan(0)
+    expect(body.exposure.length).toBeGreaterThan(0)
+    expect(parseSecurityScanPayload(body, new Date()).ok).toBe(true)
+  })
+
   it('輸出不含 BEACON_SECRET', async () => {
     await start(okHandler)
     const r = await run(['--target', 'vmsvc', '--dry-run', fixture('vm')])

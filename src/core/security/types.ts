@@ -10,7 +10,7 @@ export type ScanKind = 'vm' | 'hosted'
 
 export interface CheckResult { status: CheckStatus; summary: string }
 export interface Finding { check: CheckKey; severity: FindingSeverity; title: string; recommendation: string }
-export interface CertFact { domain: string; notAfter: string }
+export interface CertFact { domain: string; notAfter: string; trusted?: boolean; error?: string }
 export interface HourCount { hour: string; count: number } // hour 為 UTC 整點 ISO
 export interface LogSourceVolume { source: string; hourly?: HourCount[]; error?: true; anomalousHours?: string[] }
 export interface ExposureHeaders { hsts: boolean; contentTypeOptions: boolean; frameProtection: boolean; csp: boolean; referrerPolicy: boolean }

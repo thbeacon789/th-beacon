@@ -2,6 +2,7 @@
 // 對外探測只針對目標設定 domains 列出的主機；回應內容一律視為不可信資料，只做固定樣式比對。
 import tls from 'node:tls'
 import type { CertFact, ExposureFact } from '../../../src/core/security/types.ts'
+import { truncateCodePoints } from '../../../src/core/security/text.ts'
 
 export interface ExposurePath { path: string; signature: string }
 
@@ -38,11 +39,12 @@ async function readHead(res: Response): Promise<string> {
   return Buffer.concat(chunks).subarray(0, MAX_BODY).toString('utf8')
 }
 
+/** probeErrors：請求失敗（逾時、連線錯誤）的路徑數，不進 payload；HTTP 4xx／5xx 是正常回應，不算失敗 */
 export async function probeDomain(
   domain: string,
   paths: ExposurePath[],
   opts: { baseUrl?: string; timeoutMs?: number } = {},
-): Promise<Omit<ExposureFact, 'legacyTls'>> {
+): Promise<Omit<ExposureFact, 'legacyTls'> & { probeErrors: number }> {
   assertDomain(domain)
   const base = (opts.baseUrl ?? `https://${domain}`).replace(/\/+$/, '')
   const timeoutMs = opts.timeoutMs ?? 10_000
@@ -55,8 +57,9 @@ export async function probeDomain(
   await home.body?.cancel().catch(() => {})
   const h = home.headers
   const csp = h.get('content-security-policy')
-  const result: Omit<ExposureFact, 'legacyTls'> = {
+  const result: Omit<ExposureFact, 'legacyTls'> & { probeErrors: number } = {
     domain,
+    probeErrors: 0,
     sensitivePaths: [],
     headers: {
       hsts: h.has('strict-transport-security'),
@@ -76,7 +79,9 @@ export async function probeDomain(
       if (res.status === 200) exposed = compileSignature(p.signature).test(await readHead(res))
       else await res.body?.cancel().catch(() => {})
     } catch {
+      // 請求失敗無法證明沒有暴露：exposed 維持 false，但記入 probeErrors 讓呼叫端標示檢查不完整
       exposed = false
+      result.probeErrors += 1
     }
     result.sensitivePaths.push({ path: p.path, exposed })
   }
@@ -101,10 +106,14 @@ export function fetchCert(domain: string, opts: { port?: number; timeoutMs?: num
     socket.once('secureConnect', () => {
       clearTimeout(timer)
       const cert = socket.getPeerCertificate()
+      // 連線用 rejectUnauthorized: false，信任與否要自己讀：自簽、鏈不完整、主機名不符都不是 authorized
+      const authorized = socket.authorized
+      const authError = String(socket.authorizationError ?? '')
       socket.end()
       const t = Date.parse(cert?.valid_to ?? '')
       if (Number.isNaN(t)) reject(new Error('憑證無有效期限'))
-      else resolve({ domain, notAfter: new Date(t).toISOString() })
+      else if (authorized) resolve({ domain, notAfter: new Date(t).toISOString(), trusted: true })
+      else resolve({ domain, notAfter: new Date(t).toISOString(), trusted: false, error: truncateCodePoints(authError, 120) })
     })
     socket.once('error', (err) => {
       clearTimeout(timer)
