@@ -29,3 +29,5 @@ export interface SecurityScanPayload {
   logVolume?: LogSourceVolume[] // 不含 anomalousHours
   inventory?: Inventory
 }
+
+export interface Evaluation { check: CheckResult; findings: Finding[] }
