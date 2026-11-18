@@ -82,7 +82,7 @@ describe('Discord notifications end-to-end (ingest route → stub webhook)', () 
     expect((await first.json()).notified).toBe(true)
     expect(received).toHaveLength(1)
     expect((received[0].embeds as Array<{ title: string }>)[0].title).toBe(
-      '[P1] svc-notify — test_failure',
+      '🟠 [P1] svc-notify — test_failure',
     )
 
     const second = await POST(signedRequest(body))
@@ -104,7 +104,7 @@ describe('Discord notifications end-to-end (ingest route → stub webhook)', () 
     expect((await third.json())).toMatchObject({ severity: 'P0', notified: true })
     expect(received).toHaveLength(2)
     expect((received[1].embeds as Array<{ title: string }>)[0].title).toBe(
-      '[P0] svc-notify — test_failure',
+      '🔴 [P0] svc-notify — test_failure',
     )
     const { data: rows } = await client
       .from('notifications')
