@@ -3,8 +3,11 @@ import type { TriageRule } from '@/core/rules'
 import type { OpenIssue, PollState } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { StoredSecurityScan } from '@/core/security/view'
 
 export type { IssueAiTriage, IssueAiFix }
+
+export type NewSecurityScan = Omit<StoredSecurityScan, 'id'>
 
 export interface StoredIssue extends Issue {
   id: string
@@ -232,4 +235,12 @@ export interface Store {
   /** 覆寫整組標記；判定不存在回 false */
   labelAiJudgment(judgmentId: string, label: JudgmentLabel, labeledBy: string, nowIso: string): Promise<boolean>
   recordAiUsage(u: NewAiUsage): Promise<{ id: string }>
+
+  // ---- 資安掃描 ----
+  /** (serviceId, scannedAt) 重複回 null */
+  insertSecurityScan(scan: NewSecurityScan): Promise<{ id: string } | null>
+  /** from <= scannedAt < before，依 scannedAt 升冪 */
+  listSecurityScansBetween(serviceId: string, fromIso: string, beforeIso: string): Promise<StoredSecurityScan[]>
+  /** 回傳刪除筆數 */
+  purgeSecurityScansBefore(beforeIso: string): Promise<number>
 }

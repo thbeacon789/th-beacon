@@ -3,12 +3,14 @@ import { AI_FIX_STATUSES } from '@/core/ai-fix'
 import type { AiJudgmentSource, AiUsageSource, EventSource, HealthStatus, IssueStatus, Severity, Verdict } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
 import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
+import type { StoredSecurityScan } from '@/core/security/view'
 import type { IssueAiFix, IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
 type RuleRow = Database['public']['Tables']['triage_rules']['Row']
 type HeartbeatRow = Database['public']['Tables']['heartbeats']['Row']
+type SecurityScanRow = Database['public']['Tables']['security_scans']['Row']
 type AiJudgmentRow = Database['public']['Tables']['ai_judgments']['Row']
 
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
@@ -196,5 +198,23 @@ export function rowToAiJudgment(row: AiJudgmentRow): StoredAiJudgment {
     },
     labeledBy: row.labeled_by,
     labeledAt: row.labeled_at,
+  }
+}
+
+const SCAN_KINDS: readonly StoredSecurityScan['kind'][] = ['vm', 'hosted']
+
+/** jsonb 欄位由 /api/security-scan 寫入前驗證過，這裡只做型別收斂 */
+export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
+  return {
+    id: row.id,
+    serviceId: row.service_id,
+    scannedAt: row.scanned_at,
+    kind: narrow(row.kind, SCAN_KINDS, 'scan kind'),
+    checks: row.checks as unknown as StoredSecurityScan['checks'],
+    findings: row.findings as unknown as StoredSecurityScan['findings'],
+    certs: row.certs as unknown as StoredSecurityScan['certs'],
+    logVolume: row.log_volume as unknown as StoredSecurityScan['logVolume'],
+    exposure: row.exposure as unknown as StoredSecurityScan['exposure'],
+    inventory: row.inventory === null ? null : (row.inventory as unknown as StoredSecurityScan['inventory']),
   }
 }

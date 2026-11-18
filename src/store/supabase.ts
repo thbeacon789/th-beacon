@@ -4,7 +4,8 @@ import type { CanonicalEvent, HealthStatus, IssueStatus, JudgmentLabel, Severity
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
+import type { StoredSecurityScan } from '@/core/security/view'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -14,6 +15,7 @@ import {
   rowToPollConfig,
   rowToHeartbeat,
   rowToAiJudgment,
+  rowToSecurityScan,
 } from '@/store/mapping'
 
 /** Postgres unique_violation。名稱重複是預期輸入，不是例外。 */
@@ -524,5 +526,50 @@ export class SupabaseStore implements Store {
       .single()
     if (error) throw new Error(`recordAiUsage failed: ${error.message}`)
     return { id: data.id }
+  }
+
+  async insertSecurityScan(scan: NewSecurityScan): Promise<{ id: string } | null> {
+    const { data, error } = await this.client
+      .from('security_scans')
+      .insert({
+        service_id: scan.serviceId,
+        scanned_at: scan.scannedAt,
+        kind: scan.kind,
+        checks: scan.checks as unknown as Json,
+        findings: scan.findings as unknown as Json,
+        certs: scan.certs as unknown as Json,
+        log_volume: scan.logVolume as unknown as Json,
+        exposure: scan.exposure as unknown as Json,
+        inventory: scan.inventory === null ? null : (scan.inventory as unknown as Json),
+      })
+      .select('id')
+      .single()
+    if (error) {
+      if (error.code === UNIQUE_VIOLATION) return null
+      throw new Error(`insertSecurityScan failed: ${error.message}`)
+    }
+    return { id: data.id }
+  }
+
+  async listSecurityScansBetween(serviceId: string, fromIso: string, beforeIso: string): Promise<StoredSecurityScan[]> {
+    const { data, error } = await this.client
+      .from('security_scans')
+      .select('*')
+      .eq('service_id', serviceId)
+      .gte('scanned_at', fromIso)
+      .lt('scanned_at', beforeIso)
+      .order('scanned_at', { ascending: true })
+    if (error) throw new Error(`listSecurityScansBetween failed: ${error.message}`)
+    return data.map(rowToSecurityScan)
+  }
+
+  async purgeSecurityScansBefore(beforeIso: string): Promise<number> {
+    const { data, error } = await this.client
+      .from('security_scans')
+      .delete()
+      .lt('scanned_at', beforeIso)
+      .select('id')
+    if (error) throw new Error(`purgeSecurityScansBefore failed: ${error.message}`)
+    return data.length
   }
 }

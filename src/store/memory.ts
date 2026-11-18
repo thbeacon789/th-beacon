@@ -4,7 +4,8 @@ import { EMPTY_LABEL } from '@/core/types'
 import { isSameJudgment } from '@/core/ai-judgment'
 import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
-import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage } from '@/store/contracts'
+import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
+import type { StoredSecurityScan } from '@/core/security/view'
 
 interface SeededRule {
   serviceId: string | null
@@ -24,6 +25,7 @@ export class InMemoryStore implements Store {
   private createdAts = new Map<string, string>() // serviceId → created_at（僅登記頁需要）
   private aiJudgments: StoredAiJudgment[] = []
   private aiUsages: Array<NewAiUsage & { id: string }> = []
+  private securityScans: StoredSecurityScan[] = []
   private nextId = 1
 
   seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
@@ -536,6 +538,35 @@ export class InMemoryStore implements Store {
     const id = randomUUID()
     this.aiUsages.push({ ...u, id })
     return { id }
+  }
+
+  async insertSecurityScan(scan: NewSecurityScan): Promise<{ id: string } | null> {
+    const dup = this.securityScans.some((s) => s.serviceId === scan.serviceId && s.scannedAt === scan.scannedAt)
+    if (dup) return null
+    const id = randomUUID()
+    this.securityScans.push({ ...scan, id })
+    return { id }
+  }
+
+  async listSecurityScansBetween(serviceId: string, fromIso: string, beforeIso: string): Promise<StoredSecurityScan[]> {
+    const from = Date.parse(fromIso)
+    const before = Date.parse(beforeIso)
+    return this.securityScans
+      .filter((s) => s.serviceId === serviceId && Date.parse(s.scannedAt) >= from && Date.parse(s.scannedAt) < before)
+      .sort((a, b) => Date.parse(a.scannedAt) - Date.parse(b.scannedAt))
+  }
+
+  async purgeSecurityScansBefore(beforeIso: string): Promise<number> {
+    const before = Date.parse(beforeIso)
+    const kept = this.securityScans.filter((s) => Date.parse(s.scannedAt) >= before)
+    const removed = this.securityScans.length - kept.length
+    this.securityScans = kept
+    return removed
+  }
+
+  /** 測試輔助 */
+  listSecurityScans(): StoredSecurityScan[] {
+    return [...this.securityScans]
   }
 
   private copyJudgment(j: StoredAiJudgment): StoredAiJudgment {

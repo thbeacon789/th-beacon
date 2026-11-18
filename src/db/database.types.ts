@@ -468,6 +468,56 @@ export type Database = {
           },
         ]
       }
+      security_scans: {
+        Row: {
+          certs: Json
+          checks: Json
+          exposure: Json
+          findings: Json
+          id: string
+          inventory: Json | null
+          kind: string
+          log_volume: Json
+          received_at: string
+          scanned_at: string
+          service_id: string
+        }
+        Insert: {
+          certs?: Json
+          checks: Json
+          exposure?: Json
+          findings?: Json
+          id?: string
+          inventory?: Json | null
+          kind: string
+          log_volume?: Json
+          received_at?: string
+          scanned_at: string
+          service_id: string
+        }
+        Update: {
+          certs?: Json
+          checks?: Json
+          exposure?: Json
+          findings?: Json
+          id?: string
+          inventory?: Json | null
+          kind?: string
+          log_volume?: Json
+          received_at?: string
+          scanned_at?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_scans_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           created_at: string
