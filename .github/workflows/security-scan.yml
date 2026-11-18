@@ -67,8 +67,9 @@ jobs:
         if: matrix.target.kind == 'vm'
         uses: google-github-actions/setup-gcloud@v3
 
-      # hosted 目標：只 checkout 原始碼供 audit 讀 lockfile；
-      # 不在該 repo 執行 install 或任何其程式碼（CLI 只呼叫 pnpm／npm audit）
+      # hosted 目標：checkout 原始碼供 CLI 取 lockfile。此 step 與 corepack 都不執行該 repo 的程式碼。
+      # CLI 的稽核在全新暫存目錄執行，只複製 package.json 與 lockfile，且子行程只拿最小環境
+      # （拿不到 HMAC 金鑰、Anthropic 識別資訊、OIDC 權杖）；不 install。
       - name: checkout 目標 repo
         if: matrix.target.kind == 'hosted'
         uses: actions/checkout@v7

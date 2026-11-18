@@ -199,7 +199,7 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 
 | 項目 | 收集方式 |
 |---|---|
-| 更新 | 以唯讀權限 checkout 目標 repo，依 lockfile 判斷套件管理器，支援 pnpm 與 npm（`pnpm audit --json`、`npm audit --json --package-lock-only`），輸出各嚴重度的漏洞數與套件名。yarn 等其他管理器的 `updates` 回 `unknown`「不支援的套件管理器」（yarn audit 輸出格式未能查證）。不安裝相依套件、不執行該 repo 的任何 script（workflow 只做 checkout 與 `corepack enable`）。**【設計者決定】** |
+| 更新 | 以唯讀權限 checkout 目標 repo，依 lockfile 判斷套件管理器，支援 pnpm 與 npm（`pnpm audit --json`、`npm audit --json --package-lock-only`），輸出各嚴重度的漏洞數與套件名。yarn 等其他管理器的 `updates` 回 `unknown`「不支援的套件管理器」（yarn audit 輸出格式未能查證）。不安裝相依套件。稽核在一個全新的暫存目錄執行，只從目標 repo 複製 `package.json` 與 lockfile 兩個一般檔案（symlink 會被拒絕），不讀目標 repo 的 `.npmrc`、`.pnpmfile.cjs` 等其他檔；稽核子行程只拿最小環境（`PATH`、`HOME`、`CI`、`npm_config_ignore_scripts`），拿不到 HMAC 金鑰、Anthropic 識別資訊或 OIDC 權杖（`scripts/security/lib/audit-run.ts`）。殘留風險見 §7.5。**【設計者決定】** |
 
 兩種目標共用（runner 上執行，對 `domains` 每個網域）：
 
@@ -232,13 +232,20 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 
 ### 6.5 失敗時的行為
 
-| 情況 | 行為 |
+| 情況 | 行為（結束碼；心跳） |
 |---|---|
-| 收集失敗（連不上 VM 等） | 不推快照；心跳回報 `fail` |
-| 判讀失敗（Claude 逾時、輸出不合 schema） | 仍推快照：`ports`／`updates`／`logins` 填 `unknown`，`cert` 與 `logVolume` 的事實照常帶上；心跳回報 `fail` |
-| 推送失敗 | 心跳回報 `fail` |
-| 某個 `logSources` 讀不到（路徑或 unit 不存在） | 該來源在 payload 中標 `"error": true` 且不帶 `hourly`；beacon 把 `logVolume` 判為 `unknown`，文字顯示「來源讀不到」；心跳仍回報 `pass`（其餘項目有效） |
-| 全部成功 | 心跳回報 `pass` |
+| 設定錯誤（找不到目標、缺 `BEACON_URL`／`BEACON_SECRET`、vm 缺 `GCP_*`） | 不推快照；exit 2；心跳 `fail` |
+| 收集失敗（連不上 VM 等；含 VM 回傳資料缺少必要區段） | 不推快照；exit 1；心跳 `fail` |
+| 外部檢查不完整（任一設定的網域缺憑證或暴露面事實） | 仍推快照；exit 1；心跳 `fail` |
+| 相依套件稽核失敗（hosted） | 仍推快照：`updates` 為 `unknown`「相依套件稽核失敗」，不呼叫判讀；exit 1；心跳 `fail` |
+| 不支援的套件管理器（hosted） | 仍推快照：`updates` 為 `unknown`「不支援的套件管理器」；exit 0；心跳 `pass` |
+| 判讀失敗（Claude 逾時、輸出不合 schema） | 仍推快照：`ports`／`updates`／`logins` 填 `unknown`，`cert` 與 `logVolume` 的事實照常帶上；exit 1；心跳 `fail` |
+| 推送快照失敗（HTTP 非 200／201） | exit 1；心跳 `fail` |
+| 某個 `logSources` 讀不到（路徑或 unit 不存在） | 該來源在 payload 中標 `"error": true` 且不帶 `hourly`；beacon 把 `logVolume` 判為 `unknown`，文字顯示「來源讀不到」；exit 0；心跳 `pass`（其餘項目有效） |
+| AI 用量回報失敗 | 只印警告，不影響結果；exit 0 |
+| 全部成功 | exit 0；心跳 `pass` |
+
+心跳由 workflow 依 job 狀態決定（exit 非 0 即 `fail`）。
 
 每個受掃描的服務各登記一個名為 `security-scan` 的心跳（間隔 24 小時，寬限 6 小時，合計 30 小時，與 §7.4 的頁面過期門檻刻意相同）。**【設計者決定】**
 
@@ -334,7 +341,7 @@ Payload：
 
 ### 7.3 beacon 自己算的四項
 
-都寫成 `src/core/security.ts` 的純函式，時鐘由參數注入。
+都寫成 `src/core/security/` 下的純函式（`log-volume.ts`、`exposure.ts`、`changes.ts`），時鐘由參數注入。
 
 **log 量（寫入時計算並存進 `checks.logVolume` 與 `findings`）**
 
@@ -369,7 +376,12 @@ Payload：
 - 讀取時算是因為剩餘天數每天在變，與心跳逾期的讀取端推導同理。
 - `warn`／`bad` 時在讀取端合成一筆發現（`warn`→`medium`、`bad`→`high`）。
 
-### 7.3.1 已知限制
+### 7.4 整體狀態與過期
+
+- 服務整體狀態＝適用項目中的最差值，順序 `bad` > `warn` > `unknown` > `ok`；`na` 不計。
+- 最新快照的 `scanned_at` 距今超過 30 小時＝過期。過期時該列加上「資料過期」標示，整體狀態顯示為 `unknown`，其發現不列入上方待辦清單（改列一筆「掃描已停擺 N 小時」）。
+
+### 7.5 已知限制
 
 - 收集腳本是「變動偵測」，不是完整的入侵偵測。不涵蓋：使用者層級的 systemd timer、`AuthorizedKeysCommand` 指向的外部程式內容、systemd unit 的 drop-in 覆寫；服務清冊只列 `enabled` 狀態，`static`、runtime、暫態 unit 不在清冊內。
 - 防火牆判定不處理 deny 規則與優先序，也只認 IPv4 的 `0.0.0.0/0` 來源（IPv6 `::/0` 規則目前不計）。
@@ -377,11 +389,7 @@ Payload：
 - 變動會持續顯示約七天（比對基準為七天窗內最舊的一筆）。
 - 少見但合法的 sudoers 寫法第一次出現時會被標成「新增管理員」一次，之後成為基準。
 - 收集腳本從未在真實 Ubuntu 上執行過，只在 macOS 以假指令驗證（見 §11）。
-
-### 7.4 整體狀態與過期
-
-- 服務整體狀態＝適用項目中的最差值，順序 `bad` > `warn` > `unknown` > `ok`；`na` 不計。
-- 最新快照的 `scanned_at` 距今超過 30 小時＝過期。過期時該列加上「資料過期」標示，整體狀態顯示為 `unknown`，其發現不列入上方待辦清單（改列一筆「掃描已停擺 N 小時」）。
+- hosted 稽核的殘留風險：目標 repo 的 `package.json` 仍會被稽核工具讀取（例如 `packageManager` 欄位可能影響使用的套件管理器版本）；稽核結果取決於目標 repo 的 lockfile 內容，能寫入目標 repo 的人可以讓稽核結果失真，但取不到 runner 上的秘密。
 
 ## 8. `/security` 頁面
 
@@ -416,7 +424,7 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 - 窄螢幕：矩陣容器橫向捲動，待辦清單改為直向堆疊。
 - 視覺沿用既有 dashboard 樣式（`.page-head`、`.badge`、`.status-*` 等既有 class 與色彩變數），不另立一套。
 
-查詢放 `src/web/security-queries.ts`：每個服務取最新一筆快照，再交給 `src/core/security.ts` 的純函式推導憑證狀態、過期、整體狀態與排序後的待辦清單。頁面元件只負責渲染推導結果。
+查詢放 `src/web/security-queries.ts`：每個服務取最新一筆快照，再交給 `src/core/security/view.ts` 的純函式推導憑證狀態、過期、整體狀態與排序後的待辦清單。頁面元件只負責渲染推導結果。
 
 ## 9. 文件
 
@@ -426,7 +434,7 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 
 ## 10. 測試
 
-- `src/core/security.ts` 的純函式以 Vitest 單元測試涵蓋：payload 驗證、log 量異常判定（含歷史不足、邊界倍數）、對外暴露判定（各標頭組合、多網域取最差）、變動比對（基準選取、忽略清單、首次掃描、各類新增的嚴重度）、憑證狀態（14／30 天邊界、已過期）、整體狀態取最差、過期判定、待辦清單排序。
+- `src/core/security/` 下的純函式以 Vitest 單元測試涵蓋：payload 驗證、log 量異常判定（含歷史不足、邊界倍數）、對外暴露判定（各標頭組合、多網域取最差）、變動比對（基準選取、忽略清單、首次掃描、各類新增的嚴重度）、憑證狀態（14／30 天邊界、已過期）、整體狀態取最差、過期判定、待辦清單排序。
 - 端點 handler 以整合測試涵蓋：驗簽失敗、payload 不合法、成功寫入、重送去重、log 量基準讀取。整合測試只跑本地 stack。
 - 收集與判讀腳本提供以 fixture 檔案為輸入的乾跑模式，可在本機不連 VM、不叫 Claude 地驗證 JSON 組裝與推送 payload。
 - 頁面為純 UI，只跑 `pnpm typecheck`。

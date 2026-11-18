@@ -526,6 +526,7 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `findings[].recommendation` | 最長 300 字，可為空字串 |
 | `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
+| `exposure[].sensitivePaths`、`exposure[].headers` | 必填；`headers` 的五個鍵（`hsts`、`contentTypeOptions`、`frameProtection`、`csp`、`referrerPolicy`）都必須是布林 |
 | `exposure[].sensitivePaths[].path` | 必須以 `/` 開頭 |
 | 整個 body | 原始內容超過 512 KB 回 413（驗簽後、解析前檢查） |
 
