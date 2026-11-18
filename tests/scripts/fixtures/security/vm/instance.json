@@ -1,0 +1,1 @@
+{ "network": "https://www.googleapis.com/compute/v1/projects/p/global/networks/default", "tags": ["web"], "serviceAccounts": ["sa@p.iam.gserviceaccount.com"] }

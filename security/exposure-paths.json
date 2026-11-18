@@ -1,0 +1,11 @@
+[
+  { "path": "/.env", "signature": "(?m)^[A-Z][A-Z0-9_]{2,}=.+" },
+  { "path": "/.git/config", "signature": "\\[core\\]" },
+  { "path": "/.git/HEAD", "signature": "^ref: refs/" },
+  { "path": "/.DS_Store", "signature": "Bud1" },
+  { "path": "/backup.sql", "signature": "(CREATE TABLE|INSERT INTO)" },
+  { "path": "/dump.sql", "signature": "(CREATE TABLE|INSERT INTO)" },
+  { "path": "/database.sql", "signature": "(CREATE TABLE|INSERT INTO)" },
+  { "path": "/phpinfo.php", "signature": "phpinfo\\(\\)|PHP Version" },
+  { "path": "/server-status", "signature": "Apache Server Status" }
+]

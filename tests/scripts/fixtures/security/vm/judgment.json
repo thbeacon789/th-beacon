@@ -1,0 +1,9 @@
+{
+  "checks": {
+    "ports": { "status": "ok", "summary": "正常" },
+    "updates": { "status": "warn", "summary": "5 項（2 安全性）" },
+    "logins": { "status": "ok", "summary": "正常" }
+  },
+  "findings": [{ "check": "updates", "severity": "medium", "title": "有安全性更新未套用", "recommendation": "執行 apt upgrade 並重開機" }],
+  "usage": { "model": "claude-sonnet-5-5", "inputTokens": 1200, "outputTokens": 300 }
+}

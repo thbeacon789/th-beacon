@@ -1,0 +1,3 @@
+[
+  { "name": "allow-web", "direction": "INGRESS", "network": "https://www.googleapis.com/compute/v1/projects/p/global/networks/default", "sourceRanges": ["0.0.0.0/0"], "targetTags": ["web"], "allowed": [{ "IPProtocol": "tcp", "ports": ["80", "443"] }] }
+]

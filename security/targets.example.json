@@ -1,0 +1,22 @@
+[
+  {
+    "service": "altinvest",
+    "secretEnv": "BEACON_SECRET_ALTINVEST",
+    "kind": "vm",
+    "domains": ["altinvest.example.com"],
+    "expectedPublicPorts": [80, 443],
+    "changesIgnore": { "users": ["scanner-user"] },
+    "logSources": [
+      { "name": "nginx-access", "type": "file", "path": "/var/log/nginx/access.log" },
+      { "name": "auth", "type": "journal", "unit": "ssh" },
+      { "name": "app", "type": "journal", "unit": "altinvest.service" }
+    ]
+  },
+  {
+    "service": "trustnel-site",
+    "secretEnv": "BEACON_SECRET_TRUSTNEL_SITE",
+    "kind": "hosted",
+    "domains": ["www.example.com"],
+    "repo": "owner/repo"
+  }
+]

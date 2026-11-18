@@ -1,0 +1,8 @@
+{
+  "checks": {
+    "ports": { "status": "na", "summary": "" },
+    "updates": { "status": "ok", "summary": "正常" },
+    "logins": { "status": "na", "summary": "" }
+  },
+  "findings": []
+}

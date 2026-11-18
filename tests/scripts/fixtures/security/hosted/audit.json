@@ -1,0 +1,43 @@
+{
+  "actions": [],
+  "advisories": {
+    "1117015": {
+      "id": 1117015,
+      "module_name": "postcss",
+      "severity": "moderate",
+      "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
+      "vulnerable_versions": "<8.5.10",
+      "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93"
+    },
+    "1124066": {
+      "id": 1124066,
+      "module_name": "sharp",
+      "severity": "high",
+      "title": "sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591",
+      "vulnerable_versions": "<0.35.0",
+      "url": "https://github.com/advisories/GHSA-f88m-g3jw-g9cj"
+    },
+    "1124252": {
+      "id": 1124252,
+      "module_name": "postcss",
+      "severity": "high",
+      "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
+      "vulnerable_versions": "<=8.5.11",
+      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 2,
+      "moderate": 13,
+      "high": 12,
+      "critical": 5
+    },
+    "dependencies": 229,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 229
+  },
+  "muted": []
+}
