@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { parseVmDump, splitSections } from '@/core/security/collect/vm-dump'
+import { parseVmDump, REQUIRED_SECTIONS, splitSections } from '@/core/security/collect/vm-dump'
 
 const NONCE = '0123456789abcdef0123456789abcdef'
 const fixture = readFileSync(new URL('./fixtures/vm-dump.txt', import.meta.url), 'utf8')
@@ -124,13 +124,33 @@ describe('parseVmDump', () => {
     const d = build([
       ['listeners', 'garbage\ntcp LISTEN 0 1 0.0.0.0:abc 0.0.0.0:*\ntcp LISTEN 0 1 0.0.0.0:99999 x\n'],
       ['ssh_keys', 'only-one-field\n'],
-      ['scheduled', 'a\tb\n'],
       ['log:x', 'bad\n2026-11-18T20:00:00Z\tNaN\n'],
     ])
     const r = parseVmDump(d, NONCE)
     expect(r.listeners).toEqual([])
     expect(r.inventory.sshKeys).toEqual([])
-    expect(r.inventory.scheduled).toEqual([])
     expect(r.logVolume).toEqual([{ source: 'x', hourly: [] }])
+  })
+
+  it('排程行含多個 TAB 時仍產生一筆且 hash 取最後一欄', () => {
+    const r = parseVmDump(build([['scheduled', '/etc/crontab\t* * * * *\t/bin/x\ty\tz\tabc123']]), NONCE)
+    expect(r.inventory.scheduled).toEqual([{ location: '/etc/crontab', schedule: '* * * * *', executable: '/bin/x y z', hash: 'abc123' }])
+  })
+
+  it('排程行不足 4 欄時仍保留一筆', () => {
+    const r = parseVmDump(build([['scheduled', '/etc/crontab\tfoo\tbar\n\tonly\nsingle\n\n']]), NONCE)
+    expect(r.inventory.scheduled).toEqual([
+      { location: '/etc/crontab', schedule: '', executable: '', hash: 'bar' },
+      { location: '(unparsed)', schedule: '', executable: '', hash: 'only' },
+      { location: 'single', schedule: '', executable: '', hash: 'single' },
+    ])
+  })
+
+  it('missingSections：完整 fixture 為空、空 dump 為全部、缺標記只列缺的', () => {
+    expect(f.missingSections).toEqual([])
+    expect(parseVmDump('', NONCE).missingSections).toEqual([...REQUIRED_SECTIONS])
+    const without = fixture.split('\n').filter((l) => l !== mark('scheduled')).join('\n')
+    expect(parseVmDump(without, NONCE).missingSections).toEqual(['scheduled'])
+    expect(parseVmDump(build([['users', '']]), NONCE).missingSections).not.toContain('users')
   })
 })

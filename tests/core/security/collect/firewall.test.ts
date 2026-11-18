@@ -56,4 +56,10 @@ describe('publicListeners', () => {
   it('同 proto+port 只回報一次', () => {
     expect(publicListeners([l(443), l(443, '::')], [rule()], inst)).toHaveLength(1)
   })
+
+  it('規則缺 network 仍適用；instance.network 為空字串時規則仍適用', () => {
+    expect(ports(publicListeners([l(443)], [rule({ network: undefined })], inst))).toEqual([443])
+    expect(ports(publicListeners([l(443)], [rule({ network: '' })], inst))).toEqual([443])
+    expect(ports(publicListeners([l(443)], [rule({ network: 'projects/p/global/networks/other' })], { ...inst, network: '' }))).toEqual([443])
+  })
 })

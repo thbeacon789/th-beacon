@@ -28,7 +28,10 @@ function ruleApplies(rule: FirewallRule, instance: InstanceInfo): boolean {
   if (rule.direction !== undefined && rule.direction !== 'INGRESS') return false
   if (rule.disabled === true) return false
   if (!rule.sourceRanges?.includes('0.0.0.0/0')) return false
-  if (rule.network === undefined || lastSegment(rule.network) !== lastSegment(instance.network)) return false
+  // network 缺漏時寧可視為適用（多報），不可因欄位缺失而少報
+  const ruleNet = rule.network === undefined ? '' : lastSegment(rule.network)
+  const instNet = lastSegment(instance.network)
+  if (ruleNet !== '' && instNet !== '' && ruleNet !== instNet) return false
   const tags = rule.targetTags ?? []
   const accounts = rule.targetServiceAccounts ?? []
   if (tags.length === 0 && accounts.length === 0) return true

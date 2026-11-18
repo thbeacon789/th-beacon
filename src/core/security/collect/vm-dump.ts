@@ -17,7 +17,14 @@ export interface VmFacts {
   authLines: string[]
   inventory: Inventory
   logVolume: LogSourceVolume[]
+  /** dump 中不存在標記的必要區段（存在但內容為空不算缺漏） */
+  missingSections: string[]
 }
+
+export const REQUIRED_SECTIONS: readonly string[] = [
+  'listeners', 'apt_upgradable', 'reboot_required', 'os_release', 'auto_updates', 'sshd',
+  'auth', 'users', 'admins', 'ssh_keys', 'scheduled', 'services',
+]
 
 const NONCE_RE = /^[a-f0-9]{32}$/
 const SECTION_NAME_RE = /^[A-Za-z0-9_:.-]+$/
@@ -132,9 +139,15 @@ function parseSsh(s: string | undefined): VmFacts['ssh'] {
 function parseScheduled(s: string | undefined): ScheduledEntry[] {
   const out: ScheduledEntry[] = []
   for (const line of (s ?? '').split('\n')) {
-    const p = line.replace(/\r$/, '').split('\t')
-    if (p.length !== 4 || p[0].length === 0) continue
-    out.push({ location: p[0], schedule: p[1], executable: p[2], hash: p[3] })
+    const clean = line.replace(/\r$/, '')
+    if (clean.trim().length === 0) continue
+    const p = clean.split('\t')
+    // 欄位內可能被塞入 TAB：絕不能讓一行排程資料無聲消失
+    if (p.length >= 4) {
+      out.push({ location: p[0], schedule: p[1], executable: p.slice(2, -1).join(' '), hash: p[p.length - 1] })
+    } else {
+      out.push({ location: p[0].trim() === '' ? '(unparsed)' : p[0], schedule: '', executable: '', hash: p[p.length - 1] })
+    }
   }
   return out
 }
@@ -206,5 +219,6 @@ export function parseVmDump(dump: string, nonce: string): VmFacts {
       services: lines(sections.services),
     },
     logVolume: parseLogVolume(sections),
+    missingSections: REQUIRED_SECTIONS.filter((n) => !(n in sections)),
   }
 }
