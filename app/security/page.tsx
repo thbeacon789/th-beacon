@@ -65,7 +65,10 @@ export default async function SecurityPage() {
               <tbody>
                 {view.rows.map((row) => (
                   <tr key={row.serviceId}>
-                    <th scope="row">{row.serviceName}</th>
+                    <th scope="row">
+                      {row.serviceName}
+                      {row.stale && <span className="security-stale">資料過期</span>}
+                    </th>
                     <td>
                       <span className={`security-dot security-dot-${row.overall}`} aria-hidden />
                       {OVERALL_LABEL[row.overall]}
@@ -73,10 +76,12 @@ export default async function SecurityPage() {
                     {CHECK_ORDER.map((k) => {
                       const c = row.checks[k]
                       const text = c.status === 'na' ? '不適用' : c.status === 'unknown' && c.summary === '' ? '未知' : c.summary
+                      // 過期列的結果不可再顯示成綠燈：一律用 unknown 的灰，文字保留但降低對比
+                      const dot = row.stale ? 'unknown' : c.status
                       return (
                         <td key={k}>
-                          <span className="security-cell">
-                            <span className={`security-dot security-dot-${c.status}`} aria-hidden />
+                          <span className={row.stale ? 'security-cell is-stale' : 'security-cell'}>
+                            <span className={`security-dot security-dot-${dot}`} aria-hidden />
                             {k === 'logVolume' && <LogSparkline sources={row.logVolume} />}
                             <span>{text}</span>
                           </span>
@@ -85,7 +90,6 @@ export default async function SecurityPage() {
                     })}
                     <td className="cell-time">
                       {formatDateTime(row.scannedAt)}
-                      {row.stale && <span className="security-stale">資料過期</span>}
                     </td>
                   </tr>
                 ))}

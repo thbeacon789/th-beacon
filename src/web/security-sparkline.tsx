@@ -9,6 +9,7 @@ export function LogSparkline({ sources }: { sources: LogSourceVolume[] }) {
   const hourly = source?.hourly
   if (!source || !hourly) return null
   const anomalous = new Set(source.anomalousHours ?? [])
+  const anomalousCount = hourly.filter((h) => anomalous.has(h.hour)).length
   const max = Math.max(...hourly.map((h) => h.count), 1)
   return (
     <svg
@@ -17,7 +18,7 @@ export function LogSparkline({ sources }: { sources: LogSourceVolume[] }) {
       height={HEIGHT}
       viewBox={`0 0 ${hourly.length * STEP} ${HEIGHT}`}
       role="img"
-      aria-label="過去 24 小時 log 量"
+      aria-label={anomalousCount > 0 ? `過去 24 小時 log 量（${anomalousCount} 小時異常）` : '過去 24 小時 log 量'}
     >
       {hourly.map((h, i) => {
         const barHeight = Math.max(1, (h.count / max) * HEIGHT)

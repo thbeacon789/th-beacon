@@ -1591,10 +1591,15 @@ tbody tr:last-child td {
 .security-matrix tbody th {
   position: sticky;
   left: 0;
-  background: var(--bg); /* 不透明，橫捲時才能遮住後方欄位 */
+  /* 不透明，橫捲時才能遮住後方欄位：半透明的 panel 疊在不透明的 bg 上 */
+  background: linear-gradient(var(--panel), var(--panel)), var(--bg);
   font-weight: 400;
   white-space: nowrap;
   border-bottom: 1px solid var(--line);
+}
+/* 列 hover 時其他格是 --panel-hover，sticky 欄也要同色（仍為不透明） */
+.security-matrix tbody tr:hover th {
+  background: linear-gradient(var(--panel-hover), var(--panel-hover)), var(--bg);
 }
 .security-matrix thead th:first-child {
   left: 0;
@@ -1640,6 +1645,9 @@ tbody tr:last-child td {
 }
 .security-spark rect.is-anomalous {
   fill: var(--pink);
+}
+.security-cell.is-stale {
+  opacity: 0.6;
 }
 .security-stale {
   margin-left: var(--space-2);
