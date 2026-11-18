@@ -48,6 +48,7 @@ export function buildRemoteCommand(
 ): string {
   if (!NONCE_RE.test(nonce)) throw new Error('nonce 格式不符')
   const lines: string[] = []
+  const seen = new Set<string>()
   for (const s of logSources ?? []) {
     const value = s.type === 'file' ? s.path : s.type === 'journal' ? s.unit : undefined
     if (value === undefined) throw new Error('logSources 缺少 path 或 unit')
@@ -59,6 +60,8 @@ export function buildRemoteCommand(
     } else if (!LOG_UNIT_RE.test(value) || value.startsWith('-')) {
       throw new Error('logSources.unit 只可含 A-Za-z0-9_.@-，且不可以 - 開頭')
     }
+    if (seen.has(s.name)) throw new Error(`logSources.name 重複：${s.name}`)
+    seen.add(s.name)
     lines.push(`${s.name}\t${s.type}\t${value}`)
   }
   const scriptB64 = Buffer.from(scriptContent).toString('base64')

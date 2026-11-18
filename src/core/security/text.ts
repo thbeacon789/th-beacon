@@ -1,6 +1,11 @@
 // 注意：本檔會被 Node 直接執行（type stripping）。
-/** 依 code point 截斷（不會在 surrogate pair 中間切開，避免留下孤立的 surrogate） */
-export function truncateCodePoints(str: string, max: number): string {
-  if (str.length <= max) return str // UTF-16 長度不超過 max，code point 數必然不超過
-  return Array.from(str).slice(0, max).join('')
+/** 截到 UTF-16 長度不超過 max（與 payload 驗證的 .length 單位一致），且不切斷 surrogate pair */
+export function truncateToUtf16Length(str: string, max: number): string {
+  if (str.length <= max) return str
+  let out = ''
+  for (const ch of str) {
+    if (out.length + ch.length > max) break
+    out += ch
+  }
+  return out
 }

@@ -3,7 +3,7 @@
 import type { Judgment } from '../../../src/core/security/collect/assemble.ts'
 import type { CheckResult, Finding, JudgedCheckKey, ScanKind } from '../../../src/core/security/types.ts'
 import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
-import { truncateCodePoints } from '../../../src/core/security/text.ts'
+import { truncateToUtf16Length } from '../../../src/core/security/text.ts'
 
 export interface JudgeResult {
   judgment: Judgment
@@ -68,7 +68,7 @@ type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 async function errBody(res: Response, secrets: string[]): Promise<string> {
-  let t = truncateCodePoints(await res.text().catch(() => ''), 200)
+  let t = truncateToUtf16Length(await res.text().catch(() => ''), 200)
   for (const s of secrets) if (s !== '') t = t.split(s).join('[已遮蔽]')
   return t
 }
@@ -112,7 +112,7 @@ function sanitizeCheck(v: unknown): CheckResult {
   if (!isObj(v) || !['ok', 'warn', 'bad'].includes(v.status as string) || typeof v.summary !== 'string') {
     throw new Error('判讀輸出的 check 不合 schema')
   }
-  return { status: v.status as CheckResult['status'], summary: truncateCodePoints(v.summary, MAX_SUMMARY) }
+  return { status: v.status as CheckResult['status'], summary: truncateToUtf16Length(v.summary, MAX_SUMMARY) }
 }
 
 /** 序列化後把 < 轉成 unicode 跳脫（JSON 語意無損），事實內容才無法提早關閉 <facts> 標籤 */
@@ -166,8 +166,8 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
     findings.push({
       check: f.check as Finding['check'],
       severity: f.severity as Finding['severity'],
-      title: truncateCodePoints(f.title, MAX_TITLE),
-      recommendation: truncateCodePoints(f.recommendation, MAX_RECOMMENDATION),
+      title: truncateToUtf16Length(f.title, MAX_TITLE),
+      recommendation: truncateToUtf16Length(f.recommendation, MAX_RECOMMENDATION),
     })
     if (findings.length >= MAX_FINDINGS) break
   }

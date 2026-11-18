@@ -39,6 +39,15 @@ describe('buildRemoteCommand', () => {
     expect(() => buildRemoteCommand('x', NONCE, [{ name: 'n', type: 'file' }])).toThrow()
   })
 
+  it('logSources 有重複的 name → throw 並指出名稱', () => {
+    expect(() =>
+      buildRemoteCommand('x', NONCE, [
+        { name: 'app', type: 'journal', unit: 'a.service' },
+        { name: 'app', type: 'file', path: '/var/log/a.log' },
+      ]),
+    ).toThrow(/app/)
+  })
+
   it('logSources 規則與 shell 端一致：file 路徑須以 / 開頭，unit 不含 / 且不以 - 開頭', () => {
     const t = (s: Parameters<typeof buildRemoteCommand>[2]) => () => buildRemoteCommand('x', NONCE, s)
     expect(t([{ name: 'n', type: 'file', path: 'relative.log' }])).toThrow()

@@ -432,6 +432,22 @@ esac`,
     expect(e?.executable).toBe('')
   })
 
+  it('scheduled：帶引號且含空白的環境變數值，其中段不會被當成 executable', async () => {
+    setupFakes()
+    put('etc/crontab', '0 3 * * * root TOKEN="a b c" /bin/x\n')
+    const r = await run()
+    const e = parseVmDump(r.stdout, NONCE).inventory.scheduled.find((x) => x.location === '/etc/crontab')
+    expect(e?.executable).toBe('')
+    const row = r.stdout.split('\n').find((l) => l.startsWith('/etc/crontab\t0 3 * * *'))
+    expect(row?.split('\t')).toHaveLength(4)
+    expect(r.stdout.split('\n').some((l) => l.split('\t').includes('b'))).toBe(false)
+  })
+
+  it('admins：include 指向 /proc、/sys、/dev 時不跟進，只輸出哨兵', async () => {
+    const a = await adminsOf('#include /proc/kmsg\n@include /dev/zero\n#includedir /sys/kernel\n')
+    expect(sentinels(a)).toHaveLength(3)
+  })
+
   it('腳本為唯讀：不含寫入、改動服務或動態執行的語法', () => {
     const code = fs
       .readFileSync(SCRIPT, 'utf8')

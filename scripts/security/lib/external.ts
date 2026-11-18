@@ -2,7 +2,7 @@
 // 對外探測只針對目標設定 domains 列出的主機；回應內容一律視為不可信資料，只做固定樣式比對。
 import tls from 'node:tls'
 import type { CertFact, ExposureFact } from '../../../src/core/security/types.ts'
-import { truncateCodePoints } from '../../../src/core/security/text.ts'
+import { truncateToUtf16Length } from '../../../src/core/security/text.ts'
 
 export interface ExposurePath { path: string; signature: string }
 
@@ -113,7 +113,7 @@ export function fetchCert(domain: string, opts: { port?: number; timeoutMs?: num
       const t = Date.parse(cert?.valid_to ?? '')
       if (Number.isNaN(t)) reject(new Error('憑證無有效期限'))
       else if (authorized) resolve({ domain, notAfter: new Date(t).toISOString(), trusted: true })
-      else resolve({ domain, notAfter: new Date(t).toISOString(), trusted: false, error: truncateCodePoints(authError, 120) })
+      else resolve({ domain, notAfter: new Date(t).toISOString(), trusted: false, error: truncateToUtf16Length(authError, 120) })
     })
     socket.once('error', (err) => {
       clearTimeout(timer)

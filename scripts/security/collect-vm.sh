@@ -123,6 +123,8 @@ sudoers_file() {
         echo "?sudoers:$(hstr "$line")"
         if [ "$depth" -eq 0 ]; then
           arg=$(printf '%s\n' "$line" | awk '{ print $2 }')
+          # /proc、/sys、/dev 下的特殊檔可能阻塞讀取，不跟進（用原始路徑判斷）
+          case "$arg" in /proc | /proc/* | /sys | /sys/* | /dev | /dev/*) arg="" ;; esac
           if [[ $arg =~ $inc_re ]]; then
             arg="${arg%/}"
             case "$first" in
@@ -240,10 +242,13 @@ sched_file() {
         for (k = 1; k <= 5 && k <= NF; k++) sch = sch (k == 1 ? "" : " ") $k
       }
       if (sys == "1") i++
-      exe = ""
-      for (; i <= NF; i++) if (index($i, "=") == 0) { exe = $i; break }
-      # 含引號的 token（如 TOKEN='"'"'a b'"'"' /bin/x 被拆開的片段）不可當 executable 輸出
-      if (index(exe, "\047") != 0 || index(exe, "\042") != 0) exe = ""
+      exe = ""; quoted = 0
+      for (; i <= NF; i++) {
+        # 任何掃過的 token 含引號（如 TOKEN="a b c" 被拆開的片段），整筆 executable 留空
+        if (index($i, "\047") != 0 || index($i, "\042") != 0) quoted = 1
+        if (index($i, "=") == 0) { exe = $i; break }
+      }
+      if (quoted) exe = ""
       print sch "\037" exe "\037" $0
     }
   ' "$1" | while IFS=$'\037' read -r sch exe line; do

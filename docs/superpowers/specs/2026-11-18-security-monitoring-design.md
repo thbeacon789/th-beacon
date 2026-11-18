@@ -184,10 +184,10 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 
 收集腳本的原則（**【設計者決定】**）：**無法解析就輸出哨兵，不靜默略過**。哨兵含內容 sha256 的前 16 碼，內容一變就會被變動比對標成「新增」。腳本固定 `PATH=/usr/sbin:/usr/bin:/sbin:/bin`，不寫任何檔案。具體：
 
-- 管理員：sudoers 第一欄以逗號拆分，支援 `#<uid>` 與 `%<群組>`（並展開群組成員）；alias 定義與 include 行輸出 `?sudoers:<雜湊>`；另含 primary gid 為 sudo／admin 的帳號。遇到 `#include`／`@include`／`#includedir`／`@includedir` 時，除了哨兵，還會**跟進一層**（GCP OS Login 的管理員授權放在被 `#includedir` 引入的 `/var/google-sudoers.d/` 這類目錄）：對該檔或該目錄下的每個一般檔案（略過檔名含 `.` 或以 `~` 結尾者，這是 sudo 的 includedir 規則）以同一套行解析處理；被引入的檔案裡再出現 include 只輸出哨兵，不再遞迴。路徑須以 `/` 開頭且符合 `^[A-Za-z0-9_./@+-]+$`，否則只輸出哨兵；預設已列舉的 `/etc/sudoers.d` 不重複處理。
+- 管理員：sudoers 第一欄以逗號拆分，支援 `#<uid>` 與 `%<群組>`（並展開群組成員）；alias 定義與 include 行輸出 `?sudoers:<雜湊>`；另含 primary gid 為 sudo／admin 的帳號。遇到 `#include`／`@include`／`#includedir`／`@includedir` 時，除了哨兵，還會**跟進一層**（GCP OS Login 的管理員授權放在被 `#includedir` 引入的 `/var/google-sudoers.d/` 這類目錄）：對該檔或該目錄下的每個一般檔案（略過檔名含 `.` 或以 `~` 結尾者，這是 sudo 的 includedir 規則）以同一套行解析處理；被引入的檔案裡再出現 include 只輸出哨兵，不再遞迴。路徑須以 `/` 開頭且符合 `^[A-Za-z0-9_./@+-]+$`，否則只輸出哨兵；預設已列舉的 `/etc/sudoers.d` 不重複處理；目標路徑在 `/proc`、`/sys`、`/dev` 之下時（可能阻塞讀取）不跟進，只輸出哨兵。
 - SSH 金鑰：讀 `authorized_keys` 與 `authorized_keys2`；解析失敗的行輸出 `UNPARSEABLE:<雜湊>`；另有一筆 `(sshd)` 的 `CONFIG:<雜湊>`，取 `authorizedkeysfile`／`authorizedkeyscommand`／`trustedusercakeys` 三個設定。
 - 可登入帳號：shell 以白名單完全比對（`/usr/sbin/nologin`、`/sbin/nologin`、`/bin/false`、`/usr/bin/false` 才算不可登入）。
-- 排程：除 crontab 與 systemd timer 外，涵蓋 `/etc/cron.{hourly,daily,weekly,monthly}/*`、`/etc/anacrontab`、`/var/spool/cron/atjobs/*`（每檔一筆，雜湊取檔案內容）；timer 的雜湊包含它啟動的 unit；異常路徑輸出 `?path:<雜湊>`、異常 unit 名輸出 `?unit:<雜湊>`。executable 欄的 token 含引號（`'` 或 `"`）時整欄輸出空字串，避免 `TOKEN='a b' /bin/x` 把引號內片段當成執行檔。
+- 排程：除 crontab 與 systemd timer 外，涵蓋 `/etc/cron.{hourly,daily,weekly,monthly}/*`、`/etc/anacrontab`、`/var/spool/cron/atjobs/*`（每檔一筆，雜湊取檔案內容）；timer 的雜湊包含它啟動的 unit；異常路徑輸出 `?path:<雜湊>`、異常 unit 名輸出 `?unit:<雜湊>`。掃描 executable 時只要掃過的任何 token 含引號（`'` 或 `"`），整欄輸出空字串，避免 `TOKEN="a b c" /bin/x` 被拆開後把引號內的中段片段當成執行檔。
 - 登入紀錄：成功登入取最後 5000 行、失敗登入取最後 20000 行，分開擷取（防止洗版擠掉成功登入）。樣式錨定在 sshd 訊息開頭：成功為 `sshd(-session)?\[[0-9]+\]: Accepted `，失敗為 `sshd(-session)?\[[0-9]+\]: (Failed password|Invalid user|Connection closed by (authenticating|invalid) user) `；不錨定的話，攻擊者用帳號名 `Accepted` 大量連線產生的 `Invalid user Accepted from …` 會命中成功登入的樣式而擠掉真實紀錄。`Connection closed by … user` 計為失敗，與同一連線的 `Invalid user` 行可能重複計，可接受。`auth` 為輸出的最後一個區段（內容為遠端攻擊者可控，排最後可避免偽造區段標記；區段標記另含每次執行的隨機 nonce）。
 - log 量：`journal` 型先以 `systemctl show -p LoadState --value -- <unit>` 確認 unit 為 `loaded` 才查詢（unit 不存在時 `journalctl -u` 仍以 0 結束且無輸出，會被誤當成「沒有 log」），否則（或 `systemctl` 不存在、`journalctl` 失敗）該區段輸出 `ERROR`；以 `awk` 串流計數（固定記憶體，不把整份 journal 讀進變數，也不用 `sort` 以免在正式機寫暫存檔），輸出順序不保證，由解析端依時間排序。腳本全文不使用 `sort`。
 - 設定的 `logSources` 在結果中缺席（例如被 shell 端驗證略過）時，runner 的 `assemblePayload` 補一筆 `{source, error:true}`；runner 端 `buildRemoteCommand` 的驗證規則與 shell 端完全一致（`name` 須符合 `^[A-Za-z0-9_.-]+$`；`file` 的 `path` 須以 `/` 開頭且符合 `^[A-Za-z0-9_.@/-]+$`；`journal` 的 `unit` 須符合 `^[A-Za-z0-9_.@-]+$` 且不以 `-` 開頭），不符即 throw，設定錯誤在 runner 端大聲失敗。`parseVmDump` 的 log 區段內容非空但沒有任何一行可解析時也標 `error`；內容為空（unit 存在但 24 小時無輸出）維持 `hourly: []`。
@@ -224,7 +224,7 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 - 以 `fetch` 直接呼叫 Anthropic Messages API，請求中不帶任何工具定義，並要求輸出符合固定 JSON schema。呼叫、結構化輸出與用量擷取的做法比照 `scripts/diagnose-e2e-failure.sh`。
 - 認證比照同一支腳本：GitHub OIDC 換取 Anthropic 聯邦認證的短效權杖，不存 API key（需要 `ANTHROPIC_FEDERATION_RULE_ID`／`ANTHROPIC_ORGANIZATION_ID`／`ANTHROPIC_SERVICE_ACCOUNT_ID`，可選 `ANTHROPIC_WORKSPACE_ID`；本機除錯可改用 `ANTHROPIC_API_KEY`）。
 - 判讀輸入不含原始登入紀錄：`logins` 只送統計摘要（次數、前十名來源與帳號、成功登入清單）。掃描器自己每天登入 VM 會出現在成功登入清單裡：`accepted` 中屬於目標 `changesIgnore.users` 的項目先被移除，並在事實中加上 `ignoredScannerLogins: <移除的筆數>`；prompt 註明它是掃描器自身的例行連線，不算異常。**【設計者決定】**
-- `max_tokens` 為 8000；prompt 要求發現最多 15 筆、同類合併成一筆（例如多個待更新套件合併描述）。所有截斷按 code point 進行（`src/core/security/text.ts`），不留下孤立的 surrogate。
+- `max_tokens` 為 8000；prompt 要求發現最多 15 筆、同類合併成一筆（例如多個待更新套件合併描述）。所有截斷以 UTF-16 長度為單位（`truncateToUtf16Length`，`src/core/security/text.ts`），與驗證端的 `.length` 一致，且不切斷 surrogate pair。
 - 推送前，`scan.mts` 以伺服端同一個 `parseSecurityScanPayload` 先驗證組好的 payload：未通過且本次採用了模型判讀，就改用 unknown 判讀重組一次（記為判讀失敗）；仍不通過則印出錯誤清單、exit 1、不推送。目的是模型輸出的邊界情況（如空白 title）不可讓整筆快照（含憑證與暴露面事實）一起被 422 丟掉。
 - 防火牆判定採保守方向：規則缺 network 欄位、或取不到 VM 的 network 時，視為規則適用（寧可多報）。**【設計者決定】**
 - 模型預設 `claude-sonnet-5-5`，可用 `SECURITY_JUDGE_MODEL` 覆寫。**【設計者決定】**
@@ -335,7 +335,7 @@ Payload：
 | `kind` | text，限 `vm`／`hosted` | |
 | `checks` | jsonb | `ports`／`updates`／`logins`／`logVolume`／`exposure`／`changes` 各自的 `{status, summary}`（`cert` 於讀取時推導，不存） |
 | `findings` | jsonb | 含 beacon 自己產生的 log 量、對外暴露、變動發現 |
-| `certs` | jsonb | `[{domain, notAfter}]` |
+| `certs` | jsonb | `[{domain, notAfter, trusted?, error?}]`（`trusted` 布林、`error` 字串，皆選填） |
 | `log_volume` | jsonb | 原樣存每小時行數，供 sparkline 與之後的基準 |
 | `exposure` | jsonb | 原樣存 payload 的 `exposure` |
 | `inventory` | jsonb，可為 null | 原樣存 payload 的 `inventory`，供之後的掃描比對 |
@@ -456,6 +456,12 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 
 ## 11. 上線與驗收
 
+### 啟用前必做
+
+- **hosted 與 vm 目標必須使用不同的 GitHub environment，並讓 GCP workload identity 的 attribute condition 只信任 vm 那個 environment。** 原因：hosted 稽核的最底層防線仍假設「`pnpm audit`／`npm audit` 不會依 lockfile 的內容抓取或執行任何東西」，這一點未實測；一旦不成立，hosted job 的 OIDC 權杖能否換到正式機的權限，就只取決於這一項設定。未完成前不要在 `security/targets.json` 填入任何 vm 目標。
+
+### 一般事項
+
 - Anthropic 與 GCP 的聯邦認證都只允許 `refs/heads/main`，所以 workflow 無法在測試分支上完整驗證。乾跑模式涵蓋腳本邏輯；認證、IAP 連線與真實判讀的首次驗證，是合併到 main 後以 `workflow_dispatch` 手動觸發。
 - 實作期間已在線上資料庫套用 migration（`20261118100929_security_scans.sql`）並驗證，型別已重生；`security/targets.json` 目前為空陣列，workflow 在空清單下會跳過 `scan` job，待使用者填入目標後才會真正掃描。
 - 首次手動觸發失敗沒有副作用（不推快照就不會出現在頁面）。`security-scan` 心跳要等首次手動觸發成功後才登記，避免驗收期間誤發逾期告警。
@@ -473,7 +479,7 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 6. Node 24 的 `tls` 能否區分「伺服器拒絕舊版 TLS」與「客戶端無法發起」；若一律無法判斷，該項維持未知（頁面不會誤報）。
 7. Anthropic 聯邦認證規則已允許 th-beacon repo 的 `refs/heads/main`。
 8. 首次成功後，在 `/services` 為各服務登記 `security-scan` 心跳（間隔 86400 秒、寬限 21600 秒）。
-9. （使用者設定項，縱深防禦）建議 hosted 與 vm 目標使用不同的 GitHub environment，並讓 GCP workload identity 的 attribute condition 只信任 vm 那個 environment，使 hosted 目標的 job 取不到可連進正式機的憑證。
+9. 見本節開頭「啟用前必做」（hosted 與 vm 的 GitHub environment 分離）。
 10. `gcloud compute ssh` 每次是否會在服務帳號的 OS Login profile 累積新公鑰。**【未確認】** 若會，需設定金鑰過期。
 11. corepack 的 `packageManager` URL 形式是否真的可執行任意 tarball。**【未確認】** 無論答案為何，§6.3 的淨化 `package.json` 與釘版 pnpm 都已到位。
 
