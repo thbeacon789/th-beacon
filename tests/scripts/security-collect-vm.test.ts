@@ -74,6 +74,7 @@ esac`,
       'systemctl',
       `case "$1" in
 list-timers) cat ${root}/timers.txt;;
+show) last=''; for a in "$@"; do last=$a; done; case "$last" in app.service|other.service) echo loaded;; *) echo not-found;; esac;;
 list-unit-files) printf 'nginx.service enabled enabled\\nssh.service enabled enabled\\n';;
 cat) shift; [ "$1" = -- ] && shift; cat "${root}/units/$1" 2>/dev/null || echo "[Timer] unit $1";;
 esac`,
@@ -354,6 +355,83 @@ esac`,
     expect(parseVmDump(r.stdout, NONCE).authLines.length).toBe(20001)
   })
 
+  it('auth：帳號名 Accepted 的 Invalid user 洗版不會擠掉真實的成功登入', async () => {
+    setupFakes()
+    const lines = ['2026-11-18T01:00:00+0000 host sshd[1]: Accepted publickey for deploy from 192.0.2.10 port 1 ssh2']
+    for (let i = 0; i < 5001; i++) lines.push(`2026-11-18T02:00:00+0000 host sshd[1]: Invalid user Accepted from 203.0.113.9 port ${i}`)
+    put('auth.txt', lines.join('\n') + '\n')
+    const r = await run()
+    const out = r.stdout.split('\n')
+    expect(out.filter((l) => l.includes('Accepted publickey for deploy'))).toHaveLength(1)
+    // 洗版行只屬於失敗登入那一路，所以只出現一次（若被成功登入樣式命中會出現兩次）
+    expect(out.filter((l) => l.includes('Invalid user Accepted'))).toHaveLength(5001)
+  })
+
+  it('auth：Connection closed by authenticating／invalid user 也被擷取為失敗登入', async () => {
+    setupFakes()
+    put('auth.txt', [
+      '2026-11-18T02:00:00+0000 host sshd[9]: Connection closed by authenticating user root 203.0.113.9 port 5 [preauth]',
+      '2026-11-18T02:00:01+0000 host sshd-session[9]: Connection closed by invalid user bob 203.0.113.9 port 6 [preauth]',
+      '2026-11-18T02:00:02+0000 host cron[9]: Connection closed by authenticating user x 1.2.3.4 port 6 [preauth]',
+    ].join('\n') + '\n')
+    const r = await run()
+    expect(r.stdout).toContain('authenticating user root')
+    expect(r.stdout).toContain('invalid user bob')
+    expect(r.stdout).not.toContain('cron[9]')
+  })
+
+  it('admins：sudoers 的 includedir 跟進一層，略過含 . 或以 ~ 結尾的檔，二層 include 只產生哨兵', async () => {
+    const a = await adminsOf('', {
+      'etc/sudoers.d/google-oslogin': '#includedir /var/google-sudoers.d\n',
+      'var/google-sudoers.d/alice': 'alice ALL=(ALL:ALL) NOPASSWD:ALL\n',
+      'var/google-sudoers.d/bob.bak': 'bob ALL=(ALL) ALL\n',
+      'var/google-sudoers.d/carl~': 'carl ALL=(ALL) ALL\n',
+      'var/google-sudoers.d/nested': 'erin ALL=(ALL) ALL\n#includedir /var/deeper\n',
+      'var/deeper/zed': 'zed ALL=(ALL) ALL\n',
+    })
+    expect(a).toEqual(expect.arrayContaining(['alice', 'erin']))
+    expect(a).not.toContain('bob')
+    expect(a).not.toContain('carl')
+    expect(a).not.toContain('zed')
+    expect(sentinels(a)).toHaveLength(2) // 頂層 includedir 與二層 includedir 各一個哨兵
+  })
+
+  it('admins：#include 單檔跟進；路徑含異常字元只輸出哨兵；/etc/sudoers.d 不重複處理', async () => {
+    const a = await adminsOf('#include /var/extra/file\n@include /var/e%h/x\n#includedir /etc/sudoers.d\n', {
+      'var/extra/file': 'frank ALL=(ALL) ALL\n',
+    })
+    expect(a).toContain('frank')
+    expect(sentinels(a)).toHaveLength(3)
+  })
+
+  it('log：設定的 journal unit 不存在 → 該來源為 error', async () => {
+    setupFakes()
+    const r = await run({ BEACON_LOG_SOURCES_B64: b64('ghost\tjournal\tghost.service\napp\tjournal\tapp.service\n') })
+    const f = parseVmDump(r.stdout, NONCE)
+    expect(f.logVolume.find((l) => l.source === 'ghost')).toEqual({ source: 'ghost', error: true })
+    expect(f.logVolume.find((l) => l.source === 'app')).toMatchObject({ hourly: expect.any(Array) })
+  })
+
+  it('log：systemctl 不存在 → journal 來源為 error', async () => {
+    setupFakes()
+    fs.rmSync(path.join(bin, 'systemctl'))
+    const r = await run({ BEACON_LOG_SOURCES_B64: b64('app\tjournal\tapp.service\n') })
+    expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'app', error: true }])
+  })
+
+  it('log：journalctl 失敗 → error；unit 以 - 開頭或含 / 的 journal 來源被略過', async () => {
+    setupFakes()
+    const r = await run({ BEACON_LOG_SOURCES_B64: b64('bad\tjournal\t-x.service\nslash\tjournal\ta/b\nother\tjournal\tother.service\n') })
+    expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'other', error: true }])
+  })
+
+  it('scheduled：executable 含引號時整欄為空字串', async () => {
+    setupFakes()
+    put('etc/crontab', "0 3 * * * root TOKEN='a b' /bin/x\n")
+    const e = parseVmDump((await run()).stdout, NONCE).inventory.scheduled.find((x) => x.location === '/etc/crontab')
+    expect(e?.executable).toBe('')
+  })
+
   it('腳本為唯讀：不含寫入、改動服務或動態執行的語法', () => {
     const code = fs
       .readFileSync(SCRIPT, 'utf8')
@@ -362,6 +440,7 @@ esac`,
       .join('\n')
     expect(code).not.toMatch(/\b(eval|source|tee|kill|chmod|chown|mktemp)\b/)
     expect(code).not.toMatch(/(^|[\s;|&(])(rm|mv|cp)\s/)
+    expect(code).not.toMatch(/\b(sort|uniq)\b/)
     expect(code).not.toMatch(/sed\s+-i/)
     expect(code).not.toMatch(/systemctl\s+(start|stop|restart|reload|enable|disable)/)
     expect(code).not.toMatch(/apt(-get)?\s+(install|upgrade|update|remove)/)

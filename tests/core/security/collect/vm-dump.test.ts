@@ -129,7 +129,21 @@ describe('parseVmDump', () => {
     const r = parseVmDump(d, NONCE)
     expect(r.listeners).toEqual([])
     expect(r.inventory.sshKeys).toEqual([])
-    expect(r.logVolume).toEqual([{ source: 'x', hourly: [] }])
+    // 內容非空卻沒有任何可解析的行 → 該來源為 error，而不是「沒有 log」
+    expect(r.logVolume).toEqual([{ source: 'x', error: true }])
+  })
+
+  it('log 區段：內容為空維持 hourly: []；ERROR 行在資料之後也算 error；hourly 依時間排序', () => {
+    const d = build([
+      ['log:empty', ''],
+      ['log:late', '2026-11-18T20:00:00Z\t3\nERROR\n'],
+      ['log:unsorted', '2026-11-18T21:00:00Z\t1\n2026-11-18T20:00:00Z\t2\n'],
+    ])
+    expect(parseVmDump(d, NONCE).logVolume).toEqual([
+      { source: 'empty', hourly: [] },
+      { source: 'late', error: true },
+      { source: 'unsorted', hourly: [{ hour: '2026-11-18T20:00:00Z', count: 2 }, { hour: '2026-11-18T21:00:00Z', count: 1 }] },
+    ])
   })
 
   it('排程行含多個 TAB 時仍產生一筆且 hash 取最後一欄', () => {

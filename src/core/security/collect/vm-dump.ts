@@ -171,17 +171,26 @@ function parseLogVolume(sections: Record<string, string>): LogSourceVolume[] {
     const source = name.slice(4)
     if (source.length === 0) continue
     const body = sections[name]
-    if (body.trim() === 'ERROR') {
+    const bodyLines = lines(body)
+    // 收集端串流輸出，失敗時可能在資料行之後才附上 ERROR，所以任何一行為 ERROR 都算失敗
+    if (bodyLines.includes('ERROR')) {
       out.push({ source, error: true })
       continue
     }
     const hourly: Array<{ hour: string; count: number }> = []
-    for (const line of lines(body)) {
+    for (const line of bodyLines) {
       const [hour, count, ...rest] = line.split('\t')
       if (rest.length > 0 || hour === undefined || count === undefined) continue
       if (!HOUR_RE.test(hour) || !/^\d{1,12}$/.test(count)) continue
       hourly.push({ hour, count: Number(count) })
     }
+    // 內容非空卻沒有任何一行可解析：來源壞了，不是「沒有 log」（空內容才是 hourly: []）
+    if (bodyLines.length > 0 && hourly.length === 0) {
+      out.push({ source, error: true })
+      continue
+    }
+    // 收集端為了固定記憶體不排序輸出，這裡依時間排序
+    hourly.sort((x, y) => (x.hour < y.hour ? -1 : x.hour > y.hour ? 1 : 0))
     out.push({ source, hourly })
   }
   return out

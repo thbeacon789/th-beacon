@@ -18,8 +18,8 @@
 #
 # 用到的指令（全部唯讀）：
 #   ss, /usr/lib/update-notifier/apt-check, apt list --upgradable, cat, apt-config dump,
-#   sshd -T, journalctl, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat,
-#   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut sort uniq tail tr printf
+#   sshd -T, journalctl, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
+#   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut tail tr printf
 #
 # 相容性：目標為 Ubuntu 22.04/24.04（bash 5、GNU coreutils），但避免 bash 4+ 專屬語法，
 #         日期換算全部用 awk 自行計算（不用 date -d），測試可在 macOS（bash 3.2）執行。
@@ -81,10 +81,14 @@ loc_of() {
 
 # auth 的內容是遠端攻擊者可控的文字，所以本區段必須是整份輸出的最後一個（見檔尾）。
 # Accepted 與失敗登入分開取，避免洗版把成功登入擠出去。
+# 樣式錨定在「時間 主機 sshd[pid]: 」之後，否則攻擊者用帳號名 Accepted 產生的
+# "Invalid user Accepted from ..." 會命中成功登入的樣式而擠掉真實紀錄。
 s_auth() {
+  local head_re='^[^ ]+ [^ ]+ sshd(-session)?\[[0-9]+\]: '
   # 日誌大小受遠端攻擊者影響：全程串流，不存入變數（兩次查詢之間多幾行無妨）
-  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E 'Accepted ' | tail -n 5000
-  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E 'Failed password|Invalid user' | tail -n 20000
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E "${head_re}Accepted " | tail -n 5000
+  # Connection closed by (authenticating|invalid) user 也算失敗；與同連線的 Invalid user 行可能重複計，可接受
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E "${head_re}(Failed password|Invalid user|Connection closed by (authenticating|invalid) user) " | tail -n 20000
 }
 
 # 可登入判斷用「完全相等」白名單；shell 為空視為可登入
@@ -96,58 +100,90 @@ s_users() {
   '
 }
 
-# sudoers 無法解析的條目一律輸出哨兵 ?sudoers:<雜湊>，不可靜默略過
+# 解析單一 sudoers 檔：$1=檔案 $2=深度（0 為頂層，1 為被 include 引入的檔）。
+# 無法解析的條目一律輸出哨兵 ?sudoers:<雜湊>，不可靜默略過。
+# 頂層遇到 include 時除了哨兵，還會跟進一層（GCP OS Login 的管理員授權放在被引入的目錄）；
+# 深度 1 再遇到 include 只輸出哨兵，不再遞迴。
+sudoers_file() {
+  local f="$1" depth="$2"
+  local line first el grp arg inc g base
+  local name_re='^[A-Za-z0-9_.-]+$'
+  local uid_re='^#[0-9]+$'
+  local inc_re='^/[A-Za-z0-9_./@+-]+$'
+  local gt
+  gt=$(printf '\076')
+  [ -f "$f" ] && [ -r "$f" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -n "$line" ] || continue
+    first=$(printf '%s\n' "$line" | awk '{ gsub(/[ \t]*,[ \t]*/, ","); print $1 }')
+    case "$first" in
+      '#include'* | '@include'*)
+        echo "?sudoers:$(hstr "$line")"
+        if [ "$depth" -eq 0 ]; then
+          arg=$(printf '%s\n' "$line" | awk '{ print $2 }')
+          if [[ $arg =~ $inc_re ]]; then
+            arg="${arg%/}"
+            case "$first" in
+              '#includedir' | '@includedir')
+                # /etc/sudoers.d 已由預設列舉處理，不重複
+                if [ "$arg" != "/etc/sudoers.d" ]; then
+                  for g in "$R$arg"/*; do
+                    base="${g##*/}"
+                    # sudo 的 includedir 規則：略過檔名含 . 或以 ~ 結尾者
+                    case "$base" in *.* | *"~") continue ;; esac
+                    sudoers_file "$g" 1
+                  done
+                fi
+                ;;
+              '#include' | '@include')
+                inc="$R$arg"
+                sudoers_file "$inc" 1
+                ;;
+            esac
+          fi
+        fi
+        continue
+        ;;
+      # 只略過 Defaults 與 Defaults:／@／!／>（>以變數表示，維持腳本內無導向字元）；
+      # Defaults_x、Defaults.x 等是一般帳號名，須照授權行處理
+      Defaults | Defaults[:@!]* | Defaults"$gt"*) continue ;;
+      User_Alias | Runas_Alias | Host_Alias | Cmnd_Alias | Cmd_Alias)
+        echo "?sudoers:$(hstr "$line")"
+        continue
+        ;;
+      '#'*)
+        [[ $first =~ ^#[0-9] ]] || continue
+        ;;
+    esac
+    while IFS= read -r el; do
+      [ -n "$el" ] || continue
+      if [[ $el =~ $name_re ]] || [[ $el =~ $uid_re ]]; then
+        printf '%s\n' "$el"
+      elif [[ $el == %* ]]; then
+        grp="${el#%}"
+        if [[ $grp =~ $name_re ]] && [[ $grp != -* ]]; then
+          printf '%s\n' "$el"
+          getent group "$grp" | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
+        else
+          echo "?sudoers:$(hstr "$line")"
+        fi
+      else
+        echo "?sudoers:$(hstr "$line")"
+      fi
+    done < <(printf '%s\n' "$first" | tr ',' '\n')
+  done < "$f"
+}
+
 s_admins() {
   {
-    local gids f line first el grp
-    local name_re='^[A-Za-z0-9_.-]+$'
-    local uid_re='^#[0-9]+$'
-    local gt
-    gt=$(printf '\076')
+    local gids f
     getent group sudo admin | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
     gids=$(getent group sudo admin | awk -F: '{ print $3 }' | tr '\n' ' ')
     getent passwd | awk -F: -v gids="$gids" 'BEGIN { n = split(gids, a, " "); for (i = 1; i <= n; i++) g[a[i]] = 1 } ($4 in g) { print $1 }'
     for f in "$R/etc/sudoers" "$R"/etc/sudoers.d/*; do
-      if [ -f "$f" ] && [ -r "$f" ]; then
-        while IFS= read -r line || [ -n "$line" ]; do
-          line="${line#"${line%%[![:space:]]*}"}"
-          line="${line%"${line##*[![:space:]]}"}"
-          [ -n "$line" ] || continue
-          first=$(printf '%s\n' "$line" | awk '{ gsub(/[ \t]*,[ \t]*/, ","); print $1 }')
-          case "$first" in
-            '#include'* | '@include'*)
-              echo "?sudoers:$(hstr "$line")"
-              continue
-              ;;
-            # 只略過 Defaults 與 Defaults:／@／!／>（>以變數表示，維持腳本內無導向字元）；
-            # Defaults_x、Defaults.x 等是一般帳號名，須照授權行處理
-            Defaults | Defaults[:@!]* | Defaults"$gt"*) continue ;;
-            User_Alias | Runas_Alias | Host_Alias | Cmnd_Alias | Cmd_Alias)
-              echo "?sudoers:$(hstr "$line")"
-              continue
-              ;;
-            '#'*)
-              [[ $first =~ ^#[0-9] ]] || continue
-              ;;
-          esac
-          while IFS= read -r el; do
-            [ -n "$el" ] || continue
-            if [[ $el =~ $name_re ]] || [[ $el =~ $uid_re ]]; then
-              printf '%s\n' "$el"
-            elif [[ $el == %* ]]; then
-              grp="${el#%}"
-              if [[ $grp =~ $name_re ]] && [[ $grp != -* ]]; then
-                printf '%s\n' "$el"
-                getent group "$grp" | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
-              else
-                echo "?sudoers:$(hstr "$line")"
-              fi
-            else
-              echo "?sudoers:$(hstr "$line")"
-            fi
-          done < <(printf '%s\n' "$first" | tr ',' '\n')
-        done < "$f"
-      fi
+      sudoers_file "$f" 0
     done
   } | awk '!seen[$0]++'
 }
@@ -177,7 +213,14 @@ s_ssh_keys() {
     done
   done < <(getent passwd)
   # 金鑰檔位置／CA 信任設定的哨兵：設定一變就會被標成新增金鑰
-  cfg=$(sshd -T 2>/dev/null | grep -Ei '^(authorizedkeysfile|authorizedkeyscommand|trustedusercakeys) ' | sort)
+  cfg=$(sshd -T 2>/dev/null | awk '
+    { k = tolower($1) }
+    k == "authorizedkeysfile" || k == "authorizedkeyscommand" || k == "trustedusercakeys" { v[k] = (k in v ? v[k] "\n" : "") $0 }
+    END {
+      n = split("authorizedkeysfile authorizedkeyscommand trustedusercakeys", order, " ")
+      for (i = 1; i <= n; i++) if (order[i] in v) print v[order[i]]
+    }
+  ')
   if [ -n "$cfg" ]; then printf '(sshd)\tCONFIG:%s\n' "$(hstr "$cfg")"; fi
 }
 
@@ -199,6 +242,8 @@ sched_file() {
       if (sys == "1") i++
       exe = ""
       for (; i <= NF; i++) if (index($i, "=") == 0) { exe = $i; break }
+      # 含引號的 token（如 TOKEN='"'"'a b'"'"' /bin/x 被拆開的片段）不可當 executable 輸出
+      if (index(exe, "\047") != 0 || index(exe, "\042") != 0) exe = ""
       print sch "\037" exe "\037" $0
     }
   ' "$1" | while IFS=$'\037' read -r sch exe line; do
@@ -249,14 +294,20 @@ s_services() {
   systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{ print $1 }'
 }
 
-# journal 型：--utc 直接輸出 UTC，取每行前 13 字元（YYYY-MM-DDTHH）計數
+# journal 型：先確認 unit 存在（不存在時 journalctl 仍以 0 結束且無輸出，會被誤當成「沒有 log」），
+# --utc 直接輸出 UTC，取每行前 13 字元（YYYY-MM-DDTHH）以 awk 串流計數（固定記憶體；輸出順序不保證，由解析端排序）
 log_journal() {
-  local out
-  out=$(journalctl --utc -u "$1" --since '24 hours ago' --no-pager -o short-iso 2>/dev/null) || { echo ERROR; return 0; }
-  printf '%s\n' "$out" \
-    | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' \
-    | cut -c1-13 | sort | uniq -c \
-    | awk '{ printf "%s:00:00Z\t%s\n", $2, $1 }'
+  local st
+  st=$(systemctl show -p LoadState --value -- "$1" 2>/dev/null) || { echo ERROR; return 0; }
+  [ "$st" = loaded ] || { echo ERROR; return 0; }
+  if ! (
+    set -o pipefail
+    journalctl --utc -u "$1" --since '24 hours ago' --no-pager -o short-iso 2>/dev/null \
+      | { grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
+      | awk '{ c[substr($0, 1, 13)]++ } END { for (k in c) printf "%s:00:00Z\t%d\n", k, c[k] }'
+  ); then
+    echo ERROR
+  fi
 }
 
 # file 型：讀 target 與 target.1，解析 [18/Nov/2026:02:13:44 +0000]，換算 UTC 整點，只留過去 24 小時
@@ -293,8 +344,11 @@ log_file() {
       if (e < lo || now < e) next
       c[int(e / 3600) * 3600]++
     }
-    END { for (h in c) printf "%d\t%d\n", h, c[h] }
-  ' "$@" | sort -n | awk '
+    END {
+      # 依時間由舊到新輸出（至多 25 個整點，不需要外部排序）
+      for (h = int(lo / 3600) * 3600; h <= now; h += 3600) if (h in c) printf "%d\t%d\n", h, c[h]
+    }
+  ' "$@" | awk '
     function cfd(z,   era, doe, yoe, y, doy, mp, d, m) {
       z += 719468; era = int(z / 146097); doe = z - era * 146097
       yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
@@ -331,6 +385,7 @@ if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then
     || decoded=""
   name_re='^[A-Za-z0-9_.-]+$'
   target_re='^[A-Za-z0-9_.@/-]+$'
+  unit_re='^[A-Za-z0-9_.@-]+$'
   seen_names=" "
   while IFS=$'\t' read -r lname ltype ltarget lextra; do
     [ -z "$lextra" ] || continue
@@ -339,6 +394,9 @@ if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then
     case "$seen_names" in *" $lname "*) continue ;; esac
     case "$ltype" in
       journal)
+        # unit 名稱不含 /，也不可以 - 開頭
+        [[ $ltarget =~ $unit_re ]] || continue
+        case "$ltarget" in -*) continue ;; esac
         seen_names="$seen_names$lname "
         section "log:$lname" log_journal "$ltarget"
         ;;
