@@ -5,7 +5,7 @@
 // 日誌只印各 check 的狀態與筆數摘要，不印完整 payload，也不印任何秘密。
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { parseVmDump } from '../../src/core/security/collect/vm-dump.ts'
@@ -18,6 +18,7 @@ import type { AuditSummary } from '../../src/core/security/collect/audit.ts'
 import { assemblePayload, unknownJudgment } from '../../src/core/security/collect/assemble.ts'
 import type { Judgment, TargetConfig } from '../../src/core/security/collect/assemble.ts'
 import type { CertFact, CheckResult, ExposureFact } from '../../src/core/security/types.ts'
+import { auditEnv, prepareAuditDir } from './lib/audit-run.ts'
 import { fetchCert, isValidDomain, probeDomain, probeLegacyTls } from './lib/external.ts'
 import type { ExposurePath } from './lib/external.ts'
 import { describeInstance, listFirewallRules, runVmCollector } from './lib/gcp.ts'
@@ -136,13 +137,19 @@ function collectAudit(dryDir: string | undefined): AuditOutcome {
     if (!dir) return { kind: 'failed', reason: 'TARGET_REPO_DIR 未設定' }
     const pm = detectPackageManager(readdirSync(dir))
     if (pm !== 'pnpm' && pm !== 'npm') return { kind: 'unsupported' }
-    // 有漏洞時 audit 的 exit code 非 0 屬正常，以 stdout 的 JSON 為準；不安裝相依套件
-    const r = spawnSync(pm, pm === 'pnpm' ? ['audit', '--json'] : ['audit', '--json', '--package-lock-only'], {
-      cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 5 * 60 * 1000,
-    })
-    if (r.error) return { kind: 'failed', reason: `${pm} audit 無法執行或逾時` }
-    const json = JSON.parse(r.stdout) as unknown
-    return { kind: 'ok', audit: pm === 'pnpm' ? parsePnpmAudit(json) : parseNpmAudit(json) }
+    // 有漏洞時 audit 的 exit code 非 0 屬正常，以 stdout 的 JSON 為準；不安裝相依套件。
+    // 在只含 package.json 與 lockfile 的暫存目錄執行，且子行程只拿最小環境（見 lib/audit-run.ts）
+    const tmp = prepareAuditDir(dir, pm)
+    try {
+      const r = spawnSync(pm, pm === 'pnpm' ? ['audit', '--json'] : ['audit', '--json', '--package-lock-only'], {
+        cwd: tmp, env: auditEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 5 * 60 * 1000,
+      })
+      if (r.error) return { kind: 'failed', reason: `${pm} audit 無法執行或逾時` }
+      const json = JSON.parse(r.stdout) as unknown
+      return { kind: 'ok', audit: pm === 'pnpm' ? parsePnpmAudit(json) : parseNpmAudit(json) }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   } catch (e) {
     return { kind: 'failed', reason: brief(e) }
   }
