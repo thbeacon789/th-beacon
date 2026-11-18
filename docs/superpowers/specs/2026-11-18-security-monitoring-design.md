@@ -11,7 +11,7 @@
 
 資料來源是一個每日排程：對每個受監控的服務收集資安相關事實，交給 Claude 判讀整理（直接呼叫 Anthropic API，見 §4.2），再把結果推回 beacon 儲存與顯示。
 
-檢查項目共五項：
+檢查項目共七項（前五項為最初需求，後兩項為討論後加入）：**【使用者決定】**
 
 | 代號 | 項目 | 說明 |
 |---|---|---|
@@ -20,6 +20,8 @@
 | `logins` | 異常的登入嘗試 | SSH 登入失敗量、來源集中度、非預期的成功登入 |
 | `cert` | 快到期的 SSL 憑證 | 距到期天數 |
 | `logVolume` | log 量突然異常增加 | 每小時 log 行數相對平常暴增 |
+| `exposure` | 對外暴露 | 從外部看網站：不該公開的路徑是否有回應、瀏覽器安全標頭、是否接受過時的 TLS |
+| `changes` | 與先前掃描相比的變動 | 新的帳號、管理員權限、SSH 金鑰、排程工作、監聽埠、常駐服務（入侵後留後門的常見痕跡） |
 
 ## 2. 目標、非目標、反目標
 
@@ -42,6 +44,9 @@
 - 儲存原始 log 內容。
 - altinvest 應用程式本身的相依套件稽核（只查系統套件）。
 - 首頁 Service Overview 或導覽列上的資安徽章。
+- 網域到期日、寄信防冒名設定（SPF／DMARC）。變動極慢，之後再做。
+- 雲端與平台帳號層的稽核（GCP 的權限變動與金鑰年齡、Vercel 的成員／環境變數／稽核紀錄／log 匯出）。需要另一組權限與另一套收集邏輯；Vercel 的稽核紀錄與 log 匯出是否在現有方案內【未確認】。
+- 磁碟用量等非資安的維運指標。**【設計者決定】**
 
 ### 反目標（做出來也算失敗）
 
@@ -54,10 +59,22 @@
 
 | 服務 | 環境 | 適用項目 |
 |---|---|---|
-| altinvest | GCP Compute Engine，Ubuntu，單一 VM，沒有跑其他東西 | 五項全部 |
-| trustnel 官網（尚未登記，名稱由使用者在 `/services` 登記時決定） | Vercel | `updates`（相依套件）、`cert`；其餘三項不適用 |
+| altinvest | GCP Compute Engine，Ubuntu，單一 VM，沒有跑其他東西 | 七項全部 |
+| trustnel 官網（尚未登記，名稱由使用者在 `/services` 登記時決定） | Vercel | `updates`（相依套件）、`cert`、`exposure`；其餘四項不適用 |
 
 兩者同為第一版優先。**【使用者決定】**
+
+### 3.1 託管（serverless）服務的處理原則
+
+碰不到作業系統的部分由平台負責，不查，並明確顯示「不適用」；只查自己仍要負責的層：
+
+| 層 | 查什麼 | 第一版 |
+|---|---|---|
+| 從外部看 | `cert`、`exposure` | 做 |
+| 程式碼 | `updates`（相依套件的已知漏洞） | 做 |
+| 平台帳號 | 權限、環境變數、平台 log | 不做（見非目標） |
+
+`ports`、`logins`、`logVolume`、`changes` 對託管服務一律 `na`。日後接入 chatxbuy-api（Heroku）沿用同一套：在目標設定標為 `hosted` 即可。
 
 ## 4. 做法取捨
 
@@ -99,10 +116,11 @@ GitHub Actions（th-beacon repo，每日排程）
   └─ 對每個目標（matrix）
        1. 收集：唯讀腳本取得原始事實（JSON）
        2. 判讀：直接呼叫 Anthropic API（無工具）→ ports/updates/logins 的狀態與發現清單
+          （cert/logVolume/exposure/changes 不經 Claude，由 beacon 以固定規則計算）
        3. 推送：POST /api/security-scan（HMAC，該服務自己的金鑰）
        4. 回報心跳：POST /api/heartbeat（if: always()）
 beacon
-  └─ 驗簽 → 驗 payload → 計算 logVolume 狀態 → 寫入 security_scans
+  └─ 驗簽 → 驗 payload → 計算 logVolume／exposure／changes 狀態 → 寫入 security_scans
 /security 頁面
   └─ 讀每個服務最新一筆快照 → 讀取端推導 cert 狀態、過期判定、整體狀態 → 渲染
 ```
@@ -126,6 +144,7 @@ beacon
     "kind": "vm",
     "domains": ["<altinvest 對外網域>"],
     "expectedPublicPorts": [80, 443],
+    "changesIgnore": { "users": ["<掃描器連線時使用的帳號>"] },
     "logSources": [
       { "name": "nginx-access", "type": "file", "path": "/var/log/nginx/access.log" },
       { "name": "auth", "type": "journal", "unit": "ssh" },
@@ -155,6 +174,12 @@ GCP 專案、區域、instance 名稱走 repo variables；各服務的 HMAC 金�
 | 更新 | `apt list --upgradable`、其中屬安全性更新者、是否需要重開機、Ubuntu 版本與是否仍在支援期 | 清單與計數 |
 | 登入 | 過去 24 小時 sshd 紀錄：失敗次數、來源 IP 前十名與次數、被嘗試的使用者名稱前十名、成功登入的使用者／來源 IP／時間 | 計數與前十名 |
 | log 量 | 過去 24 小時，每個 `logSources` 每小時的行數 | 每來源 24 個數字（UTC 整點對齊） |
+| 防護設定 | SSH 的生效設定中是否允許密碼登入、是否允許 root 登入；自動安全更新（unattended-upgrades）是否啟用 | 三個布林值，分別併入 `logins` 與 `updates` 的判讀資料 |
+| 清冊 | 可登入的使用者帳號；具管理員權限（sudo 群組與 sudoers）的帳號；每個帳號的 SSH 授權金鑰指紋；排程工作（系統與使用者 crontab、systemd timer）；所有 TCP／UDP 監聽埠與行程名；已啟用的 systemd 服務名稱 | 見 §7.1 的 `inventory` |
+
+清冊的限制：排程工作只送「位置、排程時間、執行檔路徑、整行內容的 SHA-256」，不送完整指令列（可能含密碼或權杖）；金鑰只送指紋。
+
+讀取其他帳號的金鑰、crontab、sshd 生效設定與系統日誌需要 root 讀取權限，因此掃描器連線帳號需要 sudo。**【設計者決定】** 是否以 sudoers 白名單限縮到這幾個唯讀指令，留給實作者（§12）。
 
 `kind: hosted`（`scripts/security/collect-hosted.sh`，在 runner 上執行）：
 
@@ -162,7 +187,14 @@ GCP 專案、區域、instance 名稱走 repo variables；各服務的 HMAC 金�
 |---|---|
 | 更新 | 以唯讀權限 checkout 目標 repo，依 lockfile 判斷套件管理器（`pnpm-lock.yaml`／`package-lock.json`／`yarn.lock`）並執行對應的 audit 指令，輸出各嚴重度的漏洞數與套件名。只讀 lockfile，不安裝相依套件、不執行該 repo 的任何 script。**【設計者決定】** |
 
-兩種目標共用（runner 上執行）：對 `domains` 每個網域以 `openssl s_client` 取得憑證到期時間 `notAfter`。
+兩種目標共用（runner 上執行，對 `domains` 每個網域）：
+
+- 憑證：以 `openssl s_client` 取得到期時間 `notAfter`。
+- 敏感路徑：對版控清單 `security/exposure-paths.json` 中的每個路徑發一次 GET。清單每筆含路徑與「內容特徵」（例如 `/.git/config` 須含 `[core]`、`/.env` 須含 `KEY=value` 形式的行）。**回應 200 且內容符合特徵**才算暴露，避免 SPA 對任何路徑都回 200 造成誤判。只記錄「路徑、是否暴露」，不保存回應內容。初始清單：`/.env`、`/.git/config`、`/.git/HEAD`、`/.DS_Store`、常見資料庫傾印檔名、`/phpinfo.php`、`/server-status`。**【設計者決定】**
+- 安全標頭：對首頁的回應記錄是否帶有 `Strict-Transport-Security`、`X-Content-Type-Options`、防嵌入（`X-Frame-Options` 或 CSP 的 `frame-ancestors`）、`Content-Security-Policy`、`Referrer-Policy`。
+- 過時 TLS：是否仍可用 TLS 1.0／1.1 完成交握。runner 上的工具若無法測試則送 `null`。**【未確認：runner 的 openssl 是否仍支援舊版交握，計畫階段查證】**
+
+對外探測只針對 `domains` 中列出的自家網域，每個路徑每日一次請求。
 
 連進 VM 走 IAP，VM 不需對外開 SSH 埠；GitHub 到 GCP 的認證走 Workload Identity Federation，不存長效金鑰。**【設計者決定】【未確認：所需 IAM 角色與 OS Login 設定，計畫階段查官方文件】**
 
@@ -177,7 +209,8 @@ GCP 專案、區域、instance 名稱走 repo variables；各服務的 HMAC 金�
 - Claude 只負責 `ports`、`updates`、`logins` 三項，輸出每項的 `status`（`ok`／`warn`／`bad`）、一句 `summary`，以及 `findings` 清單。判準寫進 prompt：
   - `ports`：出現不在 `expectedPublicPorts` 的對外埠＝`bad`；資料庫、快取、管理介面類的埠對外一律 `bad`。
   - `updates`：有安全性更新或高／重大漏洞＝`warn`；作業系統已過支援期，或安全性更新中含已知遭利用者＝`bad`；需要重開機＝`warn`。
-  - `logins`：只有背景雜訊等級的失敗＝`ok`；失敗量明顯集中或暴增＝`warn`；非預期來源的成功登入＝`bad`。
+  - `logins`：只有背景雜訊等級的失敗＝`ok`；失敗量明顯集中或暴增＝`warn`；非預期來源的成功登入＝`bad`。SSH 允許密碼登入或允許 root 登入＝至少 `warn`，並各產生一筆發現。
+  - `updates` 另加：自動安全更新未啟用＝至少 `warn`，並產生一筆發現。
 - `kind: hosted` 不適用的項目由腳本直接填 `na`，不經 Claude。
 - 判讀後，腳本以 `source=ci_security` 回報一筆 AI 用量到既有 `/api/ai-usage`，讓成本出現在 `/ai-stats`。用量歸屬到被掃描的服務（以該服務的金鑰簽章）。**【設計者決定】**（需放寬 `ai_usage.source` 的限制，見 §7.2）
 
@@ -221,7 +254,7 @@ Payload：
   },
   "findings": [
     {
-      "check": "ports",               // ports | updates | logins
+      "check": "ports",               // 排程端只會送 ports | updates | logins
       "severity": "high",             // high | medium | low
       "title": "MySQL 3306 埠對全網開放",
       "recommendation": "改為僅內網或防火牆白名單"
@@ -231,13 +264,29 @@ Payload：
   "logVolume": [                      // hosted 省略此欄
     { "source": "nginx-access", "hourly": [ { "hour": "2026-11-17T22:00:00Z", "count": 1820 } ] },
     { "source": "app", "error": true }   // 來源讀不到
-  ]
+  ],
+  "exposure": [
+    {
+      "domain": "example.com",
+      "sensitivePaths": [ { "path": "/.env", "exposed": false } ],
+      "headers": { "hsts": true, "contentTypeOptions": true, "frameProtection": false, "csp": false, "referrerPolicy": true },
+      "legacyTls": false              // true | false | null（無法測試）
+    }
+  ],
+  "inventory": {                      // hosted 省略此欄
+    "users": ["ubuntu", "deploy"],
+    "admins": ["ubuntu"],
+    "sshKeys": [ { "user": "ubuntu", "fingerprint": "SHA256:..." } ],
+    "scheduled": [ { "location": "/etc/cron.d/backup", "schedule": "0 3 * * *", "executable": "/usr/local/bin/backup.sh", "hash": "sha256:..." } ],
+    "listeners": [ { "proto": "tcp", "port": 443, "process": "nginx" } ],
+    "services": ["nginx.service", "altinvest.service"]
+  }
 }
 ```
 
 限制：`summary` 最長 80 字、`title` 最長 120 字、`recommendation` 最長 300 字、`findings` 最多 30 筆。驗證寫成 `src/core/` 的純函式。
 
-`cert` 與 `logVolume` 的狀態**不由 payload 提供**：排程端只送事實，beacon 自己算（§7.3）。
+`cert`、`logVolume`、`exposure`、`changes` 的狀態**不由 payload 提供**：排程端只送事實，beacon 自己算（§7.3）。
 
 ### 7.2 資料表
 
@@ -252,10 +301,12 @@ Payload：
 | `scanned_at` | timestamptz | 排程端時間 |
 | `received_at` | timestamptz，預設 `now()` | |
 | `kind` | text，限 `vm`／`hosted` | |
-| `checks` | jsonb | `ports`／`updates`／`logins`／`logVolume` 各自的 `{status, summary}` |
-| `findings` | jsonb | 含 beacon 自己產生的 log 量發現 |
+| `checks` | jsonb | `ports`／`updates`／`logins`／`logVolume`／`exposure`／`changes` 各自的 `{status, summary}`（`cert` 於讀取時推導，不存） |
+| `findings` | jsonb | 含 beacon 自己產生的 log 量、對外暴露、變動發現 |
 | `certs` | jsonb | `[{domain, notAfter}]` |
 | `log_volume` | jsonb | 原樣存每小時行數，供 sparkline 與之後的基準 |
+| `exposure` | jsonb | 原樣存 payload 的 `exposure` |
+| `inventory` | jsonb，可為 null | 原樣存 payload 的 `inventory`，供之後的掃描比對 |
 
 - `unique (service_id, scanned_at)` 作為重送去重。
 - 索引 `(service_id, scanned_at desc)`。
@@ -265,7 +316,7 @@ Payload：
 
 另放寬 `ai_usage.source` 的 check 約束，加入 `ci_security`；`src/ai-usage/payload.ts` 的型別與 `SOURCES` 清單同步加入。
 
-### 7.3 beacon 自己算的兩項
+### 7.3 beacon 自己算的四項
 
 都寫成 `src/core/security.ts` 的純函式，時鐘由參數注入。
 
@@ -278,6 +329,22 @@ Payload：
 - 任一來源標了 `error`＝`unknown`，文字顯示「來源讀不到」；其餘來源照常判定，有異常時仍以 `bad` 為準。
 - 倍數、絕對下限、天數皆為具名常數。**【設計者決定】** 第一版不做成每服務可調。
 - 寫入時計算是因為結果取決於「當時的歷史」，存下來頁面每次讀到的才一致。
+
+**對外暴露（寫入時計算）**
+
+- 任一敏感路徑暴露＝`bad`，每個路徑一筆 `severity: high` 的發現。
+- 缺 `hsts`、`contentTypeOptions`、`frameProtection` 任一，或 `legacyTls` 為 true＝`warn`，各一筆 `medium` 發現。
+- 只缺 `csp` 或 `referrerPolicy`＝狀態仍為 `ok`，但各產生一筆 `low` 發現（列在待辦清單末段）。**【設計者決定】** 理由：多數網站沒有 CSP，若因此亮黃燈會讓這一欄長期失去鑑別力。
+- 多個網域取最差。
+
+**變動（寫入時計算，僅 `kind: vm`）**
+
+- 比對基準：同服務過去 7 天內**最舊**的一筆含 `inventory` 的快照。**【設計者決定】** 理由：沒有「已確認」的操作狀態，若只跟前一天比，變動只會出現一天就消失；跟七天窗的最舊一筆比，變動會持續顯示約七天後自然退場。
+- 只看「新增」，不看移除。`changesIgnore` 中列出的項目先排除。
+- 新增具管理員權限的帳號、新增 SSH 金鑰＝`bad`，各一筆 `high` 發現。
+- 新增一般帳號、排程工作（以位置＋雜湊判定，內容改了也算新增）、監聽埠、已啟用服務＝`warn`，各一筆 `medium` 發現。
+- 無新增＝`ok`。沒有可比對的基準（首次掃描）＝`unknown`，文字顯示「基準建立中」。
+- 已知限制：正常的部署或維運也會產生變動（例如新增排程），會顯示約七天；這是預期行為，由使用者自行判斷是否為自己人所為。
 
 **憑證（讀取時計算）**
 
@@ -309,13 +376,13 @@ Security                                    共 2 項服務｜每日 06:00 掃�
 │ [中] trustnel 官網  2 個相依套件有已知漏洞                       │
 └────────────────────────────────────────────────────────────────┘
 
-服務           整體     連接埠        待更新            異常登入   SSL 憑證    log 量          上次掃描
-altinvest      需處理   ● 3306 對外   ● 12 項（3 安全性） ● 正常    ● 剩 61 天  ▁▁▂▁█▇▁ ● 暴增  今天 06:03
-trustnel 官網  留意     ◌ 不適用      ● 相依套件 2 項     ◌ 不適用  ● 剩 74 天  ◌ 不適用        今天 06:02
+服務           整體    連接埠       待更新             異常登入  SSL 憑證   對外暴露       變動           log 量          上次掃描
+altinvest      需處理  ● 3306 對外  ● 12 項（3 安全性）  ● 正常   ● 剩 61 天 ● 正常        ● 新增 1 金鑰   ▁▁▂▁█▇▁ ● 暴增  今天 06:03
+trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不適用 ● 剩 74 天 ● 缺 2 項標頭  ◌ 不適用       ◌ 不適用        今天 06:02
 ```
 
 - **上方待辦清單**：所有服務最新快照的發現（含憑證與 log 量的合成發現），依嚴重度（高→中→低）再依服務名排序。每筆顯示嚴重度、服務名、標題、建議。沒有任何發現時顯示空狀態「目前沒有需要處理的項目」。
-- **下方矩陣**：每個有快照的服務一列。每格＝燈號＋一句文字。燈號五態：`ok` 綠、`warn` 黃、`bad` 紅、`unknown` 灰實心、`na` 虛線空心。狀態不只靠顏色區分，文字與形狀並用。
+- **下方矩陣**：每個有快照的服務一列，七個檢查欄。欄數多，寬度不足時容器橫向捲動、服務名稱欄固定在左側。每格＝燈號＋一句文字。燈號五態：`ok` 綠、`warn` 黃、`bad` 紅、`unknown` 灰實心、`na` 虛線空心。狀態不只靠顏色區分，文字與形狀並用。
 - **log 量格**：24 小時 sparkline，異常小時以警示色標出；用 inline SVG 或 CSS 長條，不引入圖表套件。
 - **整體欄**：`bad`＝需處理、`warn`＝留意、`ok`＝正常、`unknown`＝未知。
 - **上次掃描**：用既有 `formatDateTime`；過期時加「資料過期」。
@@ -333,7 +400,7 @@ trustnel 官網  留意     ◌ 不適用      ● 相依套件 2 項     ◌ �
 
 ## 10. 測試
 
-- `src/core/security.ts` 的純函式以 Vitest 單元測試涵蓋：payload 驗證、log 量異常判定（含歷史不足、邊界倍數）、憑證狀態（14／30 天邊界、已過期）、整體狀態取最差、過期判定、待辦清單排序。
+- `src/core/security.ts` 的純函式以 Vitest 單元測試涵蓋：payload 驗證、log 量異常判定（含歷史不足、邊界倍數）、對外暴露判定（各標頭組合、多網域取最差）、變動比對（基準選取、忽略清單、首次掃描、各類新增的嚴重度）、憑證狀態（14／30 天邊界、已過期）、整體狀態取最差、過期判定、待辦清單排序。
 - 端點 handler 以整合測試涵蓋：驗簽失敗、payload 不合法、成功寫入、重送去重、log 量基準讀取。整合測試只跑本地 stack。
 - 收集與判讀腳本提供以 fixture 檔案為輸入的乾跑模式，可在本機不連 VM、不叫 Claude 地驗證 JSON 組裝與推送 payload。
 - 頁面為純 UI，只跑 `pnpm typecheck`。
@@ -358,7 +425,9 @@ trustnel 官網  留意     ◌ 不適用      ● 相依套件 2 項     ◌ �
 
 ## 12. 留給實作者決定
 
-- `security/targets.json` 中 altinvest 的 `logSources` 實際路徑與 unit 名稱：首次連上 VM 後依現況填入。
+- `security/targets.json` 中 altinvest 的 `logSources` 實際路徑與 unit 名稱、`changesIgnore` 的內容：首次連上 VM 後依現況填入（需確認經 IAP 連線是否會在 VM 上建立帳號或寫入金鑰，會的話列入忽略清單）。
+- 掃描器連線帳號的 sudo 是否以白名單限縮到唯讀指令。
+- `security/exposure-paths.json` 的完整清單與各路徑的內容特徵。
 - 收集腳本的具體指令與解析方式，只要唯讀且輸出符合 §6.3 的內容。
 - 判讀 prompt 的措辭與 JSON schema 的細部欄位名（對外 payload 以 §7.1 為準）。
 - sparkline 的實作方式（inline SVG 或 CSS）。
