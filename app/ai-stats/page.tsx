@@ -13,6 +13,7 @@ const SOURCE_LABEL: Record<AiUsageSource, string> = {
   server_triage: '伺服器判級',
   ci_diagnosis: 'CI 診斷',
   ci_pr: 'CI 開 PR',
+  ci_security: 'CI 資安判讀',
 }
 
 const usd = (v: number) => `$${v.toFixed(2)}`

@@ -170,7 +170,7 @@ export function rowToHeartbeat(row: HeartbeatRow): StoredHeartbeat {
 }
 
 const AI_JUDGMENT_SOURCES: readonly AiJudgmentSource[] = ['server', 'ci']
-const AI_USAGE_SOURCES: readonly AiUsageSource[] = ['server_triage', 'ci_diagnosis', 'ci_pr']
+const AI_USAGE_SOURCES: readonly AiUsageSource[] = ['server_triage', 'ci_diagnosis', 'ci_pr', 'ci_security']
 const VERDICTS: readonly Verdict[] = ['correct', 'wrong']
 
 export const narrowAiJudgmentSource = (v: string): AiJudgmentSource => narrow(v, AI_JUDGMENT_SOURCES, 'ai judgment source')

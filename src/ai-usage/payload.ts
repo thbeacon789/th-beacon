@@ -1,5 +1,5 @@
 export interface AiUsageReport {
-  source: 'ci_diagnosis' | 'ci_pr'
+  source: 'ci_diagnosis' | 'ci_pr' | 'ci_security'
   model: string | null
   inputTokens: number | null
   outputTokens: number | null
@@ -8,7 +8,7 @@ export interface AiUsageReport {
 
 type ParseResult = { ok: true; value: AiUsageReport } | { ok: false; errors: string[] }
 
-const SOURCES = ['ci_diagnosis', 'ci_pr'] as const
+const SOURCES = ['ci_diagnosis', 'ci_pr', 'ci_security'] as const
 const MODEL_MAX = 100
 const TOKENS_MAX = 2_147_483_647 // int4
 const COST_MAX_EXCLUSIVE = 1_000_000 // numeric(12,6)

@@ -10,6 +10,10 @@ describe('parseAiUsagePayload', () => {
     })
   })
 
+  it('source 為 ci_security 合法', () => {
+    expect(parseAiUsagePayload({ source: 'ci_security', costUsd: 0.05 }).ok).toBe(true)
+  })
+
   it('只回報 costUsd 合法，tokens 為 null', () => {
     const r = parseAiUsagePayload({ source: 'ci_pr', costUsd: 0.12 })
     expect(r).toEqual({

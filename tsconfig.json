@@ -16,6 +16,7 @@
       ]
     },
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "lib": [
       "dom",
       "dom.iterable",

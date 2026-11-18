@@ -44,7 +44,7 @@ export interface IssueAiTriage {
 
 // AI 判定準確率與花費統計
 export type AiJudgmentSource = 'server' | 'ci'
-export type AiUsageSource = 'server_triage' | 'ci_diagnosis' | 'ci_pr'
+export type AiUsageSource = 'server_triage' | 'ci_diagnosis' | 'ci_pr' | 'ci_security'
 export type Verdict = 'correct' | 'wrong'
 export interface JudgmentLabel {
   severityVerdict: Verdict | null
