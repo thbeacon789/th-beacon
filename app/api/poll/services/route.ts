@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { CRON_AI_BUDGET } from '@/core/ai-triage'
 import { runPoll } from '@/poll/poll-service'
 import { httpGet } from '@/poll/http'
+import { RETENTION_DAYS } from '@/core/security/constants'
 import { runHeartbeatScan } from '@/heartbeat/scan'
 import { createServerStore, createServerNotifyDeps, getCronSecret } from '@/store/server'
 
@@ -48,6 +49,17 @@ export async function GET(request: Request): Promise<Response> {
     heartbeatsError = error instanceof Error ? error.message : 'heartbeat scan failed'
   }
 
+  // 資安快照只留 RETENTION_DAYS 天；清除失敗不可影響輪詢與心跳結果
+  let securityScansPurged: number | undefined
+  let securityPurgeError: string | undefined
+  try {
+    securityScansPurged = await store.purgeSecurityScansBefore(
+      new Date(now.getTime() - RETENTION_DAYS * 86400000).toISOString(),
+    )
+  } catch (error) {
+    securityPurgeError = error instanceof Error ? error.message : 'security purge failed'
+  }
+
   return Response.json(
     {
       polled: outcomes.length,
@@ -55,6 +67,8 @@ export async function GET(request: Request): Promise<Response> {
       heartbeatsOverdue: heartbeats.length,
       heartbeats,
       ...(heartbeatsError !== undefined ? { heartbeatsError } : {}),
+      ...(securityScansPurged !== undefined ? { securityScansPurged } : {}),
+      ...(securityPurgeError !== undefined ? { securityPurgeError } : {}),
     },
     { status: 200 },
   )

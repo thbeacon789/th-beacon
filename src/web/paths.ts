@@ -7,6 +7,8 @@ const PUBLIC_PREFIXES = [
   '/api/ai-usage',
   // CI 回報 AI 修復結果：HMAC 自行驗簽
   '/api/ai-fix',
+  // 資安掃描快照：HMAC 自行驗簽
+  '/api/security-scan',
   // Discord 按鈕回呼：以 Ed25519 簽章自行驗證
   '/api/discord/interactions',
 ]

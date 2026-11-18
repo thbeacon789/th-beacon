@@ -1,0 +1,172 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { createHmac } from 'node:crypto'
+import { handleSecurityScan } from '@/security-scan/handle-security-scan'
+import { InMemoryStore } from '@/store/memory'
+import type { ServiceRecord } from '@/store/contracts'
+
+const now = new Date('2026-11-18T10:00:00.000Z')
+const nowSec = String(Math.floor(now.getTime() / 1000))
+const secret = 'svc-secret'
+
+const svc: ServiceRecord = {
+  id: 's-1',
+  name: 'svc-a',
+  healthWindowMinutes: 15,
+  healthFailureThreshold: 2,
+  healthStatus: 'healthy',
+  poll: null,
+  discordWebhookUrl: null,
+  description: null,
+  ownerDiscordIds: [],
+}
+
+function sign(sec: string, ts: string, raw: string): string {
+  return `sha256=${createHmac('sha256', sec).update(`${ts}.${raw}`).digest('hex')}`
+}
+
+function request(
+  rawBody: string,
+  over: Partial<{ serviceName: string | null; timestamp: string | null; signature: string | null }> = {},
+) {
+  return { rawBody, serviceName: 'svc-a', timestamp: nowSec, signature: sign(secret, nowSec, rawBody), ...over }
+}
+
+const inventory = (extraKeys: Array<{ user: string; fingerprint: string }> = []) => ({
+  users: ['alice'],
+  admins: ['alice'],
+  sshKeys: [{ user: 'alice', fingerprint: 'SHA256:aaa' }, ...extraKeys],
+  scheduled: [],
+  listeners: [{ proto: 'tcp', port: 22, process: 'sshd' }],
+  services: ['nginx'],
+})
+
+const hours = (day: string, count: number) =>
+  [0, 1, 2, 3].map((h) => ({ hour: `${day}T0${h}:00:00.000Z`, count }))
+
+function payload(over: Record<string, unknown> = {}) {
+  return {
+    scannedAt: '2026-11-18T09:00:00.000Z',
+    kind: 'vm',
+    checks: {
+      ports: { status: 'ok', summary: '無異常' },
+      updates: { status: 'ok', summary: '無待更新' },
+      logins: { status: 'ok', summary: '無異常' },
+    },
+    findings: [],
+    certs: [],
+    exposure: [
+      {
+        domain: 'a.example.com',
+        sensitivePaths: [{ path: '/.env', exposed: false }],
+        headers: { hsts: true, contentTypeOptions: true, frameProtection: true, csp: true, referrerPolicy: true },
+        legacyTls: false,
+      },
+    ],
+    logVolume: [{ source: 'nginx', hourly: hours('2026-11-18', 10) }],
+    inventory: inventory(),
+    ...over,
+  }
+}
+
+const send = (store: InMemoryStore, body: unknown) => handleSecurityScan(store, request(JSON.stringify(body)), now)
+
+describe('handleSecurityScan', () => {
+  let store: InMemoryStore
+  beforeEach(() => {
+    store = new InMemoryStore()
+    store.seedService(svc, secret)
+  })
+
+  it('缺 header／未知服務／簽章錯誤皆回 401', async () => {
+    const body = JSON.stringify(payload())
+    for (const over of [{ serviceName: null }, { timestamp: null }, { signature: null }, { serviceName: 'nope' }, { signature: 'sha256=bad' }]) {
+      const res = await handleSecurityScan(store, request(body, over), now)
+      expect(res).toEqual({ status: 401, body: { error: 'unauthorized' } })
+    }
+    expect(store.listSecurityScans()).toHaveLength(0)
+  })
+
+  it('非 JSON 回 400；欄位不合法回 422 並附 details', async () => {
+    const bad = await handleSecurityScan(store, request('not json'), now)
+    expect(bad).toEqual({ status: 400, body: { error: 'invalid JSON' } })
+    const res = await send(store, { kind: 'vm' })
+    expect(res.status).toBe(422)
+    expect((res.body as { error: string; details: unknown[] }).error).toBe('invalid payload')
+    expect((res.body as { details: unknown[] }).details.length).toBeGreaterThan(0)
+  })
+
+  it('body 超過 512 KB 回 413（驗簽之後）', async () => {
+    const big = JSON.stringify({ pad: 'x'.repeat(524288) })
+    const res = await handleSecurityScan(store, request(big), now)
+    expect(res).toEqual({ status: 413, body: { error: 'payload too large' } })
+    // 簽章錯誤仍先回 401
+    const unsigned = await handleSecurityScan(store, request(big, { signature: 'sha256=bad' }), now)
+    expect(unsigned.status).toBe(401)
+  })
+
+  it('首筆 vm 快照回 201：logVolume 與 changes 為 unknown「基準建立中」，exposure 依事實判定', async () => {
+    const res = await send(store, payload())
+    expect(res.status).toBe(201)
+    const checks = (res.body as { checks: Record<string, { status: string; summary: string }> }).checks
+    expect(checks.logVolume).toEqual({ status: 'unknown', summary: '基準建立中' })
+    expect(checks.changes).toEqual({ status: 'unknown', summary: '基準建立中' })
+    expect(checks.exposure.status).toBe('ok')
+    expect(checks.ports.status).toBe('ok')
+    expect(store.listSecurityScans()).toHaveLength(1)
+  })
+
+  it('exposure 有外露路徑時為 bad', async () => {
+    const p = payload()
+    p.exposure[0].sensitivePaths = [{ path: '/.env', exposed: true }]
+    const res = await send(store, p)
+    expect((res.body as { checks: Record<string, { status: string }> }).checks.exposure.status).toBe('bad')
+  })
+
+  it('三筆歷史後第四筆出現暴增，checks.logVolume 為 bad，findings 多一筆 logVolume 的 high', async () => {
+    for (const d of ['2026-11-14', '2026-11-15', '2026-11-16']) {
+      await send(store, payload({ scannedAt: `${d}T09:00:00.000Z`, logVolume: [{ source: 'nginx', hourly: hours(d, 10) }] }))
+    }
+    const res = await send(store, payload({ logVolume: [{ source: 'nginx', hourly: hours('2026-11-18', 5000) }] }))
+    expect(res.status).toBe(201)
+    expect((res.body as { checks: Record<string, { status: string }> }).checks.logVolume.status).toBe('bad')
+    const stored = store.listSecurityScans().find((s) => s.scannedAt === '2026-11-18T09:00:00.000Z')!
+    expect(stored.findings.filter((f) => f.check === 'logVolume' && f.severity === 'high')).toHaveLength(1)
+  })
+
+  it('儲存的 logVolume 含 anomalousHours', async () => {
+    await send(store, payload())
+    const stored = store.listSecurityScans()[0]
+    expect(stored.logVolume[0]).toHaveProperty('anomalousHours')
+  })
+
+  it('第二筆起與最早一筆比對 inventory，新增金鑰使 changes 為 bad', async () => {
+    await send(store, payload({ scannedAt: '2026-11-16T09:00:00.000Z' }))
+    const res = await send(store, payload({ inventory: inventory([{ user: 'alice', fingerprint: 'SHA256:evil' }]) }))
+    expect((res.body as { checks: Record<string, { status: string }> }).checks.changes.status).toBe('bad')
+    const stored = store.listSecurityScans().find((s) => s.scannedAt === '2026-11-18T09:00:00.000Z')!
+    expect(stored.findings.some((f) => f.check === 'changes' && f.severity === 'high')).toBe(true)
+  })
+
+  it('同一 scannedAt 重送回 200 { duplicate: true }，store 仍只有一筆', async () => {
+    await send(store, payload())
+    const res = await send(store, payload())
+    expect(res).toEqual({ status: 200, body: { duplicate: true } })
+    expect(store.listSecurityScans()).toHaveLength(1)
+  })
+
+  it('亂序：先送 11/18、再送 11/17，11/17 那筆不以 11/18 為基準', async () => {
+    await send(store, payload({ scannedAt: '2026-11-18T09:00:00.000Z', inventory: inventory([{ user: 'alice', fingerprint: 'SHA256:evil' }]) }))
+    const res = await send(store, payload({ scannedAt: '2026-11-17T09:00:00.000Z' }))
+    expect(res.status).toBe(201)
+    expect((res.body as { checks: Record<string, unknown> }).checks.changes).toEqual({ status: 'unknown', summary: '基準建立中' })
+  })
+
+  it('hosted 快照的 logVolume 與 changes 為 na，inventory 存 null', async () => {
+    const res = await send(store, payload({ kind: 'hosted', logVolume: undefined, inventory: undefined }))
+    expect(res.status).toBe(201)
+    const checks = (res.body as { checks: Record<string, { status: string }> }).checks
+    expect(checks.logVolume.status).toBe('na')
+    expect(checks.changes.status).toBe('na')
+    expect(store.listSecurityScans()[0].inventory).toBeNull()
+  })
+})

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { SupabaseStore } from '@/store/supabase'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createServiceRoleClient, cleanDatabase, getLocalSupabaseEnv } from './helpers'
@@ -83,6 +84,45 @@ beforeEach(async () => {
 })
 
 describe('GET /api/poll/services', () => {
+  it('清除過期資安快照：回應含 securityScansPurged，只刪 90 天前的', async () => {
+    const base = {
+      service_id: serviceId,
+      kind: 'hosted',
+      checks: {},
+      findings: [],
+      certs: [],
+      log_volume: [],
+      exposure: [],
+    }
+    const old = new Date(Date.now() - 91 * 86400000).toISOString()
+    const recent = new Date(Date.now() - 10 * 86400000).toISOString()
+    const ins = await client.from('security_scans').insert([
+      { ...base, scanned_at: old },
+      { ...base, scanned_at: recent },
+    ])
+    if (ins.error) throw ins.error
+
+    const res = await GET(cronRequest())
+    expect(res.status).toBe(200)
+    expect((await res.json()).securityScansPurged).toBe(1)
+    const { data } = await client.from('security_scans').select('scanned_at').eq('service_id', serviceId)
+    expect(data).toHaveLength(1)
+  })
+
+  it('purge 丟錯時 status 仍為 200，回應含 securityPurgeError', async () => {
+    const spy = vi.spyOn(SupabaseStore.prototype, 'purgeSecurityScansBefore').mockRejectedValue(new Error('boom'))
+    try {
+      const res = await GET(cronRequest())
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.securityPurgeError).toBe('boom')
+      expect(json.securityScansPurged).toBeUndefined()
+      expect(json.polled).toBe(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('401 without or with wrong bearer token', async () => {
     expect((await GET(new Request('http://localhost/api/poll/services'))).status).toBe(401)
     expect((await GET(cronRequest('wrong'))).status).toBe(401)
