@@ -19,7 +19,7 @@
 # 用到的指令（全部唯讀）：
 #   ss, /usr/lib/update-notifier/apt-check, apt list --upgradable, cat, apt-config dump,
 #   sshd -T, journalctl, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat,
-#   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut sort uniq tail printf
+#   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut sort uniq tail tr printf
 #
 # 相容性：目標為 Ubuntu 22.04/24.04（bash 5、GNU coreutils），但避免 bash 4+ 專屬語法，
 #         日期換算全部用 awk 自行計算（不用 date -d），測試可在 macOS（bash 3.2）執行。
@@ -27,6 +27,11 @@
 set -u
 export LC_ALL=C
 
+# 以 root 執行且所有指令靠 PATH 解析：正式執行（BEACON_ROOT 為空）時固定 PATH，防止被劫持
+if [ -z "${BEACON_ROOT:-}" ]; then
+  PATH=/usr/sbin:/usr/bin:/sbin:/bin
+  export PATH
+fi
 R="${BEACON_ROOT:-}"
 NONCE="${BEACON_NONCE:-}"
 nonce_re='^[a-f0-9]{32}$'
@@ -64,85 +69,175 @@ s_auto_updates() { apt-config dump APT::Periodic::Unattended-Upgrade; }
 
 s_sshd() { sshd -T 2>/dev/null | grep -Ei '^(passwordauthentication|permitrootlogin) '; }
 
+# 字串的短雜湊（sha256 前 16 碼），供哨兵條目使用
+hstr() { printf '%s' "$1" | sha256sum | cut -c1-16; }
+
+# 路徑輸出為 location：含異常字元（TAB、換行、空白等）者改輸出 ?path:<雜湊>
+loc_of() {
+  local p="${1#"$R"}"
+  local path_re='^[A-Za-z0-9_./@+-]+$'
+  if [[ $p =~ $path_re ]]; then printf '%s' "$p"; else printf '?path:%s' "$(hstr "$p")"; fi
+}
+
+# auth 的內容是遠端攻擊者可控的文字，所以本區段必須是整份輸出的最後一個（見檔尾）。
+# Accepted 與失敗登入分開取，避免洗版把成功登入擠出去。
 s_auth() {
-  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E 'Failed password|Invalid user|Accepted ' | tail -n 20000
+  local out
+  out=$(journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null) || out=""
+  printf '%s\n' "$out" | grep -E 'Accepted ' | tail -n 5000
+  printf '%s\n' "$out" | grep -E 'Failed password|Invalid user' | tail -n 20000
 }
 
+# 可登入判斷用「完全相等」白名單；shell 為空視為可登入
 s_users() {
-  getent passwd | awk -F: '$7 !~ /(nologin|false)$/ { print $1 }'
+  getent passwd | awk -F: '
+    { s = $7 }
+    s == "/usr/sbin/nologin" || s == "/sbin/nologin" || s == "/bin/false" || s == "/usr/bin/false" { next }
+    { print $1 }
+  '
 }
 
+# sudoers 無法解析的條目一律輸出哨兵 ?sudoers:<雜湊>，不可靜默略過
 s_admins() {
   {
+    local gids f line first el grp
+    local name_re='^[A-Za-z0-9_.-]+$'
+    local uid_re='^#[0-9]+$'
     getent group sudo admin | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
-    local f
+    gids=$(getent group sudo admin | awk -F: '{ print $3 }' | tr '\n' ' ')
+    getent passwd | awk -F: -v gids="$gids" 'BEGIN { n = split(gids, a, " "); for (i = 1; i <= n; i++) g[a[i]] = 1 } ($4 in g) { print $1 }'
     for f in "$R/etc/sudoers" "$R"/etc/sudoers.d/*; do
       if [ -f "$f" ] && [ -r "$f" ]; then
-        awk '
-          { sub(/^[ \t]+/, "") }
-          $0 == "" { next }
-          /^[#%@]/ { next }
-          /^(Defaults|User_Alias|Runas_Alias|Host_Alias|Cmnd_Alias)([ \t:]|$)/ { next }
-          $1 ~ /^[A-Za-z0-9_.@-]+$/ { print $1 }
-        ' "$f"
+        while IFS= read -r line || [ -n "$line" ]; do
+          line="${line#"${line%%[![:space:]]*}"}"
+          line="${line%"${line##*[![:space:]]}"}"
+          [ -n "$line" ] || continue
+          first=$(printf '%s\n' "$line" | awk '{ gsub(/[ \t]*,[ \t]*/, ","); print $1 }')
+          case "$first" in
+            '#include'* | '@include'*)
+              echo "?sudoers:$(hstr "$line")"
+              continue
+              ;;
+            Defaults | Defaults[[:punct:]]*) continue ;;
+            User_Alias | Runas_Alias | Host_Alias | Cmnd_Alias | Cmd_Alias)
+              echo "?sudoers:$(hstr "$line")"
+              continue
+              ;;
+            '#'*)
+              [[ $first =~ ^#[0-9] ]] || continue
+              ;;
+          esac
+          while IFS= read -r el; do
+            [ -n "$el" ] || continue
+            if [[ $el =~ $name_re ]] || [[ $el =~ $uid_re ]]; then
+              printf '%s\n' "$el"
+            elif [[ $el == %* ]]; then
+              grp="${el#%}"
+              printf '%s\n' "$el"
+              if [[ $grp =~ $name_re ]] && [[ $grp != -* ]]; then
+                getent group "$grp" | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
+              else
+                echo "?sudoers:$(hstr "$line")"
+              fi
+            else
+              echo "?sudoers:$(hstr "$line")"
+            fi
+          done < <(printf '%s\n' "$first" | tr ',' '\n')
+        done < "$f"
       fi
     done
   } | awk '!seen[$0]++'
 }
 
+# 解析不了的金鑰行輸出 UNPARSEABLE:<雜湊>，不可略過
 s_ssh_keys() {
-  local user home f line fp
-  local user_re='^[A-Za-z0-9_.-]+$'
+  local user home kf f line fp cfg
   local fp_re='^[A-Za-z0-9]+:[A-Za-z0-9+/=]+$'
   while IFS=: read -r user _ _ _ _ home _; do
-    [[ $user =~ $user_re ]] || continue
+    [ -n "$user" ] || continue
     [ -n "$home" ] || continue
-    f="$R$home/.ssh/authorized_keys"
-    [ -f "$f" ] && [ -r "$f" ] || continue
-    while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in
-        '' | '#'*) continue ;;
-      esac
-      fp=$(printf '%s\n' "$line" | ssh-keygen -lf /dev/stdin 2>/dev/null | awk '{ print $2; exit }')
-      if [[ $fp =~ $fp_re ]]; then
-        printf '%s\t%s\n' "$user" "$fp"
-      fi
-    done < "$f"
+    for kf in authorized_keys authorized_keys2; do
+      f="$R$home/.ssh/$kf"
+      [ -f "$f" ] && [ -r "$f" ] || continue
+      while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in
+          '' | '#'*) continue ;;
+        esac
+        fp=$(printf '%s\n' "$line" | ssh-keygen -lf /dev/stdin 2>/dev/null | awk '{ print $2; exit }')
+        if [[ $fp =~ $fp_re ]]; then
+          printf '%s\t%s\n' "$user" "$fp"
+        else
+          printf '%s\tUNPARSEABLE:%s\n' "$user" "$(hstr "$line")"
+        fi
+      done < "$f"
+    done
   done < <(getent passwd)
+  # 金鑰檔位置／CA 信任設定的哨兵：設定一變就會被標成新增金鑰
+  cfg=$(sshd -T 2>/dev/null | grep -Ei '^(authorizedkeysfile|authorizedkeyscommand|trustedusercakeys) ' | sort)
+  if [ -n "$cfg" ]; then printf '(sshd)\tCONFIG:%s\n' "$(hstr "$cfg")"; fi
 }
 
 # 單一 crontab 檔：$1=檔案 $2=是否為系統格式（1 有使用者欄／0 無）
-# awk 只輸出「schedule TAB executable TAB 整行」給內部迴圈雜湊，整行不會出現在 stdout
+# awk 只輸出「schedule US executable US 整行」給內部迴圈雜湊（US 為 \037），整行不會出現在 stdout
 sched_file() {
   [ -f "$1" ] && [ -r "$1" ] || return 0
-  local loc="${1#"$R"}" sch exe line hash
+  local loc sch exe line hash
+  loc=$(loc_of "$1")
   awk -v sys="$2" '
     {
       sub(/^[ \t]+/, ""); sub(/[ \t\r]+$/, "")
       if ($0 == "" || $0 ~ /^#/) next
       if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) next
-      if ($1 ~ /^@/) { sch = $1; i = 2 } else { sch = $1 " " $2 " " $3 " " $4 " " $5; i = 6 }
+      if ($1 ~ /^@/) { i = 2; sch = $1 } else {
+        i = 6; sch = ""
+        for (k = 1; k <= 5 && k <= NF; k++) sch = sch (k == 1 ? "" : " ") $k
+      }
       if (sys == "1") i++
-      if (NF < i) next
-      print sch "\t" $i "\t" $0
+      exe = ""
+      for (; i <= NF; i++) if (index($i, "=") == 0) { exe = $i; break }
+      print sch "\037" exe "\037" $0
     }
-  ' "$1" | while IFS=$'\t' read -r sch exe line; do
+  ' "$1" | while IFS=$'\037' read -r sch exe line; do
     hash=$(printf '%s' "$line" | sha256sum | awk '{ print $1 }')
     printf '%s\t%s\t%s\t%s\n' "$loc" "$sch" "$exe" "$hash"
   done
 }
 
+# 以檔案內容整檔雜湊的排程類檔案：$1=檔案 $2=固定的 schedule 字串
+plain_file() {
+  [ -f "$1" ] && [ -r "$1" ] || return 0
+  local hash
+  hash=$(sha256sum < "$1" 2>/dev/null | awk '{ print $1 }')
+  printf '%s\t%s\t\t%s\n' "$(loc_of "$1")" "$2" "$hash"
+}
+
 s_scheduled() {
-  local f unit hash
-  local unit_re='^[A-Za-z0-9_.@:-]+$'
+  local f unit act hash h
+  local unit_re='^[-A-Za-z0-9_.@:\\]+$'
   sched_file "$R/etc/crontab" 1
   for f in "$R"/etc/cron.d/*; do sched_file "$f" 1; done
   for f in "$R"/var/spool/cron/crontabs/*; do sched_file "$f" 0; done
+  for f in "$R"/etc/cron.hourly/*; do plain_file "$f" hourly; done
+  for f in "$R"/etc/cron.daily/*; do plain_file "$f" daily; done
+  for f in "$R"/etc/cron.weekly/*; do plain_file "$f" weekly; done
+  for f in "$R"/etc/cron.monthly/*; do plain_file "$f" monthly; done
+  plain_file "$R/etc/anacrontab" anacron
+  for f in "$R"/var/spool/cron/atjobs/*; do plain_file "$f" at; done
   systemctl list-timers --all --no-legend 2>/dev/null \
-    | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /\.timer$/) { if (!seen[$i]++) print $i; break } }' \
-    | while read -r unit; do
-      [[ $unit =~ $unit_re ]] || continue
-      hash=$(systemctl cat "$unit" 2>/dev/null < /dev/null | sha256sum | awk '{ print $1 }')
+    | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /\.timer$/) { if (!seen[$i]++) print $i " " $NF; break } }' \
+    | while read -r unit act; do
+      if ! [[ $unit =~ $unit_re ]]; then
+        h=$(hstr "$unit")
+        printf '?unit:%s\t\t\t%s\n' "$h" "$h"
+        continue
+      fi
+      hash=$(
+        {
+          systemctl cat -- "$unit" 2>/dev/null < /dev/null
+          if [[ $act =~ $unit_re ]] && [ "$act" != "$unit" ]; then systemctl cat -- "$act" 2>/dev/null < /dev/null; fi
+        } | sha256sum | awk '{ print $1 }'
+      )
       printf '%s\t\t\t%s\n' "$unit" "$hash"
     done
 }
@@ -220,7 +315,6 @@ section reboot_required s_reboot_required
 section os_release s_os_release
 section auto_updates s_auto_updates
 section sshd s_sshd
-section auth s_auth
 section users s_users
 section admins s_admins
 section ssh_keys s_ssh_keys
@@ -253,5 +347,8 @@ if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then
     esac
   done < <(printf '%s\n' "$decoded")
 fi
+
+# auth 必須是最後一個區段（內容為遠端攻擊者可控；解析器同名區段以第一個為準）
+section auth s_auth
 
 exit 0

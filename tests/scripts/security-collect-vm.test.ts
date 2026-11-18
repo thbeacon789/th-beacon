@@ -54,33 +54,36 @@ curl/jammy-updates 7.81.0-1ubuntu1.20 amd64 [upgradable from: 7.81.0-1ubuntu1.18
 X`,
     )
     fake('apt-config', `echo 'APT::Periodic::Unattended-Upgrade "1";'`)
-    fake('sshd', `printf 'port 22\\npasswordauthentication no\\npermitrootlogin prohibit-password\\n'`)
+    fake('sshd', `printf 'port 22\\npasswordauthentication no\\npermitrootlogin prohibit-password\\n'; cat ${root}/sshd-extra 2>/dev/null`)
     fake(
       'getent',
       `case "$1" in
-passwd) printf 'root:x:0:0:root:/root:/bin/bash\\ndeploy:x:1000:1000::/home/deploy:/bin/bash\\nwww-data:x:33:33::/var/www:/usr/sbin/nologin\\nbackup:x:34:34::/var/backups:/bin/false\\n';;
-group) printf 'sudo:x:27:deploy,alice\\nadmin:x:110:\\n';;
+passwd) cat ${root}/passwd;;
+group) shift; for n in "$@"; do grep "^$n:" ${root}/group; done;;
 esac`,
     )
-    fake('ssh-keygen', `cat >/dev/null; echo "256 SHA256:fakeprint+/= deploy@laptop (ED25519)"`)
+    put(
+      'passwd',
+      'root:x:0:0:root:/root:/bin/bash\ndeploy:x:1000:1000::/home/deploy:/bin/bash\nwww-data:x:33:33::/var/www:/usr/sbin/nologin\nbackup:x:34:34::/var/backups:/bin/false\n',
+    )
+    put('group', 'sudo:x:27:deploy,alice\nadmin:x:110:\nwheel:x:1001:carol,dave\n')
+    fake('ssh-keygen', `l=$(cat); case "$l" in *BADKEY*) exit 1;; esac; echo "256 SHA256:fakeprint+/= deploy@laptop (ED25519)"`)
     fake('sha256sum', `exec shasum -a 256`)
     fake('date', `echo ${NOW}`)
     fake(
       'systemctl',
       `case "$1" in
-list-timers) printf 'Wed 2026-11-18 23:00:00 UTC 30min left n/a n/a apt-daily.timer apt-daily.service\\n';;
+list-timers) cat ${root}/timers.txt;;
 list-unit-files) printf 'nginx.service enabled enabled\\nssh.service enabled enabled\\n';;
-cat) echo "[Timer] unit $2";;
+cat) shift; [ "$1" = -- ] && shift; cat "${root}/units/$1" 2>/dev/null || echo "[Timer] unit $1";;
 esac`,
     )
+    put('timers.txt', 'Wed 2026-11-18 23:00:00 UTC 30min left n/a n/a apt-daily.timer apt-daily.service\n')
+    put('auth.txt', '2026-11-18T02:13:44+0000 host sshd[1234]: Failed password for invalid user admin from 203.0.113.9 port 51234 ssh2\n2026-11-18T02:14:00+0000 host sshd[1234]: unrelated line\n2026-11-18T03:00:12+0000 host sshd[1300]: Accepted publickey for deploy from 192.0.2.10 port 50122 ssh2\n')
     fake(
       'journalctl',
       `case "$*" in
-*"-u ssh -u sshd"*) cat <<'X'
-2026-11-18T02:13:44+0000 host sshd[1234]: Failed password for invalid user admin from 203.0.113.9 port 51234 ssh2
-2026-11-18T02:14:00+0000 host sshd[1234]: unrelated line
-2026-11-18T03:00:12+0000 host sshd[1300]: Accepted publickey for deploy from 192.0.2.10 port 50122 ssh2
-X
+*"-u ssh -u sshd"*) cat ${root}/auth.txt
 ;;
 *"--utc -u app.service"*) cat <<'X'
 -- Logs begin --
@@ -140,7 +143,8 @@ esac`,
     expect(f.ssh).toEqual({ passwordAuthentication: false, permitRootLogin: 'prohibit-password' })
     expect(f.authLines).toHaveLength(2)
     expect(f.inventory.users).toEqual(['root', 'deploy'])
-    expect(f.inventory.admins).toEqual(['deploy', 'alice', 'root', 'ops'])
+    expect(f.inventory.admins.filter((x) => !x.startsWith('?sudoers:'))).toEqual(['deploy', 'alice', 'root', '%sudo', 'ops'])
+    expect(f.inventory.admins.filter((x) => x.startsWith('?sudoers:'))).toHaveLength(1) // User_Alias
     expect(f.inventory.services).toEqual(['nginx.service', 'ssh.service'])
     expect(f.inventory.sshKeys).toEqual([{ user: 'deploy', fingerprint: 'SHA256:fakeprint+/=' }])
     const sched = f.inventory.scheduled
@@ -218,6 +222,128 @@ esac`,
         ],
       },
     ])
+  })
+
+  const adminsOf = async (sudoers: string, extra: Record<string, string> = {}) => {
+    setupFakes()
+    put('etc/sudoers', sudoers)
+    fs.rmSync(path.join(root, 'etc/sudoers.d'), { recursive: true, force: true })
+    for (const [k, v] of Object.entries(extra)) put(k, v)
+    const r = await run()
+    return parseVmDump(r.stdout, NONCE).inventory.admins
+  }
+  const sentinels = (a: string[]) => a.filter((x) => x.startsWith('?sudoers:'))
+
+  it('admins：逗號清單、uid、%群組（含成員）都會列出', async () => {
+    const a = await adminsOf('evil,bob ALL=(ALL) NOPASSWD: ALL\n#1000 ALL=(ALL) ALL\n%wheel ALL=(ALL) ALL\nalice , zed ALL=(ALL) ALL\n# 普通註解\n#1 也是註解?\nDefaults:evil !requiretty\nDefaults@host x\n')
+    expect(a).toEqual(expect.arrayContaining(['evil', 'bob', '#1000', '%wheel', 'carol', 'dave', 'alice', 'zed']))
+    expect(a).not.toContain('Defaults')
+    expect(sentinels(a)).toHaveLength(0)
+  })
+
+  it('admins：alias 與 include 輸出哨兵，alias 成員改變則雜湊改變', async () => {
+    const a1 = sentinels(await adminsOf('User_Alias ADMINS = a, b\n'))
+    const a2 = sentinels(await adminsOf('User_Alias ADMINS = a, b, mallory\n'))
+    expect(a1).toHaveLength(1)
+    expect(a2).toHaveLength(1)
+    expect(a1[0]).toMatch(/^\?sudoers:[0-9a-f]{16}$/)
+    expect(a1[0]).not.toBe(a2[0])
+    expect(sentinels(await adminsOf('@includedir /etc/other\n#includedir /etc/x\n'))).toHaveLength(2)
+    expect(sentinels(await adminsOf('!weird ALL=(ALL) ALL\n%bad;grp ALL=(ALL) ALL\n'))).toHaveLength(2)
+  })
+
+  it('admins：primary gid 為 sudo 群組的帳號會列出', async () => {
+    const a = await adminsOf('', { passwd: 'root:x:0:0:r:/root:/bin/bash\nsneaky:x:2000:27::/home/sneaky:/bin/bash\n' })
+    expect(a).toContain('sneaky')
+  })
+
+  it('ssh_keys：解析失敗輸出 UNPARSEABLE、authorized_keys2 與 sshd 設定哨兵', async () => {
+    setupFakes()
+    put('home/deploy/.ssh/authorized_keys', 'ssh-ed25519 AAAA ok\ncommand="x" BADKEY\n')
+    put('home/deploy/.ssh/authorized_keys2', 'ssh-ed25519 BBBB second\n')
+    put('sshd-extra', 'authorizedkeysfile .ssh/authorized_keys\nauthorizedkeyscommand none\n')
+    const r1 = await run()
+    const k1 = parseVmDump(r1.stdout, NONCE).inventory.sshKeys
+    expect(k1.filter((k) => k.user === 'deploy' && k.fingerprint === 'SHA256:fakeprint+/=')).toHaveLength(2)
+    expect(k1.filter((k) => /^UNPARSEABLE:[0-9a-f]{16}$/.test(k.fingerprint))).toHaveLength(1)
+    const c1 = k1.find((k) => k.user === '(sshd)')
+    expect(c1?.fingerprint).toMatch(/^CONFIG:[0-9a-f]{16}$/)
+    expect(r1.stdout).not.toContain('BADKEY')
+    put('sshd-extra', 'authorizedkeysfile /elsewhere/%u\nauthorizedkeyscommand none\n')
+    const k2 = parseVmDump((await run()).stdout, NONCE).inventory.sshKeys
+    expect(k2.find((k) => k.user === '(sshd)')?.fingerprint).not.toBe(c1?.fingerprint)
+  })
+
+  it('users：shell 以完全相等判斷，路徑尾段像 nologin 的帳號不被隱藏', async () => {
+    setupFakes()
+    put(
+      'passwd',
+      'a:x:1:1::/h:/tmp/x/nologin\nb:x:2:2::/h:/usr/sbin/nologin\nc:x:3:3::/h:/home/evil/false\nd:x:4:4::/h:\ne:x:5:5::/h:/bin/false\n',
+    )
+    const f = parseVmDump((await run()).stdout, NONCE)
+    expect(f.inventory.users).toEqual(['a', 'c', 'd'])
+  })
+
+  it('scheduled：反斜線 timer 被列出，啟動的 service 內容改變時 hash 改變', async () => {
+    setupFakes()
+    put('timers.txt', 'n/a n/a n/a n/a foo\\x2dbar.timer foo\\x2dbar.service\nn/a n/a n/a n/a bad;name.timer bad.service\n')
+    const hashOf = async () => {
+      const s = parseVmDump((await run()).stdout, NONCE).inventory.scheduled
+      return s.find((e) => e.location === 'foo\\x2dbar.timer')?.hash
+    }
+    const h1 = await hashOf()
+    expect(h1).toMatch(/^[0-9a-f]{64}$/)
+    put('units/foo\\x2dbar.service', '[Service]\nExecStart=/tmp/evil\n')
+    expect(await hashOf()).not.toBe(h1)
+    const bad = parseVmDump((await run()).stdout, NONCE).inventory.scheduled.find((e) => e.location.startsWith('?unit:'))
+    expect(bad?.hash).toBe(bad?.location.slice('?unit:'.length))
+  })
+
+  it('scheduled：cron.daily 等檔案被列出且內容改變時 hash 改變', async () => {
+    setupFakes()
+    put('etc/cron.daily/job', '#!/bin/sh\necho 1\n')
+    put('etc/cron.hourly/h', 'x')
+    put('etc/anacrontab', 'y')
+    put('var/spool/cron/atjobs/a1', 'z')
+    const get = async () => parseVmDump((await run()).stdout, NONCE).inventory.scheduled
+    const s1 = await get()
+    expect(s1.filter((e) => ['/etc/cron.daily/job', '/etc/cron.hourly/h', '/etc/anacrontab', '/var/spool/cron/atjobs/a1'].includes(e.location)).map((e) => e.schedule).sort()).toEqual(['anacron', 'at', 'daily', 'hourly'])
+    const h1 = s1.find((e) => e.location === '/etc/cron.daily/job')?.hash
+    put('etc/cron.daily/job', '#!/bin/sh\necho 2\n')
+    expect((await get()).find((e) => e.location === '/etc/cron.daily/job')?.hash).not.toBe(h1)
+  })
+
+  it('scheduled：檔名含空白的 cron 檔輸出 ?path: 條目且恰為 4 欄', async () => {
+    setupFakes()
+    put('etc/cron.d/my job', '* * * * * root /usr/bin/x\n')
+    const r = await run()
+    const sec = r.stdout.split('@@BEACON:' + NONCE + ':scheduled@@\n')[1].split('@@BEACON:')[0]
+    const line = sec.split('\n').find((l) => l.startsWith('?path:'))
+    expect(line).toBeDefined()
+    expect(line!.split('\t')).toHaveLength(4)
+    expect(line!.split('\t')[2]).toBe('/usr/bin/x')
+  })
+
+  it('scheduled：NAME=value 開頭的 token 不洩漏，executable 取第一個不含 = 的 token', async () => {
+    setupFakes()
+    put('etc/crontab', '0 3 * * * root TOKEN=hunter2 /usr/bin/backup\n')
+    const r = await run()
+    expect(r.stdout).not.toContain('hunter2')
+    const e = parseVmDump(r.stdout, NONCE).inventory.scheduled.find((x) => x.location === '/etc/crontab')
+    expect(e?.executable).toBe('/usr/bin/backup')
+  })
+
+  it('auth：洗版 20001 行失敗登入也擠不掉較早的 Accepted，且 auth 是最後一個區段', async () => {
+    setupFakes()
+    const lines = ['2026-11-18T01:00:00+0000 host sshd[1]: Accepted publickey for evil from 198.51.100.7 port 1 ssh2']
+    for (let i = 0; i < 20001; i++) lines.push(`2026-11-18T02:00:00+0000 host sshd[2]: Failed password for x from 203.0.113.${i % 250} port ${i} ssh2`)
+    put('auth.txt', lines.join('\n') + '\n')
+    const r = await run({ BEACON_LOG_SOURCES_B64: b64('app\tjournal\tapp.service\n') })
+    expect(r.stdout).toContain('Accepted publickey for evil')
+    const markers = r.stdout.split('\n').filter((l) => l.startsWith('@@BEACON:'))
+    expect(markers[markers.length - 1]).toBe(`@@BEACON:${NONCE}:auth@@`)
+    expect(markers.indexOf(`@@BEACON:${NONCE}:log:app@@`)).toBeLessThan(markers.length - 1)
+    expect(parseVmDump(r.stdout, NONCE).authLines.length).toBe(20001)
   })
 
   it('腳本為唯讀：不含寫入、改動服務或動態執行的語法', () => {
