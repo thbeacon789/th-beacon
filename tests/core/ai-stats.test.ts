@@ -65,11 +65,24 @@ describe('花費', () => {
     expect(v.summary.monthCostUsd).toBe(0)
     expect(v.monthly.find((m) => m.month === '2026-10')?.costUsd).toBe(3)
   })
-  it('costBySource 三鍵皆存在', () => {
+  it('costBySource 涵蓋所有來源，沒有用量的來源為零', () => {
     const v = run([], [u({ source: 'ci_pr', costUsd: 2 }), u({ source: 'ci_pr', costUsd: null })])
-    expect(Object.keys(v.costBySource).sort()).toEqual(['ci_diagnosis', 'ci_pr', 'server_triage'])
+    expect(Object.keys(v.costBySource).sort()).toEqual([
+      'ci_diagnosis',
+      'ci_pr',
+      'ci_security',
+      'server_triage',
+    ])
     expect(v.costBySource.ci_pr).toEqual({ costUsd: 2, unpricedCount: 1 })
     expect(v.costBySource.server_triage).toEqual({ costUsd: 0, unpricedCount: 0 })
+    expect(v.costBySource.ci_security).toEqual({ costUsd: 0, unpricedCount: 0 })
+  })
+  it('ci_security 的用量計入該來源（未定價者計數）', () => {
+    const v = run(
+      [],
+      [u({ source: 'ci_security', costUsd: 0.25 }), u({ source: 'ci_security', costUsd: null })],
+    )
+    expect(v.costBySource.ci_security).toEqual({ costUsd: 0.25, unpricedCount: 1 })
   })
 })
 

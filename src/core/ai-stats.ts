@@ -63,7 +63,15 @@ export interface AiStatsView {
 }
 
 const SEVERITIES: Severity[] = ['P0', 'P1', 'P2']
-const SOURCES: AiUsageSource[] = ['server_triage', 'ci_diagnosis', 'ci_pr']
+// 以 Record 列舉而非陣列：AiUsageSource 新增成員時，漏列會在 typecheck 失敗，
+// 不會等到頁面讀取 costBySource[新來源] 時才在執行期炸掉。
+const SOURCE_SET: Record<AiUsageSource, true> = {
+  server_triage: true,
+  ci_diagnosis: true,
+  ci_pr: true,
+  ci_security: true,
+}
+const SOURCES = Object.keys(SOURCE_SET) as AiUsageSource[]
 const SEVERITY_RANK: Record<Severity, number> = { P0: 0, P1: 1, P2: 2 }
 
 function taipeiShifted(ms: number): Date {
