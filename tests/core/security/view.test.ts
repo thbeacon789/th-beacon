@@ -114,6 +114,22 @@ describe('buildSecurityView', () => {
       },
     ])
   })
+  it('過期列不列出其憑證發現（只有「資安掃描已停擺」一筆）', () => {
+    const stale = scan({
+      scannedAt: new Date(now.getTime() - 40 * 3600000).toISOString(),
+      certs: [{ domain: 'a.com', notAfter: inDays(-1), trusted: false }],
+    })
+    const v = buildSecurityView([{ serviceName: 'A', scan: stale }], now)
+    expect(v.todos).toHaveLength(1)
+    expect(v.todos[0].check).toBe('scan')
+  })
+  it('非過期列的 bad 憑證使該列 overall 為 bad，並列出憑證發現', () => {
+    const v = buildSecurityView([{ serviceName: 'A', scan: scan({ certs: [{ domain: 'a.com', notAfter: inDays(5) }] }) }], now)
+    expect(v.rows[0].stale).toBe(false)
+    expect(v.rows[0].checks.cert.status).toBe('bad')
+    expect(v.rows[0].overall).toBe('bad')
+    expect(v.todos.map((t) => t.check)).toEqual(['cert'])
+  })
   it('待辦依嚴重度、服務名、檢查項順序排序', () => {
     const v = buildSecurityView(
       [

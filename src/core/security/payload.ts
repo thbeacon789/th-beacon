@@ -1,4 +1,4 @@
-import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
+import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SCAN_AGE_HOURS, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
 import type {
   CertFact, CheckResult, CheckStatus, ExposureFact, ExposureHeaders, Finding, FindingSeverity,
   HourCount, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
@@ -14,7 +14,9 @@ const HEADER_KEYS: readonly (keyof ExposureHeaders)[] = ['hsts', 'contentTypeOpt
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const validDate = (v: unknown): v is string => typeof v === 'string' && !Number.isNaN(new Date(v).getTime())
+// 嚴格的 ISO 8601（必須帶時區）：避免 "1"、"2026" 這類寬鬆字串被 Date 解析成某個日期
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+const validDate = (v: unknown): v is string => typeof v === 'string' && ISO_RE.test(v) && !Number.isNaN(new Date(v).getTime())
 
 /** 字串欄位：型別錯回 null 並記錄錯誤；成功回 trim 後的值 */
 function str(v: unknown, path: string, errors: string[], opts: { max?: number; allowEmpty?: boolean } = {}): string | null {
@@ -121,7 +123,7 @@ function parseCerts(v: unknown, errors: string[]): CertFact[] | null {
     const domain = str(c.domain, `${p}.domain`, errors)
     let notAfter: string | null = null
     if (validDate(c.notAfter)) notAfter = c.notAfter.trim()
-    else errors.push(`${p}.notAfter 必須是可解析的日期`)
+    else errors.push(`${p}.notAfter 必須是帶時區的 ISO 8601 日期`)
     const cert: CertFact | null = domain !== null && notAfter !== null ? { domain, notAfter } : null
     if (c.trusted !== undefined) {
       if (typeof c.trusted === 'boolean') {
@@ -235,7 +237,7 @@ function parseLogVolume(v: unknown, errors: string[]): LogSourceVolume[] | null 
         return
       }
       const hourOk = validDate(x.hour)
-      if (!hourOk) errors.push(`${hp}.hour 必須是可解析的日期`)
+      if (!hourOk) errors.push(`${hp}.hour 必須是帶時區的 ISO 8601 日期`)
       const countOk = typeof x.count === 'number' && Number.isInteger(x.count) && x.count >= 0
       if (!countOk) errors.push(`${hp}.count 必須是非負整數`)
       if (hourOk && countOk) hourly.push({ hour: (x.hour as string).trim(), count: x.count as number })
@@ -298,9 +300,12 @@ export function parseSecurityScanPayload(input: unknown, now: Date): ValidationR
   const errors: string[] = []
 
   let scannedAt: string | null = null
-  if (!validDate(input.scannedAt)) errors.push('scannedAt 必須是可解析的日期')
+  if (!validDate(input.scannedAt)) errors.push('scannedAt 必須是帶時區的 ISO 8601 日期')
   else if (new Date(input.scannedAt).getTime() > now.getTime() + CLOCK_SKEW_MS) errors.push('scannedAt 不可晚於現在超過 10 分鐘')
-  else scannedAt = input.scannedAt.trim()
+  // 下限：持有服務金鑰者不可回填過去的快照來偽造基準
+  else if (new Date(input.scannedAt).getTime() < now.getTime() - MAX_SCAN_AGE_HOURS * 3600 * 1000) {
+    errors.push(`scannedAt 不可早於現在超過 ${MAX_SCAN_AGE_HOURS} 小時`)
+  } else scannedAt = input.scannedAt.trim()
 
   const kind = oneOf(input.kind, KINDS, 'kind', errors)
   const checks = parseChecks(input.checks, errors)

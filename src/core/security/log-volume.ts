@@ -72,21 +72,27 @@ export function evaluateLogVolume(
 
     anyAnomaly = true
     const times = anomalous.map((h) => new Date(h.hour).getTime()).sort((a, b) => a - b)
-    const srcRatio = baseline === 0 ? Infinity : Math.max(...anomalous.map((h) => h.count / baseline))
-    if (baseline === 0) zeroBaselineSpike = true
-    else maxRatio = Math.max(maxRatio, srcRatio)
-    const times0 = times[0]
-    const end = times[times.length - 1] + HOUR_MS
+    const range = `${hhmm(times[0])}–${hhmm(times[times.length - 1] + HOUR_MS)} UTC`
+    let title: string
+    if (baseline === 0) {
+      zeroBaselineSpike = true
+      title = `${src.source} 在 ${range} 的 log 量暴增（平常幾乎為 0）`
+    } else {
+      const ratio = Math.max(...anomalous.map((h) => h.count / baseline))
+      maxRatio = Math.max(maxRatio, ratio)
+      title = `${src.source} 在 ${range} 的 log 量為平常的 ${Math.round(ratio)} 倍`
+    }
     findings.push({
       check: 'logVolume',
       severity: 'high',
-      title: `${src.source} 在 ${hhmm(times0)}–${hhmm(end)} UTC 的 log 量為平常的 ${baseline === 0 ? '暴增' : `${Math.round(srcRatio)} 倍`}`,
+      title,
       recommendation: '檢查該時段的存取紀錄與來源 IP，確認是攻擊、爬蟲或程式異常',
     })
   }
 
   if (anyAnomaly) {
-    const summary = zeroBaselineSpike && maxRatio === 0 ? '暴增' : `暴增 ${Math.round(maxRatio)} 倍`
+    // 只要有任一基準為 0 的異常，倍數無從計算，summary 一律為「暴增」
+    const summary = zeroBaselineSpike ? '暴增' : `暴增 ${Math.round(maxRatio)} 倍`
     return { check: { status: 'bad', summary }, findings, logVolume }
   }
   if (hasError) return { check: { status: 'unknown', summary: '來源讀不到' }, findings, logVolume }

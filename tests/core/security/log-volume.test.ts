@@ -74,6 +74,20 @@ describe('evaluateLogVolume', () => {
     const r = evaluateLogVolume('vm', [src('nginx', [600])], hist3([0]))
     expect(r.check).toEqual({ status: 'bad', summary: '暴增' })
   })
+  it('基準為 0 的異常：title 為「暴增（平常幾乎為 0）」；與非 0 基準並存時 summary 仍為「暴增」', () => {
+    const history = [0, 1, 2].map(() => [src('quiet', [0]), src('busy', [100])])
+    const r = evaluateLogVolume('vm', [src('quiet', [600]), src('busy', [900])], history)
+    expect(r.check).toEqual({ status: 'bad', summary: '暴增' })
+    expect(r.findings.map((f) => f.title)).toEqual([
+      'quiet 在 00:00–01:00 UTC 的 log 量暴增（平常幾乎為 0）',
+      'busy 在 00:00–01:00 UTC 的 log 量為平常的 9 倍',
+    ])
+  })
+  it('歷史快照內 hour 重複時取最後一筆', () => {
+    const dup: LogSourceVolume = { source: 'nginx', hourly: [{ hour: H(0), count: 10 }, { hour: H(0), count: 100 }] }
+    const r = evaluateLogVolume('vm', [src('nginx', [700])], [0, 1, 2].map(() => [dup]))
+    expect(r.check).toEqual({ status: 'bad', summary: '暴增 7 倍' })
+  })
   it('重複的 hour 取最後一筆', () => {
     const cur: LogSourceVolume = { source: 'nginx', hourly: [{ hour: H(1), count: 9000 }, { hour: H(1), count: 100 }] }
     const r = evaluateLogVolume('vm', [cur], hist3([100]))

@@ -43,6 +43,23 @@ describe('InMemoryStore security scans', () => {
     expect(rows.map((r) => r.scannedAt)).toEqual(['2026-11-02T00:00:00.000Z', '2026-11-03T00:00:00.000Z'])
   })
 
+  it('purgeSecurityScansBefore：某服務所有快照都早於界線時仍保留其最新一筆', async () => {
+    const store = new InMemoryStore()
+    await store.insertSecurityScan(scan({ scannedAt: '2026-08-01T00:00:00.000Z' }))
+    await store.insertSecurityScan(scan({ scannedAt: '2026-08-02T00:00:00.000Z' }))
+    await store.insertSecurityScan(scan({ serviceId: 'svc-2', scannedAt: '2026-08-01T00:00:00.000Z' }))
+    await store.insertSecurityScan(scan({ serviceId: 'svc-2', scannedAt: '2026-11-03T00:00:00.000Z' }))
+    expect(await store.purgeSecurityScansBefore('2026-11-01T00:00:00.000Z')).toBe(2)
+    expect(store.listSecurityScans().map((s) => `${s.serviceId}/${s.scannedAt}`).sort()).toEqual([
+      'svc-1/2026-08-02T00:00:00.000Z',
+      'svc-2/2026-11-03T00:00:00.000Z',
+    ])
+  })
+
+  it('purgeSecurityScansBefore：沒有任何快照時正常執行', async () => {
+    expect(await new InMemoryStore().purgeSecurityScansBefore('2026-11-01T00:00:00.000Z')).toBe(0)
+  })
+
   it('purgeSecurityScansBefore 回刪除筆數且只刪更早的', async () => {
     const store = new InMemoryStore()
     await store.insertSecurityScan(scan({ scannedAt: '2026-11-01T00:00:00.000Z' }))

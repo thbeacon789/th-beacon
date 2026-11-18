@@ -72,6 +72,25 @@ describe('parseSecurityScanPayload', () => {
     expect(bad((p) => { p.scannedAt = '2026-11-18T22:30:00.000Z' }).ok).toBe(false)
   })
 
+  it('scannedAt 不得早於現在超過 2 小時（恰 2 小時可）', () => {
+    expect(bad((p) => { p.scannedAt = '2026-11-18T20:10:00.000Z' }).ok).toBe(true)
+    const r = bad((p) => { p.scannedAt = '2026-11-18T20:09:59.000Z' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join()).toContain('2 小時')
+  })
+
+  it('日期須為帶時區的 ISO 8601：scannedAt／notAfter／hour 都拒絕寬鬆字串', () => {
+    for (const v of ['1', '2026', '2026-11-18', '2026-11-18T22:00:00', 'Nov 18 2026 22:00 UTC', ' 2026-11-18T22:00:00Z']) {
+      expect(bad((p) => { p.scannedAt = v }).ok, `scannedAt=${v}`).toBe(false)
+      expect(bad((p) => { p.certs[0].notAfter = v }).ok, `notAfter=${v}`).toBe(false)
+      expect(bad((p) => { p.logVolume[0].hourly[0].hour = v }).ok, `hour=${v}`).toBe(false)
+    }
+    expect(bad((p) => { p.scannedAt = '2026-11-18T22:00:00Z' }).ok).toBe(true)
+    expect(bad((p) => { p.scannedAt = '2026-11-18T22:00:00+08:00' }).ok).toBe(false) // 14:00Z，已超過 2 小時
+    expect(bad((p) => { p.scannedAt = '2026-11-19T06:00:00+08:00' }).ok).toBe(true) // 22:00Z
+    expect(bad((p) => { p.certs[0].notAfter = '2027-01-01T00:00:00+08:00' }).ok).toBe(true)
+  })
+
   it('接受 10 分鐘內的時鐘偏差', () => {
     expect(bad((p) => { p.scannedAt = '2026-11-18T22:15:00.000Z' }).ok).toBe(true)
   })

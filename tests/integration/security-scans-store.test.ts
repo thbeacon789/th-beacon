@@ -82,6 +82,18 @@ describe('SupabaseStore 資安掃描', () => {
     expect(rows).toHaveLength(1)
   })
 
+  it('purgeSecurityScansBefore：某服務所有快照都早於界線 → 清除後仍剩最新一筆；空表可正常執行', async () => {
+    expect(await store.purgeSecurityScansBefore('2026-11-10T00:00:00.000Z')).toBe(0)
+    for (const d of ['01', '02', '03']) await store.insertSecurityScan(scan({ scannedAt: `2026-11-${d}T00:00:00.000Z` }))
+    await store.insertSecurityScan(scan({ serviceId: otherServiceId, scannedAt: '2026-11-01T00:00:00.000Z' }))
+    await store.insertSecurityScan(scan({ serviceId: otherServiceId, scannedAt: '2026-11-12T00:00:00.000Z' }))
+    expect(await store.purgeSecurityScansBefore('2026-11-10T00:00:00.000Z')).toBe(3)
+    const a = await store.listSecurityScansBetween(serviceId, '2026-10-01T00:00:00.000Z', '2026-12-01T00:00:00.000Z')
+    expect(a.map((r) => new Date(r.scannedAt).toISOString())).toEqual(['2026-11-03T00:00:00.000Z'])
+    const b = await store.listSecurityScansBetween(otherServiceId, '2026-10-01T00:00:00.000Z', '2026-12-01T00:00:00.000Z')
+    expect(b.map((r) => new Date(r.scannedAt).toISOString())).toEqual(['2026-11-12T00:00:00.000Z'])
+  })
+
   it("recordAiUsage 以 source: 'ci_security' 寫入成功", async () => {
     const r = await store.recordAiUsage({ serviceId, source: 'ci_security', model: 'm', inputTokens: 1, outputTokens: 1, costUsd: null, occurredAt: '2026-11-18T00:00:00.000Z' })
     expect(r.id).toBeTruthy()

@@ -24,6 +24,31 @@ describe('pickBaseline', () => {
   })
 })
 
+describe('evaluateChanges 哨兵條目的說明', () => {
+  const titles = (cur: Inventory) => evaluateChanges('vm', cur, inv()).findings.map((f) => [f.severity, f.title])
+  it('admins 的 ?sudoers:／#uid／%群組', () => {
+    expect(titles(inv({ admins: ['alice', '?sudoers:0123456789abcdef'] }))).toEqual([
+      ['high', 'sudoers 出現無法解析或間接的授權設定（?sudoers:0123456789abcdef）'],
+    ])
+    expect(titles(inv({ admins: ['alice', '#1000'] }))).toEqual([['high', '新增以 uid 授權的管理員 #1000']])
+    expect(titles(inv({ admins: ['alice', '%wheel'] }))).toEqual([['high', '群組 wheel 取得管理員權限']])
+  })
+  it('sshKeys 的 UNPARSEABLE 與 (sshd) 設定哨兵', () => {
+    expect(titles(inv({ sshKeys: [{ user: 'bob', fingerprint: 'UNPARSEABLE:abcd' }] }))).toEqual([
+      ['high', 'bob 的授權金鑰檔出現無法解析的項目'],
+    ])
+    expect(titles(inv({ sshKeys: [{ user: '(sshd)', fingerprint: 'CONFIG:abcd' }] }))).toEqual([
+      ['high', 'SSH 金鑰來源設定變更（AuthorizedKeysFile／AuthorizedKeysCommand／TrustedUserCAKeys）'],
+    ])
+  })
+  it('scheduled 的 ?path:／?unit: 位置', () => {
+    const s = (location: string) => inv({ scheduled: [{ location, schedule: '', executable: '', hash: 'h' }] })
+    expect(titles(s('?path:abcd'))).toEqual([['medium', '新增名稱異常的排程項目（?path:abcd）']])
+    expect(titles(s('?unit:abcd'))).toEqual([['medium', '新增名稱異常的排程項目（?unit:abcd）']])
+    expect(titles(s('/etc/cron.d/x'))).toEqual([['medium', '新增或變更排程 /etc/cron.d/x']])
+  })
+})
+
 describe('evaluateChanges', () => {
   it('hosted 回 na', () => {
     expect(evaluateChanges('hosted', inv(), inv()).check.status).toBe('na')

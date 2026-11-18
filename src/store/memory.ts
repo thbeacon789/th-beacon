@@ -558,7 +558,13 @@ export class InMemoryStore implements Store {
 
   async purgeSecurityScansBefore(beforeIso: string): Promise<number> {
     const before = Date.parse(beforeIso)
-    const kept = this.securityScans.filter((s) => Date.parse(s.scannedAt) >= before)
+    // 每個服務最新的一筆一律保留
+    const latest = new Map<string, StoredSecurityScan>()
+    for (const s of this.securityScans) {
+      const cur = latest.get(s.serviceId)
+      if (!cur || Date.parse(s.scannedAt) > Date.parse(cur.scannedAt)) latest.set(s.serviceId, s)
+    }
+    const kept = this.securityScans.filter((s) => Date.parse(s.scannedAt) >= before || latest.get(s.serviceId) === s)
     const removed = this.securityScans.length - kept.length
     this.securityScans = kept
     return removed

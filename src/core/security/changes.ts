@@ -27,15 +27,24 @@ export function evaluateChanges(kind: ScanKind, current: Inventory | undefined, 
 
   const newAdmins = added(current.admins, baseline.admins, (x) => x)
   const newAdminSet = new Set(newAdmins)
-  for (const name of newAdmins) add('high', `新增管理員帳號 ${name}`)
+  // 哨兵條目（收集端無法解析或無法逐一展開的項目）以雜湊比對，title 補上人看得懂的說明；嚴重度沿用該類別
+  for (const name of newAdmins) {
+    if (name.startsWith('?sudoers:')) add('high', `sudoers 出現無法解析或間接的授權設定（${name}）`)
+    else if (name.startsWith('#')) add('high', `新增以 uid 授權的管理員 ${name}`)
+    else if (name.startsWith('%')) add('high', `群組 ${name.slice(1)} 取得管理員權限`)
+    else add('high', `新增管理員帳號 ${name}`)
+  }
   for (const k of added(current.sshKeys, baseline.sshKeys, (x) => `${x.user}\0${x.fingerprint}`)) {
-    add('high', `${k.user} 新增 SSH 金鑰 ${k.fingerprint}`)
+    if (k.user === '(sshd)') add('high', 'SSH 金鑰來源設定變更（AuthorizedKeysFile／AuthorizedKeysCommand／TrustedUserCAKeys）')
+    else if (k.fingerprint.startsWith('UNPARSEABLE:')) add('high', `${k.user} 的授權金鑰檔出現無法解析的項目`)
+    else add('high', `${k.user} 新增 SSH 金鑰 ${k.fingerprint}`)
   }
   for (const name of added(current.users, baseline.users, (x) => x)) {
     if (!newAdminSet.has(name)) add('medium', `新增帳號 ${name}`)
   }
   for (const s of added(current.scheduled, baseline.scheduled, (x) => `${x.location}\0${x.hash}`)) {
-    add('medium', `新增或變更排程 ${s.location}`)
+    if (s.location.startsWith('?path:') || s.location.startsWith('?unit:')) add('medium', `新增名稱異常的排程項目（${s.location}）`)
+    else add('medium', `新增或變更排程 ${s.location}`)
   }
   for (const l of added(current.listeners, baseline.listeners, (x) => `${x.proto}\0${x.port}`)) {
     add('medium', `新增監聽埠 ${l.proto}/${l.port}（${l.process}）`)

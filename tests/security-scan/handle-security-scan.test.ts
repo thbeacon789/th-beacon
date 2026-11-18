@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { handleSecurityScan } from '@/security-scan/handle-security-scan'
 import { InMemoryStore } from '@/store/memory'
-import type { ServiceRecord } from '@/store/contracts'
+import type { NewSecurityScan, ServiceRecord } from '@/store/contracts'
 
 const now = new Date('2026-11-18T10:00:00.000Z')
 const nowSec = String(Math.floor(now.getTime() / 1000))
@@ -68,6 +68,21 @@ function payload(over: Record<string, unknown> = {}) {
   }
 }
 
+// 歷史快照直接植入 store：scannedAt 有 2 小時的下限，無法再經 handler 回填
+const seed = (store: InMemoryStore, over: Partial<NewSecurityScan> = {}) =>
+  store.insertSecurityScan({
+    serviceId: 's-1',
+    scannedAt: '2026-11-16T09:00:00.000Z',
+    kind: 'vm',
+    checks: {} as NewSecurityScan['checks'],
+    findings: [],
+    certs: [],
+    logVolume: [],
+    exposure: [],
+    inventory: null,
+    ...over,
+  })
+
 const send = (store: InMemoryStore, body: unknown) => handleSecurityScan(store, request(JSON.stringify(body)), now)
 
 describe('handleSecurityScan', () => {
@@ -124,7 +139,7 @@ describe('handleSecurityScan', () => {
 
   it('三筆歷史後第四筆出現暴增，checks.logVolume 為 bad，findings 多一筆 logVolume 的 high', async () => {
     for (const d of ['2026-11-14', '2026-11-15', '2026-11-16']) {
-      await send(store, payload({ scannedAt: `${d}T09:00:00.000Z`, logVolume: [{ source: 'nginx', hourly: hours(d, 10) }] }))
+      await seed(store, { scannedAt: `${d}T09:00:00.000Z`, logVolume: [{ source: 'nginx', hourly: hours(d, 10) }] })
     }
     const res = await send(store, payload({ logVolume: [{ source: 'nginx', hourly: hours('2026-11-18', 5000) }] }))
     expect(res.status).toBe(201)
@@ -140,7 +155,7 @@ describe('handleSecurityScan', () => {
   })
 
   it('第二筆起與最早一筆比對 inventory，新增金鑰使 changes 為 bad', async () => {
-    await send(store, payload({ scannedAt: '2026-11-16T09:00:00.000Z' }))
+    await seed(store, { inventory: inventory() as NewSecurityScan['inventory'] })
     const res = await send(store, payload({ inventory: inventory([{ user: 'alice', fingerprint: 'SHA256:evil' }]) }))
     expect((res.body as { checks: Record<string, { status: string }> }).checks.changes.status).toBe('bad')
     const stored = store.listSecurityScans().find((s) => s.scannedAt === '2026-11-18T09:00:00.000Z')!
@@ -154,11 +169,33 @@ describe('handleSecurityScan', () => {
     expect(store.listSecurityScans()).toHaveLength(1)
   })
 
-  it('亂序：先送 11/18、再送 11/17，11/17 那筆不以 11/18 為基準', async () => {
-    await send(store, payload({ scannedAt: '2026-11-18T09:00:00.000Z', inventory: inventory([{ user: 'alice', fingerprint: 'SHA256:evil' }]) }))
-    const res = await send(store, payload({ scannedAt: '2026-11-17T09:00:00.000Z' }))
+  it('亂序：先送 09:30、再送 09:00（皆在 2 小時窗內），09:00 那筆不以 09:30 為基準', async () => {
+    await send(store, payload({ scannedAt: '2026-11-18T09:30:00.000Z', inventory: inventory([{ user: 'alice', fingerprint: 'SHA256:evil' }]) }))
+    const res = await send(store, payload({ scannedAt: '2026-11-18T09:00:00.000Z' }))
     expect(res.status).toBe(201)
     expect((res.body as { checks: Record<string, unknown> }).checks.changes).toEqual({ status: 'unknown', summary: '基準建立中' })
+  })
+
+  it('scannedAt 早於現在超過 2 小時回 422，且不寫入', async () => {
+    const res = await send(store, payload({ scannedAt: '2026-11-18T07:59:00.000Z' }))
+    expect(res.status).toBe(422)
+    expect(JSON.stringify((res.body as { details: string[] }).details)).toContain('2 小時')
+    expect(store.listSecurityScans()).toHaveLength(0)
+  })
+
+  it('其他服務的歷史快照不成為本服務的基準（服務 A 的第一筆仍是「基準建立中」）', async () => {
+    store.seedService({ ...svc, id: 's-2', name: 'svc-b' }, 'other-secret')
+    await seed(store, {
+      serviceId: 's-2',
+      scannedAt: '2026-11-17T09:00:00.000Z',
+      inventory: { ...inventory(), users: [], admins: [], sshKeys: [], services: [] } as NewSecurityScan['inventory'],
+      logVolume: [{ source: 'nginx', hourly: hours('2026-11-17', 10) }],
+    })
+    const res = await send(store, payload())
+    expect(res.status).toBe(201)
+    const checks = (res.body as { checks: Record<string, unknown> }).checks
+    expect(checks.changes).toEqual({ status: 'unknown', summary: '基準建立中' })
+    expect(checks.logVolume).toEqual({ status: 'unknown', summary: '基準建立中' })
   })
 
   it('hosted 快照的 logVolume 與 changes 為 na，inventory 存 null', async () => {

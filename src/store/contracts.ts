@@ -241,6 +241,6 @@ export interface Store {
   insertSecurityScan(scan: NewSecurityScan): Promise<{ id: string } | null>
   /** from <= scannedAt < before，依 scannedAt 升冪 */
   listSecurityScansBetween(serviceId: string, fromIso: string, beforeIso: string): Promise<StoredSecurityScan[]>
-  /** 回傳刪除筆數 */
+  /** 回傳刪除筆數。每個服務 scannedAt 最新的一筆一律保留（即使早於界線），服務才會顯示「停擺」而不是從頁面消失 */
   purgeSecurityScansBefore(beforeIso: string): Promise<number>
 }

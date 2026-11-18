@@ -7,6 +7,7 @@ export const CERT_WARN_DAYS = 30
 export const CERT_BAD_DAYS = 14
 export const STALE_AFTER_HOURS = 30
 export const RETENTION_DAYS = 90
+export const MAX_SCAN_AGE_HOURS = 2
 export const MAX_FINDINGS = 30
 export const MAX_SUMMARY = 80
 export const MAX_TITLE = 120

@@ -564,11 +564,23 @@ export class SupabaseStore implements Store {
   }
 
   async purgeSecurityScansBefore(beforeIso: string): Promise<number> {
-    const { data, error } = await this.client
-      .from('security_scans')
-      .delete()
-      .lt('scanned_at', beforeIso)
-      .select('id')
+    // 每個服務 scanned_at 最新的一筆一律保留；服務數量很少，逐服務查詢可接受
+    const services = await this.client.from('services').select('id')
+    if (services.error) throw new Error(`purgeSecurityScansBefore failed: ${services.error.message}`)
+    const keepIds: string[] = []
+    for (const svc of services.data) {
+      const latest = await this.client
+        .from('security_scans')
+        .select('id')
+        .eq('service_id', svc.id)
+        .order('scanned_at', { ascending: false })
+        .limit(1)
+      if (latest.error) throw new Error(`purgeSecurityScansBefore failed: ${latest.error.message}`)
+      if (latest.data.length > 0) keepIds.push(latest.data[0].id)
+    }
+    let query = this.client.from('security_scans').delete().lt('scanned_at', beforeIso)
+    if (keepIds.length > 0) query = query.not('id', 'in', `(${keepIds.join(',')})`)
+    const { data, error } = await query.select('id')
     if (error) throw new Error(`purgeSecurityScansBefore failed: ${error.message}`)
     return data.length
   }
