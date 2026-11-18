@@ -1,0 +1,9 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "lodash": { "name": "lodash", "severity": "high", "via": [ "other", { "source": 1, "title": "Prototype Pollution in lodash", "severity": "high" } ] },
+    "minimist": { "name": "minimist", "severity": "critical", "via": [ { "title": "Prototype Pollution in minimist" } ] },
+    "left-pad": { "name": "left-pad", "severity": "low", "via": [ "lodash" ] }
+  },
+  "metadata": { "vulnerabilities": { "info": 0, "low": 1, "moderate": 0, "high": 1, "critical": 1, "total": 3 } }
+}

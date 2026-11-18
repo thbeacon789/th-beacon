@@ -1,0 +1,46 @@
+@@BEACON:0123456789abcdef0123456789abcdef:listeners@@
+udp   UNCONN 0      0            127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=612,fd=13))
+tcp   LISTEN 0      511                0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=1021,fd=6),("nginx",pid=1020,fd=6))
+tcp   LISTEN 0      4096             127.0.0.1:3306      0.0.0.0:*    users:(("mysqld",pid=880,fd=22))
+tcp   LISTEN 0      128                   [::]:22           [::]:*    users:(("sshd",pid=701,fd=4))
+tcp   LISTEN 0      511                      *:443             *:*    users:(("nginx",pid=1021,fd=7))
+tcp   LISTEN 0      128                0.0.0.0:22        0.0.0.0:*
+@@BEACON:0123456789abcdef0123456789abcdef:apt_check@@
+5;2
+@@BEACON:0123456789abcdef0123456789abcdef:apt_upgradable@@
+Listing...
+openssl/jammy-updates,jammy-security 3.0.2-0ubuntu1.18 amd64 [upgradable from: 3.0.2-0ubuntu1.15]
+libssl3/jammy-updates,jammy-security 3.0.2-0ubuntu1.18 amd64 [upgradable from: 3.0.2-0ubuntu1.15]
+curl/jammy-updates 7.81.0-1ubuntu1.20 amd64 [upgradable from: 7.81.0-1ubuntu1.18]
+@@BEACON:0123456789abcdef0123456789abcdef:reboot_required@@
+yes
+@@BEACON:0123456789abcdef0123456789abcdef:os_release@@
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+VERSION_ID="22.04"
+ID=ubuntu
+@@BEACON:0123456789abcdef0123456789abcdef:auto_updates@@
+APT::Periodic::Unattended-Upgrade "1";
+@@BEACON:0123456789abcdef0123456789abcdef:sshd@@
+passwordauthentication no
+permitrootlogin prohibit-password
+@@BEACON:0123456789abcdef0123456789abcdef:auth@@
+2026-11-18T02:13:44+0000 host sshd[1234]: Failed password for invalid user admin from 203.0.113.9 port 51234 ssh2
+2026-11-18T03:00:12+0000 host sshd[1300]: Accepted publickey for deploy from 192.0.2.10 port 50122 ssh2: ED25519 SHA256:abc
+@@BEACON:0123456789abcdef0123456789abcdef:users@@
+deploy
+alice
+@@BEACON:0123456789abcdef0123456789abcdef:admins@@
+deploy
+@@BEACON:0123456789abcdef0123456789abcdef:ssh_keys@@
+deploy	SHA256:aaa
+alice	SHA256:bbb
+@@BEACON:0123456789abcdef0123456789abcdef:scheduled@@
+/etc/crontab	0 * * * *	/usr/bin/backup	deadbeef
+@@BEACON:0123456789abcdef0123456789abcdef:services@@
+nginx.service
+ssh.service
+@@BEACON:0123456789abcdef0123456789abcdef:log:nginx@@
+2026-11-18T20:00:00Z	120
+2026-11-18T21:00:00Z	95
+@@BEACON:0123456789abcdef0123456789abcdef:log:app@@
+ERROR
