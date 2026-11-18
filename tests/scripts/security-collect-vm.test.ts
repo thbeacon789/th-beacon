@@ -250,6 +250,14 @@ esac`,
     expect(a1[0]).not.toBe(a2[0])
     expect(sentinels(await adminsOf('@includedir /etc/other\n#includedir /etc/x\n'))).toHaveLength(2)
     expect(sentinels(await adminsOf('!weird ALL=(ALL) ALL\n%bad;grp ALL=(ALL) ALL\n'))).toHaveLength(2)
+    expect((await adminsOf('%bad;grp ALL=(ALL) ALL\n')).join('\n')).not.toContain('bad;grp')
+  })
+
+  it('admins：Defaults_evil 之類的帳號不被當成 Defaults 略過', async () => {
+    const a = await adminsOf('Defaults_evil ALL=(ALL) NOPASSWD: ALL\nDefaults.x ALL=(ALL) ALL\nDefaults-y ALL=(ALL) ALL\nDefaults:bob !requiretty\nDefaults@host x\nDefaults!/bin/x y\nDefaults env_reset\n')
+    expect(a).toEqual(expect.arrayContaining(['Defaults_evil', 'Defaults.x', 'Defaults-y']))
+    expect(a.filter((x) => x.startsWith('Defaults'))).toHaveLength(3)
+    expect(sentinels(a)).toHaveLength(0)
   })
 
   it('admins：primary gid 為 sudo 群組的帳號會列出', async () => {

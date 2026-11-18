@@ -82,10 +82,9 @@ loc_of() {
 # auth 的內容是遠端攻擊者可控的文字，所以本區段必須是整份輸出的最後一個（見檔尾）。
 # Accepted 與失敗登入分開取，避免洗版把成功登入擠出去。
 s_auth() {
-  local out
-  out=$(journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null) || out=""
-  printf '%s\n' "$out" | grep -E 'Accepted ' | tail -n 5000
-  printf '%s\n' "$out" | grep -E 'Failed password|Invalid user' | tail -n 20000
+  # 日誌大小受遠端攻擊者影響：全程串流，不存入變數（兩次查詢之間多幾行無妨）
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E 'Accepted ' | tail -n 5000
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E 'Failed password|Invalid user' | tail -n 20000
 }
 
 # 可登入判斷用「完全相等」白名單；shell 為空視為可登入
@@ -103,6 +102,8 @@ s_admins() {
     local gids f line first el grp
     local name_re='^[A-Za-z0-9_.-]+$'
     local uid_re='^#[0-9]+$'
+    local gt
+    gt=$(printf '\076')
     getent group sudo admin | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
     gids=$(getent group sudo admin | awk -F: '{ print $3 }' | tr '\n' ' ')
     getent passwd | awk -F: -v gids="$gids" 'BEGIN { n = split(gids, a, " "); for (i = 1; i <= n; i++) g[a[i]] = 1 } ($4 in g) { print $1 }'
@@ -118,7 +119,9 @@ s_admins() {
               echo "?sudoers:$(hstr "$line")"
               continue
               ;;
-            Defaults | Defaults[[:punct:]]*) continue ;;
+            # 只略過 Defaults 與 Defaults:／@／!／>（>以變數表示，維持腳本內無導向字元）；
+            # Defaults_x、Defaults.x 等是一般帳號名，須照授權行處理
+            Defaults | Defaults[:@!]* | Defaults"$gt"*) continue ;;
             User_Alias | Runas_Alias | Host_Alias | Cmnd_Alias | Cmd_Alias)
               echo "?sudoers:$(hstr "$line")"
               continue
@@ -133,8 +136,8 @@ s_admins() {
               printf '%s\n' "$el"
             elif [[ $el == %* ]]; then
               grp="${el#%}"
-              printf '%s\n' "$el"
               if [[ $grp =~ $name_re ]] && [[ $grp != -* ]]; then
+                printf '%s\n' "$el"
                 getent group "$grp" | awk -F: '{ n = split($4, m, ","); for (i = 1; i <= n; i++) if (m[i] != "") print m[i] }'
               else
                 echo "?sudoers:$(hstr "$line")"
