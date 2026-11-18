@@ -1,8 +1,8 @@
 {
-  "certs": [{ "domain": "app.example.test", "notAfter": "2030-01-01T00:00:00.000Z" }],
+  "certs": [{ "domain": "www.example.test", "notAfter": "2030-01-01T00:00:00.000Z" }],
   "exposure": [
     {
-      "domain": "app.example.test",
+      "domain": "www.example.test",
       "sensitivePaths": [{ "path": "/.env", "exposed": false }],
       "headers": { "hsts": true, "contentTypeOptions": true, "frameProtection": true, "csp": false, "referrerPolicy": true },
       "legacyTls": false

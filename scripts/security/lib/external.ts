@@ -91,7 +91,9 @@ export function fetchCert(domain: string, opts: { port?: number; timeoutMs?: num
       reject(e)
       return
     }
-    const socket = tls.connect({ host: domain, port: opts.port ?? 443, servername: domain })
+    // rejectUnauthorized: false 只為了讀到期日，不代表信任：過期、自簽、主機名不符的憑證
+    // 在預設驗證下會握手失敗而讓事實消失，而那正是最該被標出的情況。
+    const socket = tls.connect({ host: domain, port: opts.port ?? 443, servername: domain, rejectUnauthorized: false })
     const timer = setTimeout(() => {
       socket.destroy()
       reject(new Error('取得憑證逾時'))
@@ -111,8 +113,9 @@ export function fetchCert(domain: string, opts: { port?: number; timeoutMs?: num
   })
 }
 
-// 伺服器端明確拒絕舊版協定時才算 false；其餘一律 null（寧可不確定也不誤報「已停用」）
-const SERVER_REJECT_CODES = new Set(['ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR', 'ECONNRESET'])
+// 只有伺服器明確回 protocol_version alert 才算 false；其餘（含 ECONNRESET、internal_error，
+// 可能來自防火牆／LB／WAF／後端故障）一律 null，寧可不確定也不誤報「已停用」
+const SERVER_REJECT_CODES = new Set(['ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION'])
 
 export function probeLegacyTls(domain: string, opts: { port?: number; timeoutMs?: number } = {}): Promise<boolean | null> {
   return new Promise((resolve) => {

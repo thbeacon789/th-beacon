@@ -113,6 +113,12 @@ function sanitizeCheck(v: unknown): CheckResult {
   return { status: v.status as CheckResult['status'], summary: v.summary.slice(0, MAX_SUMMARY) }
 }
 
+/** 序列化後把 < 轉成 unicode 跳脫（JSON 語意無損），事實內容才無法提早關閉 <facts> 標籤 */
+export function buildUserMessage(facts: unknown): string {
+  const json = JSON.stringify(facts).replace(/</g, '\\u003c')
+  return `<facts>\n${json}\n</facts>`
+}
+
 export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessEnv): Promise<JudgeResult> {
   const base = (env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '')
   const model = env.SECURITY_JUDGE_MODEL || 'claude-sonnet-5-5'
@@ -125,7 +131,7 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
       model,
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: `<facts>\n${JSON.stringify(facts)}\n</facts>` }],
+      messages: [{ role: 'user', content: buildUserMessage(facts) }],
       output_config: { format: { type: 'json_schema', schema: buildSchema(kind) } },
     }),
     signal: AbortSignal.timeout(100_000),

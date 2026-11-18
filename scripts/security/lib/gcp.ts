@@ -26,24 +26,43 @@ const check = (what: string, v: string): void => {
   if (!SAFE_RE.test(v)) throw new Error(`${what} 含不允許的字元`)
 }
 
-export function runVmCollector(
-  target: GcpTarget,
-  scriptPath: string,
+const GCP_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i
+
+/** 以 - 開頭的值會被 gcloud 當成旗標，故三個欄位都須通過驗證 */
+export function validateGcpTarget(target: GcpTarget): void {
+  for (const k of ['project', 'zone', 'instance'] as const) {
+    if (typeof target[k] !== 'string' || !GCP_NAME_RE.test(target[k])) throw new Error(`GCP ${k} 格式不合法`)
+  }
+}
+
+/** 組出遠端指令；除固定字面值外只會出現 base64 字元與 hex nonce。不合法即 throw。 */
+export function buildRemoteCommand(
+  scriptContent: string,
   nonce: string,
   logSources: TargetConfig['logSources'],
 ): string {
   if (!NONCE_RE.test(nonce)) throw new Error('nonce 格式不符')
   const lines: string[] = []
   for (const s of logSources ?? []) {
-    const value = s.type === 'file' ? s.path : s.unit
+    const value = s.type === 'file' ? s.path : s.type === 'journal' ? s.unit : undefined
     if (value === undefined) throw new Error('logSources 缺少 path 或 unit')
     check('logSources.name', s.name)
     check('logSources.target', value)
     lines.push(`${s.name}\t${s.type}\t${value}`)
   }
-  const scriptB64 = Buffer.from(readFileSync(scriptPath)).toString('base64')
+  const scriptB64 = Buffer.from(scriptContent).toString('base64')
   const sourcesB64 = Buffer.from(lines.join('\n') + (lines.length > 0 ? '\n' : '')).toString('base64')
-  const remote = `echo ${scriptB64} | base64 -d | sudo BEACON_NONCE=${nonce} BEACON_LOG_SOURCES_B64=${sourcesB64} bash`
+  return `echo ${scriptB64} | base64 -d | sudo BEACON_NONCE=${nonce} BEACON_LOG_SOURCES_B64=${sourcesB64} bash`
+}
+
+export function runVmCollector(
+  target: GcpTarget,
+  scriptPath: string,
+  nonce: string,
+  logSources: TargetConfig['logSources'],
+): string {
+  validateGcpTarget(target)
+  const remote = buildRemoteCommand(readFileSync(scriptPath, 'utf8'), nonce, logSources)
   return gcloud(
     [
       'compute', 'ssh', target.instance,
@@ -56,6 +75,7 @@ export function runVmCollector(
 }
 
 export function describeInstance(target: GcpTarget): InstanceInfo {
+  validateGcpTarget(target)
   const out = gcloud(
     [
       'compute', 'instances', 'describe', target.instance,
@@ -76,6 +96,7 @@ export function describeInstance(target: GcpTarget): InstanceInfo {
 }
 
 export function listFirewallRules(project: string): FirewallRule[] {
+  if (!GCP_NAME_RE.test(project)) throw new Error('GCP project 格式不合法')
   const out = gcloud(['compute', 'firewall-rules', 'list', `--project=${project}`, '--format=json'], API_TIMEOUT_MS)
   const j = JSON.parse(out) as unknown
   if (!Array.isArray(j)) throw new Error('防火牆規則輸出不是陣列')

@@ -158,4 +158,34 @@ describe('scripts/security/scan.mts', () => {
     expect(r.stderr).toContain('sshd')
     expect(scans()).toHaveLength(0)
   })
+
+  it('外部檢查不完整（有 exposure 無 cert）：仍推送快照但 exit 1', async () => {
+    await start(okHandler)
+    const d = fixture('vm', (x) => {
+      const p = path.join(x, 'external.json')
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+      j.certs = []
+      fs.writeFileSync(p, JSON.stringify(j))
+    })
+    const r = await run(['--target', 'vmsvc', '--dry-run', d])
+    expect(r.code).toBe(1)
+    expect(scans()).toHaveLength(1)
+    expect(r.stderr).toContain('app.example.test')
+  })
+
+  it('hosted 的 audit 失敗（無 audit.json）：推快照、updates 為「相依套件稽核失敗」、exit 1', async () => {
+    await start(okHandler)
+    const d = fixture('hosted', (x) => fs.rmSync(path.join(x, 'audit.json')))
+    const r = await run(['--target', 'hostedsvc', '--dry-run', d])
+    expect(r.code).toBe(1)
+    const body = JSON.parse(scans()[0].body)
+    expect(body.checks.updates).toEqual({ status: 'unknown', summary: '相依套件稽核失敗' })
+  })
+
+  it('缺 BEACON_SECRET 時 exit 2 且不推送', async () => {
+    await start(okHandler)
+    const r = await run(['--target', 'vmsvc', '--dry-run', fixture('vm')], { BEACON_SECRET: '' })
+    expect(r.code).toBe(2)
+    expect(server!.requests).toHaveLength(0)
+  })
 })

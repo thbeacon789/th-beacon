@@ -39,13 +39,29 @@ class ExitError extends Error {
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'))
 const brief = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 200)
 
-async function externalChecks(
-  target: TargetConfig,
-  dryDir: string | undefined,
-): Promise<{ certs: CertFact[]; exposure: ExposureFact[] }> {
+interface ExternalResult { certs: CertFact[]; exposure: ExposureFact[]; incomplete: boolean }
+
+/** 任一設定的 domain 缺憑證或缺 exposure 事實即視為外部檢查不完整 */
+function reportIncomplete(domains: string[], certs: CertFact[], exposure: ExposureFact[]): boolean {
+  let incomplete = false
+  for (const d of domains) {
+    const missing: string[] = []
+    if (!certs.some((c) => c.domain === d)) missing.push('憑證')
+    if (!exposure.some((e) => e.domain === d)) missing.push('暴露面')
+    if (missing.length > 0) {
+      console.error(`外部檢查不完整：${d} 缺少${missing.join('、')}`)
+      incomplete = true
+    }
+  }
+  return incomplete
+}
+
+async function externalChecks(target: TargetConfig, dryDir: string | undefined): Promise<ExternalResult> {
   if (dryDir !== undefined) {
     const j = readJson(join(dryDir, 'external.json')) as { certs?: CertFact[]; exposure?: ExposureFact[] }
-    return { certs: j.certs ?? [], exposure: j.exposure ?? [] }
+    const certs = j.certs ?? []
+    const exposure = j.exposure ?? []
+    return { certs, exposure, incomplete: reportIncomplete(target.domains, certs, exposure) }
   }
   const paths = readJson(join(here, '../../security/exposure-paths.json')) as ExposurePath[]
   const domains = target.domains.filter((d) => {
@@ -61,13 +77,13 @@ async function externalChecks(
         fetchCert(domain), probeDomain(domain, paths), probeLegacyTls(domain),
       ])
       if (cert.status === 'fulfilled') certs.push(cert.value)
-      else console.warn(`警告：${domain} 憑證取得失敗`)
       if (probe.status === 'fulfilled') {
         exposure.push({ ...probe.value, legacyTls: legacy.status === 'fulfilled' ? legacy.value : null })
-      } else console.warn(`警告：${domain} 暴露面探測失敗`)
+      }
     }),
   )
-  return { certs, exposure }
+  // 格式不符而被略過的 domain 不在 certs／exposure 內，同樣會被判為不完整
+  return { certs, exposure, incomplete: reportIncomplete(target.domains.filter(isValidDomain), certs, exposure) || domains.length !== target.domains.length }
 }
 
 interface VmCollected { vm: VmFacts; facts: unknown }
@@ -108,22 +124,27 @@ function collectVm(target: TargetConfig, dryDir: string | undefined): VmCollecte
   }
 }
 
-function collectAudit(dryDir: string | undefined): AuditSummary | null {
+type AuditOutcome =
+  | { kind: 'ok'; audit: AuditSummary }
+  | { kind: 'unsupported' }
+  | { kind: 'failed'; reason: string }
+
+function collectAudit(dryDir: string | undefined): AuditOutcome {
   try {
-    if (dryDir !== undefined) return parsePnpmAudit(readJson(join(dryDir, 'audit.json')))
+    if (dryDir !== undefined) return { kind: 'ok', audit: parsePnpmAudit(readJson(join(dryDir, 'audit.json'))) }
     const dir = process.env.TARGET_REPO_DIR
-    if (!dir) return null
+    if (!dir) return { kind: 'failed', reason: 'TARGET_REPO_DIR 未設定' }
     const pm = detectPackageManager(readdirSync(dir))
-    if (pm !== 'pnpm' && pm !== 'npm') return null
+    if (pm !== 'pnpm' && pm !== 'npm') return { kind: 'unsupported' }
     // 有漏洞時 audit 的 exit code 非 0 屬正常，以 stdout 的 JSON 為準；不安裝相依套件
     const r = spawnSync(pm, pm === 'pnpm' ? ['audit', '--json'] : ['audit', '--json', '--package-lock-only'], {
       cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 5 * 60 * 1000,
     })
+    if (r.error) return { kind: 'failed', reason: `${pm} audit 無法執行或逾時` }
     const json = JSON.parse(r.stdout) as unknown
-    return pm === 'pnpm' ? parsePnpmAudit(json) : parseNpmAudit(json)
+    return { kind: 'ok', audit: pm === 'pnpm' ? parsePnpmAudit(json) : parseNpmAudit(json) }
   } catch (e) {
-    console.warn(`警告：audit 解析失敗（${brief(e)}）`)
-    return null
+    return { kind: 'failed', reason: brief(e) }
   }
 }
 
@@ -150,13 +171,18 @@ async function main(): Promise<number> {
   const secret = process.env.BEACON_SECRET ?? ''
   if (!beaconUrl || !secret) throw new ExitError(2, '缺少 BEACON_URL 或 BEACON_SECRET')
 
+  if (target.kind === 'vm' && dryDir === undefined && (!process.env.GCP_PROJECT || !process.env.GCP_ZONE || !process.env.GCP_INSTANCE)) {
+    throw new ExitError(2, '缺少 GCP_PROJECT／GCP_ZONE／GCP_INSTANCE')
+  }
+
   const scannedAt = new Date().toISOString()
-  const { certs, exposure } = await externalChecks(target, dryDir)
+  const { certs, exposure, incomplete } = await externalChecks(target, dryDir)
   console.log(`外部檢查：憑證 ${certs.length}、暴露面 ${exposure.length}`)
 
   let vm: VmFacts | undefined
   let facts: unknown
-  let auditSupported = true
+  let auditNote: string | null = null // 非 null 表示不呼叫判讀，updates 直接填 unknown
+  let auditFailed = false
   if (target.kind === 'vm') {
     try {
       const c = collectVm(target, dryDir)
@@ -167,17 +193,22 @@ async function main(): Promise<number> {
       throw new ExitError(1, `收集失敗：${brief(e)}`)
     }
   } else {
-    const audit = collectAudit(dryDir)
-    auditSupported = audit !== null
-    facts = { audit }
+    const outcome = collectAudit(dryDir)
+    if (outcome.kind === 'ok') facts = { audit: outcome.audit }
+    else if (outcome.kind === 'unsupported') auditNote = '不支援的套件管理器'
+    else {
+      console.error(`相依套件稽核失敗：${outcome.reason}`)
+      auditNote = '相依套件稽核失敗'
+      auditFailed = true
+    }
   }
 
   let judgment: Judgment
   let usage: JudgeResult['usage'] = null
   let judgeFailed = false
-  if (target.kind === 'hosted' && !auditSupported) {
+  if (auditNote !== null) {
     judgment = unknownJudgment('hosted')
-    judgment.checks.updates = { status: 'unknown', summary: '不支援的套件管理器' }
+    judgment.checks.updates = { status: 'unknown', summary: auditNote }
   } else {
     try {
       const r = dryDir !== undefined ? dryJudgment(dryDir) : await judge(facts, target.kind, process.env)
@@ -212,7 +243,8 @@ async function main(): Promise<number> {
       console.warn(`AI 用量回報失敗：${brief(e)}`)
     }
   }
-  return judgeFailed ? 1 : 0
+  if (incomplete) console.error('外部檢查不完整，快照已推送但回報失敗')
+  return judgeFailed || incomplete || auditFailed ? 1 : 0
 }
 
 main().then(
