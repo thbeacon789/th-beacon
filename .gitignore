@@ -15,3 +15,6 @@ supabase/.temp
 supabase/.env
 .vercel
 .env*
+
+# 實作流程暫存（SDD 報告、審閱 diff）
+.superpowers/

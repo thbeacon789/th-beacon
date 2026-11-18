@@ -8,15 +8,16 @@
 | `/api/heartbeat` | POST | 每服務 HMAC | 具名心跳（CI 存活證明） |
 | `/api/ai-usage` | POST | 每服務 HMAC | 回報 AI 用量（token 或金額） |
 | `/api/ai-fix` | POST | 每服務 HMAC | 回報 CI 的 AI 修復 PR 結果 |
+| `/api/security-scan` | POST | 每服務 HMAC | 推送每日資安掃描快照（集中式掃描器用） |
 | `/api/poll/services` | GET | Cron Bearer token | 服務輪詢 ＋ 心跳逾期掃描（內部用） |
 
-實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/ai-usage/route.ts`、`app/api/ai-fix/route.ts`、`app/api/poll/services/route.ts`。
+實作位置：`app/api/ingest/route.ts`、`app/api/heartbeat/route.ts`、`app/api/ai-usage/route.ts`、`app/api/ai-fix/route.ts`、`app/api/security-scan/route.ts`、`app/api/poll/services/route.ts`。
 
 ---
 
 ## 1. HMAC 驗證（ingest 與 heartbeat 共用）
 
-四個推送端點（ingest、heartbeat、ai-usage、ai-fix）的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
+五個推送端點（ingest、heartbeat、ai-usage、ai-fix、security-scan）的驗證邏輯完全相同（`src/ingest/hmac.ts:16`）。
 
 ### 必要 headers
 
@@ -343,7 +344,7 @@ CI 的 AI 診斷（`diagnose-e2e-failure.sh`）或 CI 開 PR 的 AI 呼叫，把
 
 ```jsonc
 {
-  "source": "ci_diagnosis",            // 必填，僅 "ci_diagnosis" | "ci_pr"
+  "source": "ci_diagnosis",            // 必填，僅 "ci_diagnosis" | "ci_pr" | "ci_security"
   "model": "claude-sonnet-5-5",        // 選填，1–100 字；有登記單價的 model 才會自動換算金額
   "inputTokens": 1234,                 // 選填，非負整數
   "outputTokens": 321,                 // 選填，非負整數
@@ -455,6 +456,121 @@ BODY='{"heartbeat":"android-e2e-prod","status":"pr_opened","prUrl":"https://gith
 SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
 
 curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/ai-fix \
+  -H "Content-Type: application/json" \
+  -H "X-Beacon-Service: $BEACON_SERVICE" \
+  -H "X-Beacon-Timestamp: $TS" \
+  -H "X-Beacon-Signature: sha256=$SIG" \
+  -d "$BODY"
+```
+
+---
+
+## 9. `POST /api/security-scan` — 資安掃描快照
+
+th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）把一次掃描的**事實與 Claude 判讀結果**推到這裡，存成一筆 `security_scans` 快照，供 `/security` 頁面顯示。**一次請求一筆快照**；掃描器是集中式的，各服務 repo 不需要接入。服務須已登記且有金鑰（`X-Beacon-Service` 為受掃描服務的名稱）。
+
+驗證：headers 與簽章算法同 §1。實作：`app/api/security-scan/route.ts`、`src/security-scan/handle-security-scan.ts`、`src/core/security/payload.ts`。
+
+### Request body
+
+```jsonc
+{
+  "scannedAt": "2026-11-18T22:03:11Z",   // 必填，可解析的日期；不可晚於現在超過 10 分鐘
+  "kind": "vm",                           // 必填，"vm" | "hosted"
+  "checks": {                             // 必填，三項都要有
+    "ports":   { "status": "bad",  "summary": "3306 對外" },
+    "updates": { "status": "warn", "summary": "12 項（3 安全性）" },
+    "logins":  { "status": "ok",   "summary": "正常" }
+    // 不適用：{ "status": "na", "summary": "" }；判讀失敗：{ "status": "unknown", "summary": "" }
+  },
+  "findings": [
+    {
+      "check": "ports",                   // "ports" | "updates" | "logins"
+      "severity": "high",                 // "high" | "medium" | "low"
+      "title": "MySQL 3306 埠對全網開放",
+      "recommendation": "改為僅內網或防火牆白名單"   // 可為空字串
+    }
+  ],
+  "certs": [ { "domain": "example.com", "notAfter": "2027-01-18T00:00:00Z" } ],
+  "exposure": [
+    {
+      "domain": "example.com",
+      "sensitivePaths": [ { "path": "/.env", "exposed": false } ],
+      "headers": { "hsts": true, "contentTypeOptions": true, "frameProtection": false, "csp": false, "referrerPolicy": true },
+      "legacyTls": false                  // true | false | null（無法判斷）
+    }
+  ],
+  "logVolume": [                          // 選填（hosted 省略）
+    { "source": "nginx-access", "hourly": [ { "hour": "2026-11-17T22:00:00Z", "count": 1820 } ] },
+    { "source": "app", "error": true }    // 來源讀不到：帶 error:true 且不帶 hourly
+  ],
+  "inventory": {                          // 選填（hosted 省略）
+    "users": ["ubuntu", "deploy"],
+    "admins": ["ubuntu"],
+    "sshKeys": [ { "user": "ubuntu", "fingerprint": "SHA256:abc123" } ],
+    "scheduled": [ { "location": "/etc/cron.d/backup", "schedule": "0 3 * * *", "executable": "/usr/local/bin/backup.sh", "hash": "sha256:abc123" } ],
+    "listeners": [ { "proto": "tcp", "port": 443, "process": "nginx" } ],
+    "services": ["nginx.service"]
+  }
+}
+```
+
+### 欄位限制
+
+| 欄位 | 限制 |
+| --- | --- |
+| `checks.*.status` | `ok`／`warn`／`bad`／`unknown`／`na` |
+| `checks.*.summary` | 字串，最長 80 字；`status` 為 `ok`／`warn`／`bad` 時不可為空 |
+| `findings` | 最多 30 筆 |
+| `findings[].title` | 1–120 字 |
+| `findings[].recommendation` | 最長 300 字，可為空字串 |
+| `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
+| `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
+| `exposure[].sensitivePaths[].path` | 必須以 `/` 開頭 |
+| 整個 body | 原始內容超過 512 KB 回 413（驗簽後、解析前檢查） |
+
+### 哪些狀態由 beacon 計算
+
+payload **只送事實與 `ports`／`updates`／`logins` 三項判讀**。以下四項的狀態**不由 payload 提供**，送了也不採用：
+
+- `logVolume`、`exposure`、`changes`：寫入時由 beacon 依規則計算（log 量對照近 7 天基準、暴露路徑與安全標頭、與 7 天窗內最舊一筆 `inventory` 的差異），結果併入回應的 `checks` 並存入快照。
+- `cert`：讀取時依 `certs` 的到期日推導，不存。
+
+### 成功回應 `201`
+
+```json
+{ "id": "uuid", "checks": { "ports": { "status": "ok", "summary": "..." }, "updates": {}, "logins": {}, "logVolume": {}, "exposure": {}, "changes": {} } }
+```
+
+`checks` 為合併後的六項結果（三項來自 payload，三項由 beacon 計算）。
+
+### 重送 `200`
+
+同一服務、同一 `scannedAt` 已有快照時回 `{ "duplicate": true }`，不重複寫入。
+
+### 錯誤回應
+
+| 狀態 | Body | 情境 |
+| --- | --- | --- |
+| `401` | `{"error":"unauthorized"}` | 見 §1（服務不存在或無金鑰、簽章錯誤、時間戳超出容許範圍） |
+| `413` | `{"error":"payload too large"}` | body 超過 512 KB |
+| `400` | `{"error":"invalid JSON"}` | body 不是合法 JSON |
+| `422` | `{"error":"invalid payload","details":[...]}` | 欄位驗證失敗（`scannedAt` 太晚、`kind` 不合法、字串超長…） |
+
+### 金鑰輪替
+
+服務的 HMAC 金鑰若在 `/services` 輪替，th-beacon repo 的 GitHub secret（目標的 `secretEnv` 指定的名稱）必須手動同步，否則推送會 401；此時 `security-scan` 心跳也會因簽章錯誤而無法回報，最終以心跳逾期告警浮現。
+
+### 範例
+
+一般情況由 `scripts/security/scan.mts` 送出，不需手寫。手寫版本（最小合法 hosted 快照）：
+
+```bash
+TS="$(date +%s)"
+BODY='{"scannedAt":"2026-11-18T22:03:11Z","kind":"hosted","checks":{"ports":{"status":"na","summary":""},"updates":{"status":"ok","summary":"無已知漏洞"},"logins":{"status":"na","summary":""}},"findings":[],"certs":[{"domain":"example.com","notAfter":"2027-01-18T00:00:00Z"}],"exposure":[]}'
+SIG="$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$BEACON_SECRET" -hex | sed 's/^.* //')"
+
+curl -sS --fail-with-body -X POST https://th-beacon.vercel.app/api/security-scan \
   -H "Content-Type: application/json" \
   -H "X-Beacon-Service: $BEACON_SERVICE" \
   -H "X-Beacon-Timestamp: $TS" \

@@ -1,0 +1,114 @@
+# 每日資安掃描。本 workflow 持有可連進正式機的 GCP 憑證與各服務 HMAC 金鑰，
+# 因此：只允許 schedule／workflow_dispatch 觸發（不可加 pull_request／push）、
+# 權限最小化、checkout 不留憑證、所有 ${{ }} 一律經 env 傳入。
+# 第三方 action 以主要版本 tag 引用；可改釘 commit SHA 以強化供應鏈安全。
+# 版本查證：actions/checkout v7、actions/setup-node v7 以 gh api releases/latest 查得（2026-11-18）；
+# google-github-actions/auth、setup-gcloud 為 v3（依先前查證）。
+name: security-scan
+
+on:
+  schedule:
+    - cron: '7 22 * * *' # UTC；台灣 06:07
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+      count: ${{ steps.read.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: read
+        run: |
+          matrix="$(jq -c '[.[] | {service, kind, secretEnv, repo}]' security/targets.json)"
+          count="$(printf '%s' "$matrix" | jq 'length')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: targets
+    if: needs.targets.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.targets.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # VM 目標：以 Workload Identity 取得 GCP 憑證，再用 IAP 連進 VM
+      - name: GCP 驗證
+        if: matrix.target.kind == 'vm'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: 安裝 gcloud
+        if: matrix.target.kind == 'vm'
+        uses: google-github-actions/setup-gcloud@v3
+
+      # hosted 目標：只 checkout 原始碼供 audit 讀 lockfile；
+      # 不在該 repo 執行 install 或任何其程式碼（CLI 只呼叫 pnpm／npm audit）
+      - name: checkout 目標 repo
+        if: matrix.target.kind == 'hosted'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.target.repo }}
+          ssh-key: ${{ secrets.SECURITY_TARGET_REPO_KEY }}
+          path: target-repo
+          persist-credentials: false
+
+      - name: 啟用 corepack（pnpm）
+        if: matrix.target.kind == 'hosted'
+        run: corepack enable
+
+      - name: 掃描
+        env:
+          TARGET_SERVICE: ${{ matrix.target.service }}
+          # CLI 的 BEACON_URL 是 base URL（不含路徑）
+          BEACON_URL: ${{ vars.BEACON_URL }}
+          BEACON_SECRET: ${{ secrets[matrix.target.secretEnv] }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          GCP_ZONE: ${{ vars.GCP_ZONE }}
+          GCP_INSTANCE: ${{ vars.GCP_INSTANCE }}
+          TARGET_REPO_DIR: target-repo
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+        run: node scripts/security/scan.mts --target "$TARGET_SERVICE"
+
+      # 心跳：成功失敗都要回報；心跳尚未登記時端點回 404，不可讓 job 因此失敗
+      - name: 心跳
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # 心跳腳本的 BEACON_URL 是完整端點，與掃描步驟的 base URL 不同
+          BEACON_BASE_URL: ${{ vars.BEACON_URL }}
+          BEACON_SERVICE: ${{ matrix.target.service }}
+          BEACON_SECRET: ${{ secrets[matrix.target.secretEnv] }}
+        run: |
+          status=fail
+          if [ "$JOB_STATUS" = "success" ]; then status=pass; fi
+          BEACON_URL="${BEACON_BASE_URL%/}/api/heartbeat" \
+            bash scripts/heartbeat-to-beacon.sh security-scan "$status" "$RUN_URL" || true
