@@ -1,9 +1,7 @@
 # 每日資安掃描。本 workflow 持有可連進正式機的 GCP 憑證與各服務 HMAC 金鑰，
 # 因此：只允許 schedule／workflow_dispatch 觸發（不可加 pull_request／push）、
 # 權限最小化、checkout 不留憑證、所有 ${{ }} 一律經 env 傳入。
-# 第三方 action 以主要版本 tag 引用；可改釘 commit SHA 以強化供應鏈安全。
-# 版本查證：actions/checkout v7、actions/setup-node v7 以 gh api releases/latest 查得（2026-11-18）；
-# google-github-actions/auth、setup-gcloud 為 v3（依先前查證）。
+# 第三方 action 一律釘 commit SHA（後面註解為對應 release tag，2026-11-18 以 gh api 查得）。
 name: security-scan
 
 on:
@@ -27,7 +25,7 @@ jobs:
       matrix: ${{ steps.read.outputs.matrix }}
       count: ${{ steps.read.outputs.count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: read
@@ -47,32 +45,32 @@ jobs:
       matrix:
         target: ${{ fromJson(needs.targets.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
       # VM 目標：以 Workload Identity 取得 GCP 憑證，再用 IAP 連進 VM
       - name: GCP 驗證
         if: matrix.target.kind == 'vm'
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: 安裝 gcloud
         if: matrix.target.kind == 'vm'
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # hosted 目標：checkout 原始碼供 CLI 取 lockfile。此 step 與 corepack 都不執行該 repo 的程式碼。
-      # CLI 的稽核在全新暫存目錄執行，只複製 package.json 與 lockfile，且子行程只拿最小環境
-      # （拿不到 HMAC 金鑰、Anthropic 識別資訊、OIDC 權杖）；不 install。
+      # CLI 的稽核在全新暫存目錄執行：寫入淨化過的 package.json（只留 dependencies 類）並複製 lockfile，
+      # 且子行程只拿最小環境（拿不到 HMAC 金鑰、Anthropic 識別資訊、OIDC 權杖）；不 install。
       - name: checkout 目標 repo
         if: matrix.target.kind == 'hosted'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ matrix.target.repo }}
           ssh-key: ${{ secrets.SECURITY_TARGET_REPO_KEY }}
@@ -81,7 +79,11 @@ jobs:
 
       - name: 啟用 corepack（pnpm）
         if: matrix.target.kind == 'hosted'
-        run: corepack enable
+        run: |
+          corepack enable
+          # 由本 workflow 釘住 pnpm 版本，不受目標 repo 的 packageManager 欄位影響
+          # （此 step 的工作目錄是本 repo 根目錄，不是 target-repo/）。
+          corepack prepare pnpm@10.32.1 --activate
 
       - name: 掃描
         env:
