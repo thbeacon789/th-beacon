@@ -1647,8 +1647,19 @@ tbody tr:last-child td {
 }
 .security-cell {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
+}
+/* 十欄的 auto table 會把每格壓到 min-content，中文沒有斷詞邊界就變成逐字換行。
+   讓文字不可收縮（flex: none）並以 max-width 封頂：短字串維持單行，長摘要最多換到約 8 個全形字寬，
+   欄寬因此由內容撐開，放不下時交給 .table-wrap 橫捲。 */
+.security-cell-text {
+  flex: none;
+  width: max-content;
+  max-width: 8em;
+}
+.security-spark {
+  flex: none;
 }
 .security-dot {
   display: inline-block;
@@ -1660,6 +1671,8 @@ tbody tr:last-child td {
 }
 .security-cell .security-dot {
   margin-right: 0;
+  /* 多行摘要時燈號對齊第一行的中線，而不是整塊文字的垂直中央 */
+  margin-top: calc((1lh - 0.6rem) / 2);
 }
 .security-dot-ok {
   background: var(--green);

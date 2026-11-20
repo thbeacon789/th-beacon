@@ -70,8 +70,10 @@ export default async function SecurityPage() {
                       {row.stale && <span className="security-stale">資料過期</span>}
                     </th>
                     <td>
-                      <span className={`security-dot security-dot-${row.overall}`} aria-hidden />
-                      {OVERALL_LABEL[row.overall]}
+                      <span className="security-cell">
+                        <span className={`security-dot security-dot-${row.overall}`} aria-hidden />
+                        <span className="security-cell-text">{OVERALL_LABEL[row.overall]}</span>
+                      </span>
                     </td>
                     {CHECK_ORDER.map((k) => {
                       const c = row.checks[k]
@@ -83,7 +85,7 @@ export default async function SecurityPage() {
                           <span className={row.stale ? 'security-cell is-stale' : 'security-cell'}>
                             <span className={`security-dot security-dot-${dot}`} aria-hidden />
                             {k === 'logVolume' && <LogSparkline sources={row.logVolume} />}
-                            <span>{text}</span>
+                            <span className="security-cell-text">{text}</span>
                           </span>
                         </td>
                       )
