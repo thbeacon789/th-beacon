@@ -480,7 +480,7 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 4. **收集腳本從未在真實 Ubuntu 上執行過**，只在 macOS 以假指令驗證。首次實跑前，建議先在一台測試機以 root 手動執行一次並檢視輸出。需確認：`ss -H -tulnp`、`systemctl list-timers`、`sshd -T`、`journalctl -u ssh` 的實際輸出格式與 fixture 一致；mawk（Ubuntu 預設）下 awk 段落行為正確；`ssh-keygen -lf /dev/stdin` 對帶選項前綴的 `authorized_keys` 行的行為。
 5. `apt list --upgradable` 與 `apt-check` 以 root 執行時是否會寫入快取檔（如 `/var/cache/apt/pkgcache.bin`）。若會，違反腳本「不寫任何檔案」的要求，需改用不寫快取的呼叫方式。**【未確認】**
 6. Node 24 的 `tls` 能否區分「伺服器拒絕舊版 TLS」與「客戶端無法發起」；若一律無法判斷，該項維持未知（頁面不會誤報）。
-7. Anthropic 聯邦認證規則已允許 th-beacon repo 的 `refs/heads/main`。
+7. Anthropic 聯邦認證規則能比對到本 workflow 的權杖。注意：job 使用了 environment，OIDC `sub` 不帶分支而是 `…:environment:<名稱>`，且本 repo 使用帶數字 ID 的 immutable 格式（前綴 `repo:thbeacon789@310109003/th-beacon@1314872478`，以 GitHub API `actions/oidc/customization/sub` 查得），所以**不能**照其他 repo 的 `…:ref:refs/heads/main` 寫法；分支限制改以 `ref` claim 表達。`subject_prefix` 預設為完整相等比對，結尾帶 `*` 才是前綴比對。
 8. 首次成功後，在 `/services` 為各服務登記 `security-scan` 心跳（間隔 86400 秒、寬限 21600 秒）。
 9. 見本節開頭「啟用前必做」（hosted 與 vm 的 GitHub environment 分離）。
 10. `gcloud compute ssh` 每次是否會在服務帳號的 OS Login profile 累積新公鑰。**【未確認】** 若會，需設定金鑰過期。

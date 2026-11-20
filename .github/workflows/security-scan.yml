@@ -102,6 +102,8 @@ jobs:
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          # 選填：federation rule 綁定多個 workspace 時換權杖必須帶；未設定時為空字串，CLI 會略過
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
         run: node scripts/security/scan.mts --target "$TARGET_SERVICE"
 
       # 心跳：成功失敗都要回報；心跳尚未登記時端點回 404，不可讓 job 因此失敗
