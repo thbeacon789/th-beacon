@@ -31,12 +31,21 @@ const DATE_TIME_SECONDS = new Intl.DateTimeFormat('zh-TW', {
   hourCycle: 'h23',
 })
 
+/**
+ * ICU 的 zh-TW 樣式在日期與時間之間放的是 U+2009（thin space），不是一般空白；
+ * 介面字型沒有這個字元的寬度，畫面上日期和時間會黏在一起。
+ * 不同 ICU 版本也可能改用 U+202F／U+00A0，一併正規化成 U+0020。
+ */
+function normalizeSpaces(s: string): string {
+  return s.replace(/[\u00a0\u2009\u202f]/g, ' ')
+}
+
 /** 台北時間 24 小時制，到分鐘：2026/07/29 19:23 */
 export function formatDateTime(iso: string): string {
-  return DATE_TIME.format(new Date(iso))
+  return normalizeSpaces(DATE_TIME.format(new Date(iso)))
 }
 
 /** 同上但保留秒——只給原始 event 時間軸，事件密集時秒數才分得出先後 */
 export function formatDateTimeSeconds(iso: string): string {
-  return DATE_TIME_SECONDS.format(new Date(iso))
+  return normalizeSpaces(DATE_TIME_SECONDS.format(new Date(iso)))
 }
