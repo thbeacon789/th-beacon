@@ -12,13 +12,25 @@ const DASHES = [undefined, '6 3', '2 3'] as const
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
-export function MonthlyTrendChart({
+type Granularity = 'month' | 'week'
+const GRANULARITIES: Array<{ value: Granularity; label: string }> = [
+  { value: 'month', label: '月' },
+  { value: 'week', label: '週' },
+]
+
+// 週 key 為 'YYYY-MM-DD'（該週週一）→ 'MM/DD'
+const weekTick = (w: string) => w.slice(5).replace('-', '/')
+
+export function TrendChart({
   monthly,
+  weekly,
   models,
 }: {
   monthly: AiStatsView['monthly']
+  weekly: AiStatsView['weekly']
   models: string[]
 }) {
+  const [granularity, setGranularity] = useState<Granularity>('month')
   // SVG presentation attribute 不保證支援 var()，mount 後讀出實際色值
   const [colors, setColors] = useState<Colors | null>(null)
   useEffect(() => {
@@ -26,8 +38,15 @@ export function MonthlyTrendChart({
     setColors(Object.fromEntries(TOKENS.map((t) => [t, style.getPropertyValue(t).trim()])) as Colors)
   }, [])
 
-  const data = monthly.map((m) => {
-    const row: Record<string, string | number | null> = { month: m.month, costUsd: m.costUsd }
+  const series =
+    granularity === 'month'
+      ? monthly.map(({ month, ...p }) => ({ x: month, ...p }))
+      : weekly.map(({ week, ...p }) => ({ x: week, ...p }))
+  const data = series.map((m) => {
+    const row: Record<string, string | number | null> = {
+      x: m.x,
+      costUsd: m.costUsd,
+    }
     // dataKey 不含 model 名稱（Recharts 把字串中的 . 當路徑），以索引為 key
     models.forEach((model, i) => {
       const r = m.byModel[model]
@@ -39,65 +58,109 @@ export function MonthlyTrendChart({
     return row
   })
 
-  if (!colors) return <div className="ai-stats-chart" aria-hidden="true" />
+  const head = (
+    <div className="ai-stats-head">
+      <h2>趨勢</h2>
+      <div className="ai-stats-seg" role="group" aria-label="趨勢粒度">
+        {GRANULARITIES.map((g) => (
+          <button
+            key={g.value}
+            type="button"
+            aria-pressed={granularity === g.value}
+            onClick={() => setGranularity(g.value)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
-  const axis = { stroke: colors['--line'], tick: { fill: colors['--fg-muted'], fontSize: 12 } }
+  if (!colors) {
+    return (
+      <>
+        {head}
+        <div className="ai-stats-chart" aria-hidden="true" />
+      </>
+    )
+  }
+
+  const axis = {
+    stroke: colors['--line'],
+    tick: { fill: colors['--fg-muted'], fontSize: 12 },
+  }
 
   return (
-    <div className="ai-stats-chart">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke={colors['--line']} strokeDasharray="3 3" />
-          <XAxis dataKey="month" {...axis} />
-          <YAxis yAxisId="cost" width={48} tickFormatter={(v: number) => `$${v}`} {...axis} />
-          <YAxis
-            yAxisId="rate"
-            orientation="right"
-            domain={[0, 1]}
-            width={40}
-            tickFormatter={(v: number) => pct(v)}
-            {...axis}
-          />
-          <Tooltip
-            contentStyle={{ background: 'var(--bg)', border: `1px solid ${colors['--line']}`, color: colors['--fg'] }}
-            labelStyle={{ color: colors['--fg'] }}
-            formatter={(value, name, item) => {
-              const key = String(item.dataKey)
-              if (key === 'costUsd') return [`$${Number(value).toFixed(2)}`, name]
-              const [kind, idx] = key.split('_')
-              const n = (item.payload as Record<string, string>)[`${kind}N_${idx}`]
-              return [value === null || value === undefined ? `—（${n}）` : `${pct(Number(value))}（${n}）`, name]
-            }}
-          />
-          <Legend wrapperStyle={{ color: colors['--fg-muted'], fontSize: 12 }} />
-          <Bar yAxisId="cost" dataKey="costUsd" name="花費" fill={colors['--gold']} fillOpacity={0.6} />
-          {models.flatMap((model, i) => {
-            const dash = DASHES[i % DASHES.length]
-            return [
-              <Line
-                key={`sev_${i}`}
-                yAxisId="rate"
-                dataKey={`sev_${i}`}
-                name={`嚴重度 ${model}`}
-                stroke={colors['--green']}
-                strokeDasharray={dash}
-                connectNulls={false}
-                dot={{ r: 3 }}
-              />,
-              <Line
-                key={`cat_${i}`}
-                yAxisId="rate"
-                dataKey={`cat_${i}`}
-                name={`類型 ${model}`}
-                stroke={colors['--pink']}
-                strokeDasharray={dash}
-                connectNulls={false}
-                dot={{ r: 3 }}
-              />,
-            ]
-          })}
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      {head}
+      <div className="ai-stats-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={colors['--line']} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="x"
+              tickFormatter={granularity === 'week' ? weekTick : undefined}
+              minTickGap={granularity === 'week' ? 24 : 8}
+              interval="preserveStartEnd"
+              {...axis}
+            />
+            <YAxis yAxisId="cost" width={48} tickFormatter={(v: number) => `$${v}`} {...axis} />
+            <YAxis
+              yAxisId="rate"
+              orientation="right"
+              domain={[0, 1]}
+              width={40}
+              tickFormatter={(v: number) => pct(v)}
+              {...axis}
+            />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--bg)',
+                border: `1px solid ${colors['--line']}`,
+                color: colors['--fg'],
+              }}
+              labelStyle={{ color: colors['--fg'] }}
+              labelFormatter={(label) =>
+                granularity === 'week' ? `${weekTick(String(label))} 起的一週` : String(label)
+              }
+              formatter={(value, name, item) => {
+                const key = String(item.dataKey)
+                if (key === 'costUsd') return [`$${Number(value).toFixed(2)}`, name]
+                const [kind, idx] = key.split('_')
+                const n = (item.payload as Record<string, string>)[`${kind}N_${idx}`]
+                return [value === null || value === undefined ? `—（${n}）` : `${pct(Number(value))}（${n}）`, name]
+              }}
+            />
+            <Legend wrapperStyle={{ color: colors['--fg-muted'], fontSize: 12 }} />
+            <Bar yAxisId="cost" dataKey="costUsd" name="花費" fill={colors['--gold']} fillOpacity={0.6} />
+            {models.flatMap((model, i) => {
+              const dash = DASHES[i % DASHES.length]
+              return [
+                <Line
+                  key={`sev_${i}`}
+                  yAxisId="rate"
+                  dataKey={`sev_${i}`}
+                  name={`嚴重度 ${model}`}
+                  stroke={colors['--green']}
+                  strokeDasharray={dash}
+                  connectNulls={false}
+                  dot={{ r: 3 }}
+                />,
+                <Line
+                  key={`cat_${i}`}
+                  yAxisId="rate"
+                  dataKey={`cat_${i}`}
+                  name={`類型 ${model}`}
+                  stroke={colors['--pink']}
+                  strokeDasharray={dash}
+                  connectNulls={false}
+                  dot={{ r: 3 }}
+                />,
+              ]
+            })}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </>
   )
 }

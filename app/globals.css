@@ -1474,6 +1474,43 @@ tbody tr:last-child td {
 .ai-stats-section > h2 {
   margin-bottom: var(--space-3);
 }
+.ai-stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ai-stats-head > h2 {
+  margin: 0;
+}
+.ai-stats-seg {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+}
+.ai-stats-seg button {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 0;
+  padding: var(--space-1) var(--space-4);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.ai-stats-seg button + button {
+  border-left: 1px solid var(--line-strong);
+}
+.ai-stats-seg button:hover {
+  background: var(--panel-hover);
+}
+.ai-stats-seg button[aria-pressed='true'] {
+  background: var(--gold);
+  color: var(--bg);
+}
+.ai-stats-seg button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
 .ai-stats-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

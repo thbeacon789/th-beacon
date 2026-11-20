@@ -2,6 +2,7 @@ import type { AiUsageSource, JudgmentLabel, Severity } from './types'
 import type { DiagnosisCategory } from './heartbeat'
 
 export const STATS_TZ_OFFSET_MINUTES = 480 // Asia/Taipei，無日光節約
+export const STATS_WEEKS = 12
 export const UNKNOWN_MODEL = '未知 model'
 
 export interface Rate {
@@ -26,6 +27,12 @@ export interface UsageStatRow {
   occurredAt: string
 }
 
+export interface TrendPoint {
+  costUsd: number
+  unpricedCount: number
+  byModel: Record<string, { severity: Rate; category: Rate }>
+}
+
 export interface AiStatsView {
   windowMonths: number
   summary: {
@@ -37,12 +44,9 @@ export interface AiStatsView {
   }
   costBySource: Record<AiUsageSource, { costUsd: number; unpricedCount: number }>
   models: string[]
-  monthly: Array<{
-    month: string
-    costUsd: number
-    unpricedCount: number
-    byModel: Record<string, { severity: Rate; category: Rate }>
-  }>
+  monthly: Array<{ month: string } & TrendPoint>
+  /** 近 STATS_WEEKS 週（台北週一起算），week = 該週週一的 'YYYY-MM-DD'，由舊到新 */
+  weekly: Array<{ week: string } & TrendPoint>
   miss: {
     severityMatrix: Record<Severity, Record<Severity, number>>
     tooHigh: number
@@ -100,6 +104,31 @@ export function monthWindow(now: Date, months: number): { keys: string[]; sinceI
   return { keys, sinceIso: new Date(sinceMs).toISOString() }
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function weekKeyOfShifted(d: Date): string {
+  const back = (d.getUTCDay() + 6) % 7 // 週一 = 0
+  const mon = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back))
+  return `${mon.getUTCFullYear()}-${pad2(mon.getUTCMonth() + 1)}-${pad2(mon.getUTCDate())}`
+}
+
+/** 該週週一的台北日期 'YYYY-MM-DD'（週一 00:00 台北起算） */
+export function weekKey(iso: string): string {
+  return weekKeyOfShifted(taipeiShifted(Date.parse(iso)))
+}
+
+/** 含本週往前共 weeks 週，由舊到新 */
+export function weekWindow(now: Date, weeks: number): { keys: string[] } {
+  const cur = taipeiShifted(now.getTime())
+  const keys: string[] = []
+  for (let i = weeks - 1; i >= 0; i--) {
+    keys.push(weekKeyOfShifted(new Date(cur.getTime() - i * 7 * 86_400_000)))
+  }
+  return { keys }
+}
+
 function rate(correct: number, total: number): Rate {
   return { correct, total, rate: total === 0 ? null : correct / total }
 }
@@ -125,12 +154,46 @@ function addToTally(t: Tally, l: JudgmentLabel): void {
 
 const isLabeled = (l: JudgmentLabel): boolean => l.severityVerdict !== null || l.categoryVerdict !== null
 
+// 月／週共用的分桶聚合：keys 之外的資料略過；空桶仍會出現
+function buildSeries(
+  keys: string[],
+  keyFn: (iso: string) => string,
+  usage: UsageStatRow[],
+  judgments: JudgmentStatRow[],
+): Array<{ key: string } & TrendPoint> {
+  const cost = new Map(keys.map((k) => [k, { costUsd: 0, unpricedCount: 0 }]))
+  const tallies = new Map<string, Map<string, Tally>>(keys.map((k) => [k, new Map()]))
+  for (const r of usage) {
+    const c = cost.get(keyFn(r.occurredAt))
+    if (!c) continue
+    if (r.costUsd === null) c.unpricedCount++
+    else c.costUsd += r.costUsd
+  }
+  for (const r of judgments) {
+    const perModel = tallies.get(keyFn(r.judgedAt))
+    if (!perModel) continue
+    const model = r.model ?? UNKNOWN_MODEL
+    const t = perModel.get(model) ?? emptyTally()
+    perModel.set(model, t)
+    addToTally(t, r.label)
+  }
+  return keys.map((key) => {
+    const c = cost.get(key)!
+    const byModel: TrendPoint['byModel'] = {}
+    for (const [model, t] of tallies.get(key)!) {
+      byModel[model] = { severity: rate(t.sevCorrect, t.sevTotal), category: rate(t.catCorrect, t.catTotal) }
+    }
+    return { key, costUsd: c.costUsd, unpricedCount: c.unpricedCount, byModel }
+  })
+}
+
 export function computeAiStats(input: {
   judgments: JudgmentStatRow[]
   usage: UsageStatRow[]
   services: Array<{ id: string; name: string }>
   now: Date
   months: number
+  weeks?: number
 }): AiStatsView {
   const { keys } = monthWindow(input.now, input.months)
   const inWindow = new Set(keys)
@@ -145,25 +208,19 @@ export function computeAiStats(input: {
   const costBySource = Object.fromEntries(
     SOURCES.map((s) => [s, { costUsd: 0, unpricedCount: 0 }]),
   ) as AiStatsView['costBySource']
-  const monthCost = new Map<string, { costUsd: number; unpricedCount: number }>(
-    keys.map((k) => [k, { costUsd: 0, unpricedCount: 0 }]),
-  )
   const svcCost = new Map<string, { costUsd: number; unpricedCount: number }>()
   for (const r of usage) {
     const mk = monthKey(r.occurredAt)
-    const m = monthCost.get(mk)!
     const sc = svcCost.get(r.serviceId) ?? { costUsd: 0, unpricedCount: 0 }
     svcCost.set(r.serviceId, sc)
     const isCurrent = mk === currentKey
     if (r.costUsd === null) {
-      m.unpricedCount++
       sc.unpricedCount++
       if (isCurrent) {
         monthUnpricedCount++
         costBySource[r.source].unpricedCount++
       }
     } else {
-      m.costUsd += r.costUsd
       sc.costUsd += r.costUsd
       if (isCurrent) {
         monthCostUsd += r.costUsd
@@ -175,7 +232,6 @@ export function computeAiStats(input: {
   // 判定
   const total = emptyTally()
   let labeledCount = 0
-  const byMonthModel = new Map<string, Map<string, Tally>>(keys.map((k) => [k, new Map()]))
   const models = new Set<string>()
   const matrix = Object.fromEntries(
     SEVERITIES.map((a) => [a, Object.fromEntries(SEVERITIES.map((b) => [b, 0]))]),
@@ -191,11 +247,6 @@ export function computeAiStats(input: {
     models.add(model)
     addToTally(total, r.label)
     if (isLabeled(r.label)) labeledCount++
-
-    const perModel = byMonthModel.get(monthKey(r.judgedAt))!
-    const mt = perModel.get(model) ?? emptyTally()
-    perModel.set(model, mt)
-    addToTally(mt, r.label)
 
     const sj = svcJ.get(r.serviceId) ?? { judgments: 0, labeled: 0, tally: emptyTally() }
     svcJ.set(r.serviceId, sj)
@@ -215,14 +266,14 @@ export function computeAiStats(input: {
     }
   }
 
-  const monthly = keys.map((month) => {
-    const c = monthCost.get(month)!
-    const byModel: Record<string, { severity: Rate; category: Rate }> = {}
-    for (const [model, t] of byMonthModel.get(month)!) {
-      byModel[model] = { severity: rate(t.sevCorrect, t.sevTotal), category: rate(t.catCorrect, t.catTotal) }
-    }
-    return { month, costUsd: c.costUsd, unpricedCount: c.unpricedCount, byModel }
-  })
+  const monthly = buildSeries(keys, monthKey, usage, judgments).map(({ key, ...rest }) => ({ month: key, ...rest }))
+  // 週序列用同一批未過濾資料（月視窗須涵蓋週視窗）；視窗外的由 buildSeries 略過
+  const weekly = buildSeries(
+    weekWindow(input.now, input.weeks ?? STATS_WEEKS).keys,
+    weekKey,
+    input.usage,
+    input.judgments,
+  ).map(({ key, ...rest }) => ({ week: key, ...rest }))
 
   const names = new Map(input.services.map((s) => [s.id, s.name]))
   const ids = new Set([...svcJ.keys(), ...svcCost.keys()])
@@ -262,6 +313,7 @@ export function computeAiStats(input: {
     costBySource,
     models: [...models].sort(),
     monthly,
+    weekly,
     miss: { severityMatrix: matrix, tooHigh, tooLow, envToApp, appToEnv },
     services,
   }

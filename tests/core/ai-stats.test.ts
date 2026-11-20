@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   monthKey,
   monthWindow,
+  weekKey,
+  weekWindow,
+  STATS_WEEKS,
   computeAiStats,
   UNKNOWN_MODEL,
   type JudgmentStatRow,
@@ -177,5 +180,61 @@ describe('services', () => {
   it('查無名稱 → (unknown)', () => {
     const v = run([j({ serviceId: 'zzz' })])
     expect(v.services[0].name).toBe('(unknown)')
+  })
+})
+
+describe('weekly', () => {
+  it('weekKey 以台北時間週一 00:00 切週', () => {
+    expect(weekKey('2026-11-15T16:00:00Z')).toBe('2026-11-16') // 台北週一 00:00
+    expect(weekKey('2026-11-15T15:59:59Z')).toBe('2026-11-09') // 台北週日 23:59:59
+  })
+  it('跨年的週：2026-12-28 那週涵蓋到 2027-01-03', () => {
+    expect(weekKey('2026-12-27T16:00:00Z')).toBe('2026-12-28')
+    expect(weekKey('2027-01-02T00:00:00Z')).toBe('2026-12-28')
+    expect(weekKey('2027-01-03T15:59:59Z')).toBe('2026-12-28')
+    expect(weekKey('2027-01-03T16:00:00Z')).toBe('2027-01-04')
+  })
+  it('weekWindow 跨年、由舊到新', () => {
+    const { keys } = weekWindow(new Date('2027-01-05T00:00:00Z'), 3)
+    expect(keys).toEqual(['2026-12-21', '2026-12-28', '2027-01-04'])
+  })
+  it('長度為 STATS_WEEKS(12)、由舊到新、空週仍出現、最後一筆含 now', () => {
+    const v = run([], [], 6)
+    expect(STATS_WEEKS).toBe(12)
+    expect(v.weekly).toHaveLength(12)
+    const keys = v.weekly.map((w) => w.week)
+    expect(keys).toEqual([...keys].sort())
+    expect(keys[0]).toBe('2026-08-24')
+    expect(keys[11]).toBe('2026-11-09') // NOW = 台北 2026-11-11 週三
+    expect(v.weekly.every((w) => w.costUsd === 0 && Object.keys(w.byModel).length === 0)).toBe(true)
+  })
+  it('12 週以前的資料不計入 weekly，但仍計入 monthly', () => {
+    const old = '2026-08-20T00:00:00Z' // 週視窗起點 2026-08-24 之前
+    const v = run([j({ judgedAt: old, label: { severityVerdict: 'correct' } })], [u({ occurredAt: old, costUsd: 3 })], 6)
+    expect(v.weekly.reduce((a, w) => a + w.costUsd, 0)).toBe(0)
+    expect(v.weekly.every((w) => Object.keys(w.byModel).length === 0)).toBe(true)
+    const aug = v.monthly.find((m) => m.month === '2026-08')!
+    expect(aug.costUsd).toBe(3)
+    expect(aug.byModel.m1.severity.total).toBe(1)
+  })
+  it('依 model 分線，花費與準確率歸到正確的週', () => {
+    const v = run(
+      [
+        j({ model: 'a', judgedAt: '2026-11-09T00:00:00Z', label: { severityVerdict: 'correct' } }),
+        j({ model: 'b', judgedAt: '2026-11-10T00:00:00Z', label: { severityVerdict: 'wrong', severityCorrect: 'P0' } }),
+        j({ model: 'a', judgedAt: '2026-11-02T00:00:00Z', label: { severityVerdict: 'wrong', severityCorrect: 'P0' } }),
+      ],
+      [u({ occurredAt: '2026-11-09T00:00:00Z', costUsd: 2 }), u({ occurredAt: '2026-11-03T00:00:00Z', costUsd: 5, source: 'ci_pr' }), u({ occurredAt: '2026-11-03T00:00:00Z', costUsd: null })],
+      6,
+    )
+    const cur = v.weekly.find((w) => w.week === '2026-11-09')!
+    const prev = v.weekly.find((w) => w.week === '2026-11-02')!
+    expect(cur.costUsd).toBe(2)
+    expect(cur.byModel.a.severity).toEqual({ correct: 1, total: 1, rate: 1 })
+    expect(cur.byModel.b.severity).toEqual({ correct: 0, total: 1, rate: 0 })
+    expect(prev.costUsd).toBe(5)
+    expect(prev.unpricedCount).toBe(1)
+    expect(prev.byModel.a.severity).toEqual({ correct: 0, total: 1, rate: 0 })
+    expect(prev.byModel.b).toBeUndefined()
   })
 })

@@ -1,7 +1,7 @@
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
 import { getAiStats } from '@/web/ai-stats-queries'
-import { MonthlyTrendChart } from '@/web/ai-stats-charts'
+import { TrendChart } from '@/web/ai-stats-charts'
 import type { AiStatsView, Rate } from '@/core/ai-stats'
 import type { AiUsageSource, Severity } from '@/core/types'
 
@@ -81,9 +81,8 @@ export default async function AiStatsPage() {
           <Cards s={stats.summary} />
 
           <section className="ai-stats-section">
-            <h2>每月趨勢</h2>
-            <MonthlyTrendChart monthly={stats.monthly} models={stats.models} />
-            <p className="hint">柱狀＝花費（左軸）｜綠線＝嚴重度準確率、粉線＝類型準確率（右軸）｜線型區分 model｜無樣本的月份斷線</p>
+            <TrendChart monthly={stats.monthly} weekly={stats.weekly} models={stats.models} />
+            <p className="hint">柱狀＝花費（左軸）｜綠線＝嚴重度準確率、粉線＝類型準確率（右軸）｜線型區分 model｜無樣本的區間斷線｜週＝台北週一起算，近 12 週</p>
           </section>
 
           <section className="ai-stats-section">
