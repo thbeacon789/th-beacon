@@ -6,7 +6,13 @@
     "domains": ["altinvest.finance", "www.altinvest.finance", "api.altinvest.finance"],
     "expectedPublicPorts": [80, 443],
     "logSources": [
-      { "name": "auth", "type": "journal", "unit": "ssh" }
+      { "name": "auth", "type": "journal", "unit": "ssh" },
+      { "name": "caddy", "type": "docker", "container": "caddy" },
+      { "name": "api", "type": "docker", "container": "api" },
+      { "name": "frontend", "type": "docker", "container": "frontend" },
+      { "name": "worker", "type": "docker", "container": "worker" },
+      { "name": "cron", "type": "docker", "container": "cron" },
+      { "name": "grid-bot", "type": "docker", "container": "grid-bot" }
     ]
   }
 ]
