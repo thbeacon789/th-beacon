@@ -1,10 +1,13 @@
 import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SCAN_AGE_HOURS, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
 import type {
   CertFact, CheckResult, CheckStatus, ExposureFact, ExposureHeaders, Finding, FindingSeverity,
-  HourCount, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
+  ContainerEntry, HourCount, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
   SecurityScanPayload, ValidationResult,
 } from './types.ts'
 
+const MAX_CONTAINERS = 200
+const MAX_CONTAINER_FIELD = 300
+const MAX_CONTAINER_PORTS = 50
 const CLOCK_SKEW_MS = 10 * 60 * 1000
 const STATUSES: readonly CheckStatus[] = ['ok', 'warn', 'bad', 'unknown', 'na']
 const JUDGED: readonly JudgedCheckKey[] = ['ports', 'updates', 'logins']
@@ -291,8 +294,29 @@ function parseInventory(v: unknown, errors: string[]): Inventory | null {
     if (proto && portOk && process !== null) listeners.push({ proto, port: l.port as number, process })
   })
 
+  let containers: ContainerEntry[] | undefined
+  if (v.containers !== undefined) {
+    const list = arr(v.containers, 'inventory.containers', errors)
+    if (list && list.length > MAX_CONTAINERS) errors.push(`inventory.containers 不可超過 ${MAX_CONTAINERS} 個`)
+    else if (list) {
+      containers = []
+      list.forEach((c, i) => {
+        const p = `inventory.containers[${i}]`
+        if (!isObj(c)) return void errors.push(`${p} 必須是物件`)
+        const name = str(c.name, `${p}.name`, errors, { max: MAX_CONTAINER_FIELD })
+        const image = str(c.image, `${p}.image`, errors, { max: MAX_CONTAINER_FIELD })
+        const ports = strArray(c.ports, `${p}.ports`, errors)
+        if (ports && ports.length > MAX_CONTAINER_PORTS) errors.push(`${p}.ports 不可超過 ${MAX_CONTAINER_PORTS} 個`)
+        if (ports && ports.some((x) => x.length > MAX_CONTAINER_FIELD)) errors.push(`${p}.ports 的項目不可超過 ${MAX_CONTAINER_FIELD} 字`)
+        if (name !== null && image !== null && ports && ports.length <= MAX_CONTAINER_PORTS) containers!.push({ name, image, ports })
+      })
+    }
+  }
+
   if (errors.length > before || !users || !admins || !services) return null
-  return { users, admins, sshKeys, scheduled, listeners, services }
+  const inv: Inventory = { users, admins, sshKeys, scheduled, listeners, services }
+  if (containers) inv.containers = containers
+  return inv
 }
 
 export function parseSecurityScanPayload(input: unknown, now: Date): ValidationResult<SecurityScanPayload> {

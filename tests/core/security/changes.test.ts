@@ -101,3 +101,34 @@ describe('evaluateChanges', () => {
     expect(r.findings).toEqual([])
   })
 })
+
+describe('evaluateChanges 容器', () => {
+  const c = (name: string, image = 'repo/app', ports: string[] = []) => ({ name, image, ports })
+  const titles = (cur?: Inventory['containers'], base?: Inventory['containers']) =>
+    evaluateChanges('vm', inv({ containers: cur }), inv({ containers: base })).findings.map((f) => [f.severity, f.title])
+
+  it('新增容器', () => {
+    expect(titles([c('a'), c('b', 'evil/x')], [c('a')])).toEqual([['medium', '新增容器 b（映像檔 evil/x）']])
+  })
+  it('映像檔來源變更', () => {
+    expect(titles([c('a', 'evil/app')], [c('a')])).toEqual([['medium', '容器 a 的映像檔來源由 repo/app 變為 evil/app']])
+  })
+  it('新增對外埠對應', () => {
+    expect(titles([c('a', 'repo/app', ['0.0.0.0:22->22/tcp'])], [c('a')])).toEqual([['medium', '容器 a 新增對外埠對應 0.0.0.0:22->22/tcp']])
+  })
+  it('容器消失、port 減少、無變化都不報', () => {
+    expect(titles([c('a')], [c('a'), c('b')])).toEqual([])
+    expect(titles([c('a', 'repo/app', [])], [c('a', 'repo/app', ['0.0.0.0:80->80/tcp'])])).toEqual([])
+    expect(titles([c('a')], [c('a')])).toEqual([])
+  })
+  it('基準或目前沒有 containers：跳過，狀態維持 ok', () => {
+    expect(titles([c('a')], undefined)).toEqual([])
+    expect(titles(undefined, [c('a')])).toEqual([])
+    expect(evaluateChanges('vm', inv({ containers: [c('a')] }), inv()).check.status).toBe('ok')
+  })
+  it('標題超長時截斷到 MAX_TITLE 且通過 payload 驗證', () => {
+    const f = evaluateChanges('vm', inv({ containers: [c('n', 'x'.repeat(300))] }), inv({ containers: [] })).findings[0]
+    expect(f.title.length).toBeLessThanOrEqual(120)
+    expect(f.title.startsWith('新增容器 n（映像檔 xxx')).toBe(true)
+  })
+})

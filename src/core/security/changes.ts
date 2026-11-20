@@ -1,6 +1,10 @@
+import { MAX_TITLE } from './constants.ts'
+import { truncateToUtf16Length } from './text.ts'
 import type { CheckStatus, Evaluation, Finding, Inventory, ScanKind } from './types.ts'
 
 const RECOMMENDATION = '確認是否為團隊成員所為；若否，視為入侵跡象處理'
+
+const clip = (title: string) => truncateToUtf16Length(title, MAX_TITLE)
 
 export function pickBaseline<T extends { scannedAt: string; inventory: Inventory | null }>(history: T[]): Inventory | null {
   let best: T | null = null
@@ -50,6 +54,22 @@ export function evaluateChanges(kind: ScanKind, current: Inventory | undefined, 
     add('medium', `新增監聽埠 ${l.proto}/${l.port}（${l.process}）`)
   }
   for (const name of added(current.services, baseline.services, (x) => x)) add('medium', `新增常駐服務 ${name}`)
+
+  // 容器：目前與基準都有清單才比較（舊基準沒有此欄位時，第一次帶上視為建立基準）。
+  // 映像檔版本不列入（見 normalizeImage）；只標記新增，消失與 port 減少不報。
+  if (current.containers !== undefined && baseline.containers !== undefined) {
+    const baseByName = new Map(baseline.containers.map((c) => [c.name, c]))
+    for (const c of current.containers) {
+      const b = baseByName.get(c.name)
+      if (!b) {
+        add('medium', clip(`新增容器 ${c.name}（映像檔 ${c.image}）`))
+        continue
+      }
+      if (b.image !== c.image) add('medium', clip(`容器 ${c.name} 的映像檔來源由 ${b.image} 變為 ${c.image}`))
+      const basePorts = new Set(b.ports)
+      for (const port of c.ports) if (!basePorts.has(port)) add('medium', clip(`容器 ${c.name} 新增對外埠對應 ${port}`))
+    }
+  }
 
   let status: CheckStatus = 'ok'
   if (findings.some((f) => f.severity === 'high')) status = 'bad'

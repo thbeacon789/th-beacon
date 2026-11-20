@@ -540,6 +540,62 @@ echo '2026-11-18T21:31:00Z err line' >&2`)
     expect(sentinels(a)).toHaveLength(3)
   })
 
+  describe('containers 區段', () => {
+    const section = (stdout: string) => /@@BEACON:[a-f0-9]{32}:containers@@\n([\s\S]*?)@@BEACON:/.exec(stdout)![1]
+    const psFake = (body: string) => fake('docker', `case "$1" in ps) ${body};; *) exit 1;; esac`)
+
+    it('多個容器：三欄 TAB 分隔，解析端正規化', async () => {
+      setupFakes()
+      psFake(`printf 'web\\trepo/web:1.2\\t0.0.0.0:443->443/tcp, [::]:443->443/tcp, 3000/tcp\\ndb\\tpostgres:16\\t5432/tcp\\n'`)
+      const r = await run()
+      expect(section(r.stdout)).toBe('web\trepo/web:1.2\t0.0.0.0:443->443/tcp, [::]:443->443/tcp, 3000/tcp\ndb\tpostgres:16\t5432/tcp\n')
+      const f = parseVmDump(r.stdout, NONCE)
+      expect(f.inventory.containers).toEqual([
+        { name: 'web', image: 'repo/web', ports: ['0.0.0.0:443->443/tcp', '[::]:443->443/tcp'] },
+        { name: 'db', image: 'postgres', ports: [] },
+      ])
+      expect(f.missingSections).toEqual([])
+    })
+
+    it('沒有 docker 指令 → NONE', async () => {
+      setupFakes()
+      const r = await run()
+      expect(section(r.stdout)).toBe('NONE\n')
+      expect('containers' in parseVmDump(r.stdout, NONCE).inventory).toBe(false)
+    })
+
+    it('docker ps 失敗 → ERROR，且解析端視為缺漏區段', async () => {
+      setupFakes()
+      psFake('exit 1')
+      const r = await run()
+      expect(section(r.stdout)).toBe('ERROR\n')
+      expect(parseVmDump(r.stdout, NONCE).missingSections).toEqual(['containers'])
+    })
+
+    it('沒有任何容器 → 空區段', async () => {
+      setupFakes()
+      psFake('true')
+      const r = await run()
+      expect(section(r.stdout)).toBe('')
+      expect(parseVmDump(r.stdout, NONCE).inventory.containers).toEqual([])
+    })
+
+    it('名稱或欄位含非法字元 → 哨兵且不含原文', async () => {
+      setupFakes()
+      psFake(`printf 'ev il;rm\\trepo/x:1\\t80/tcp\\nok\\timg$(id):1\\t\\ngood\\trepo/g:1\\t\\n'`)
+      const r = await run()
+      const body = section(r.stdout)
+      expect(body).not.toContain('ev il')
+      expect(body).not.toContain('rm')
+      expect(body).not.toContain('$(id)')
+      const lines = body.split('\n').filter(Boolean)
+      expect(lines).toHaveLength(3)
+      expect(lines[0]).toMatch(/^\?container:[0-9a-f]{16}$/)
+      expect(lines[1]).toMatch(/^\?container:[0-9a-f]{16}$/)
+      expect(lines[2]).toBe('good\trepo/g:1\t')
+    })
+  })
+
   it('腳本為唯讀：不含寫入、改動服務或動態執行的語法', () => {
     const code = fs
       .readFileSync(SCRIPT, 'utf8')

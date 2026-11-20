@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { parseVmDump, REQUIRED_SECTIONS, splitSections } from '@/core/security/collect/vm-dump'
+import { normalizeImage, normalizePorts, parseVmDump, REQUIRED_SECTIONS, splitSections } from '@/core/security/collect/vm-dump'
 
 const NONCE = '0123456789abcdef0123456789abcdef'
 const fixture = readFileSync(new URL('./fixtures/vm-dump.txt', import.meta.url), 'utf8')
@@ -166,5 +166,60 @@ describe('parseVmDump', () => {
     const without = fixture.split('\n').filter((l) => l !== mark('scheduled')).join('\n')
     expect(parseVmDump(without, NONCE).missingSections).toEqual(['scheduled'])
     expect(parseVmDump(build([['users', '']]), NONCE).missingSections).not.toContain('users')
+  })
+})
+
+describe('normalizeImage', () => {
+  it.each([
+    ['repo/app:tag', 'repo/app'],
+    ['host:5000/ns/app:tag', 'host:5000/ns/app'],
+    ['host:5000/ns/app', 'host:5000/ns/app'],
+    ['repo/app@sha256:' + 'a'.repeat(64), 'repo/app'],
+    ['repo/app:tag@sha256:' + 'a'.repeat(64), 'repo/app'],
+    ['nginx', 'nginx'],
+    ['nginx:latest', 'nginx'],
+    ['0123456789ab', '<untagged>'],
+    ['a'.repeat(64), '<untagged>'],
+    ['sha256:' + 'a'.repeat(64), '<untagged>'],
+  ])('%s -> %s', (raw, want) => expect(normalizeImage(raw)).toBe(want))
+})
+
+describe('normalizePorts', () => {
+  it('只留發佈到主機的對應，排序並去重', () => {
+    expect(normalizePorts('0.0.0.0:443->443/tcp, [::]:80->80/tcp, 3000/tcp, 0.0.0.0:443->443/tcp, 0.0.0.0:80->80/tcp')).toEqual([
+      '0.0.0.0:443->443/tcp', '0.0.0.0:80->80/tcp', '[::]:80->80/tcp',
+    ])
+  })
+  it('空字串與全部未發佈 → 空陣列', () => {
+    expect(normalizePorts('')).toEqual([])
+    expect(normalizePorts('3000/tcp, 5432/tcp')).toEqual([])
+  })
+})
+
+describe('parseVmDump containers', () => {
+  const base: Array<[string, string]> = REQUIRED_SECTIONS.filter((n) => n !== 'containers').map((n) => [n, ''])
+  const parse = (body: string | null) => parseVmDump(build(body === null ? base : [...base, ['containers', body]]), NONCE)
+
+  it('fixture：正規化 image 與 ports', () => {
+    expect(parseVmDump(fixture, NONCE).inventory.containers).toEqual([{ name: 'web', image: 'repo/web', ports: ['0.0.0.0:443->443/tcp', '[::]:443->443/tcp'] }])
+  })
+  it('NONE → 不設定該鍵；空內容 → []', () => {
+    const none = parse('NONE')
+    expect('containers' in none.inventory).toBe(false)
+    expect(none.missingSections).toEqual([])
+    expect(parse('').inventory.containers).toEqual([])
+    expect(parse('').missingSections).toEqual([])
+  })
+  it('ERROR → 視為區段缺漏（整次掃描失敗）', () => {
+    const r = parse('ERROR')
+    expect(r.missingSections).toEqual(['containers'])
+    expect('containers' in r.inventory).toBe(false)
+  })
+  it('哨兵行保留為項目；格式不符的行不可消失', () => {
+    expect(parse('?container:0123456789abcdef').inventory.containers).toEqual([{ name: '?container:0123456789abcdef', image: '?', ports: [] }])
+    expect(parse('only-one-column').inventory.containers).toEqual([{ name: '?container:unparsed', image: '?', ports: [] }])
+  })
+  it('缺 containers 區段列入 missingSections', () => {
+    expect(parse(null).missingSections).toEqual(['containers'])
   })
 })

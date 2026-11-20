@@ -17,7 +17,18 @@ export interface ExposureHeaders { hsts: boolean; contentTypeOptions: boolean; f
 export interface ExposureFact { domain: string; sensitivePaths: Array<{ path: string; exposed: boolean }>; headers: ExposureHeaders; legacyTls: boolean | null }
 export interface ScheduledEntry { location: string; schedule: string; executable: string; hash: string }
 export interface Listener { proto: 'tcp' | 'udp'; port: number; process: string }
-export interface Inventory { users: string[]; admins: string[]; sshKeys: Array<{ user: string; fingerprint: string }>; scheduled: ScheduledEntry[]; listeners: Listener[]; services: string[] }
+/** 執行中的容器；image 不含版本，ports 只含發佈到主機的對應 */
+export interface ContainerEntry { name: string; image: string; ports: string[] }
+export interface Inventory {
+  users: string[]
+  admins: string[]
+  sshKeys: Array<{ user: string; fingerprint: string }>
+  scheduled: ScheduledEntry[]
+  listeners: Listener[]
+  services: string[]
+  /** 選填：舊快照與沒有 Docker 的機器沒有此欄位 */
+  containers?: ContainerEntry[]
+}
 
 export interface SecurityScanPayload {
   scannedAt: string

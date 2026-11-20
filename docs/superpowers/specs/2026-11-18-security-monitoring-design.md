@@ -180,7 +180,7 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 | 登入 | 過去 24 小時 sshd 紀錄：失敗次數、來源 IP 前十名與次數、被嘗試的使用者名稱前十名、成功登入的使用者／來源 IP／時間 | 計數與前十名 |
 | log 量 | 過去 24 小時，每個 `logSources` 每小時的行數 | 每來源 24 個數字（UTC 整點對齊） |
 | 防護設定 | SSH 的生效設定中是否允許密碼登入、是否允許 root 登入；自動安全更新（unattended-upgrades）是否啟用 | 三個布林值，分別併入 `logins` 與 `updates` 的判讀資料 |
-| 清冊 | 可登入的使用者帳號；具管理員權限的帳號；每個帳號的 SSH 授權金鑰指紋；排程工作；所有 TCP／UDP 監聽埠與行程名；已啟用的 systemd 服務名稱 | 見 §7.1 的 `inventory` |
+| 清冊 | 可登入的使用者帳號；具管理員權限的帳號；每個帳號的 SSH 授權金鑰指紋；排程工作；所有 TCP／UDP 監聽埠與行程名；已啟用的 systemd 服務名稱；執行中的 Docker 容器（名稱、映像檔來源不含版本、發佈到主機的埠對應） | 見 §7.1 的 `inventory` |
 
 收集腳本的原則（**【設計者決定】**）：**無法解析就輸出哨兵，不靜默略過**。哨兵含內容 sha256 的前 16 碼，內容一變就會被變動比對標成「新增」。腳本固定 `PATH=/usr/sbin:/usr/bin:/sbin:/bin`，不寫任何檔案。具體：
 
@@ -312,7 +312,8 @@ Payload：
     "sshKeys": [ { "user": "ubuntu", "fingerprint": "SHA256:..." } ],
     "scheduled": [ { "location": "/etc/cron.d/backup", "schedule": "0 3 * * *", "executable": "/usr/local/bin/backup.sh", "hash": "sha256:..." } ],
     "listeners": [ { "proto": "tcp", "port": 443, "process": "nginx" } ],
-    "services": ["nginx.service", "altinvest.service"]
+    "services": ["nginx.service", "altinvest.service"],
+    "containers": [ { "name": "web", "image": "repo/web", "ports": ["0.0.0.0:443->443/tcp"] } ]   // 選填：沒有 Docker 的機器與舊快照省略
   }
 }
 ```
@@ -377,6 +378,7 @@ Payload：
 - 只看「新增」，不看移除。`changesIgnore` 中列出的項目先排除。
 - 新增具管理員權限的帳號、新增 SSH 金鑰＝`bad`，各一筆 `high` 發現。哨兵條目（`?sudoers:`、`#uid`、`%群組`、`UNPARSEABLE:`、`(sshd)` 的 `CONFIG:`、`?path:`／`?unit:`）的發現 title 會補上人看得懂的說明，比對邏輯與嚴重度不變。
 - 新增一般帳號、排程工作（以位置＋雜湊判定，內容改了也算新增）、監聽埠、已啟用服務＝`warn`，各一筆 `medium` 發現。
+- 容器（`inventory.containers`，目前與基準**都有**才比較；任一方沒有就跳過，舊基準沒有此欄位時第一次帶上視為建立容器基準）：新增容器名稱、同名容器的映像檔來源（不含版本）改變、同名容器新增對外埠對應＝`warn`，各一筆 `medium` 發現；容器消失、埠減少不報。收集端 `docker ps` 失敗（區段為 `ERROR`）視同收集缺漏，整次掃描失敗而不推快照。
 - 無新增＝`ok`。沒有可比對的基準（首次掃描）＝`unknown`，文字顯示「基準建立中」。
 - 已知限制：正常的部署或維運也會產生變動（例如新增排程），會顯示約七天；這是預期行為，由使用者自行判斷是否為自己人所為。
 
@@ -397,6 +399,7 @@ Payload：
 - 收集腳本是「變動偵測」，不是完整的入侵偵測。不涵蓋：使用者層級的 systemd timer、`AuthorizedKeysCommand` 指向的外部程式內容、systemd unit 的 drop-in 覆寫；服務清冊只列 `enabled` 狀態，`static`、runtime、暫態 unit 不在清冊內。
 - 防火牆判定不處理 deny 規則與優先序；來源 `0.0.0.0/0` 與 `::/0` 都計。`IPProtocol` 為 `"6"` 視同 tcp、`"17"` 視同 udp，缺漏或非字串視為適用該 proto，`ports: []` 視同全部埠（寧可多報）。
 - hosted 服務的相依套件稽核只支援 pnpm 與 npm。
+- **容器映像檔版本不列入比較**（每次部署版本都會變）：同一倉庫內被換成惡意版本偵測不到；未標記的本機映像檔（只有映像檔 ID）一律記為 `<untagged>`，換掉也偵測不到。`docker ps --format` 的輸出格式以首次實跑為準。
 - 變動會持續顯示約七天（比對基準為七天窗內最舊的一筆）。
 - 少見但合法的 sudoers 寫法第一次出現時會被標成「新增管理員」一次，之後成為基準。
 - 收集腳本從未在真實 Ubuntu 上執行過，只在 macOS 以假指令驗證（見 §11）。

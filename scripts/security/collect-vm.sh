@@ -18,7 +18,7 @@
 #
 # 用到的指令（全部唯讀）：
 #   ss, /usr/lib/update-notifier/apt-check, apt list --upgradable, cat, apt-config dump,
-#   sshd -T, journalctl, docker inspect, docker logs, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
+#   sshd -T, journalctl, docker ps, docker inspect, docker logs, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
 #   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut tail tr printf
 #
 # 相容性：目標為 Ubuntu 22.04/24.04（bash 5、GNU coreutils），但避免 bash 4+ 專屬語法，
@@ -306,6 +306,29 @@ s_services() {
   systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{ print $1 }'
 }
 
+# 執行中的容器清單：每個容器一行「名稱<TAB>image<TAB>ports」，正規化（去版本、只留對外埠）在解析端做。
+# docker 不存在 → NONE（這台機器沒有 Docker，是合法的「沒有容器」）；docker ps 失敗 → ERROR；沒有容器 → 空。
+# 欄位含不符預期字元的行輸出哨兵 ?container:<雜湊>，不輸出原文（容器名稱可能被攻擊者影響，且哨兵內容一變就會浮現）。
+# 注意：`docker ps --format` 的輸出格式（\t 展開、Ports 欄位寫法）未在真實 Docker 上驗證前，以首次實跑為準。
+s_containers() {
+  command -v docker >/dev/null 2>&1 || { echo NONE; return 0; }
+  local out line cname cimage cports cextra gt
+  local cname_re='^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  local cimage_re='^[A-Za-z0-9][A-Za-z0-9_.:/@-]*$'
+  gt=$(printf '\076')
+  local cports_re="^[][A-Za-z0-9_.:,${gt}/ -]*\$"
+  out=$(docker ps --no-trunc --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
+  printf '%s\n' "$out" | while IFS=$'\t' read -r cname cimage cports cextra; do
+    [ -n "$cname$cimage$cports$cextra" ] || continue
+    if [ -z "$cextra" ] && [[ $cname =~ $cname_re ]] && [[ $cimage =~ $cimage_re ]] && [[ $cports =~ $cports_re ]]; then
+      printf '%s\t%s\t%s\n' "$cname" "$cimage" "$cports"
+    else
+      line="$cname$cimage$cports$cextra"
+      echo "?container:$(hstr "$line")"
+    fi
+  done
+}
+
 # journal 型：先確認 unit 存在（不存在時 journalctl 仍以 0 結束且無輸出，會被誤當成「沒有 log」），
 # --utc 直接輸出 UTC，取每行前 13 字元（YYYY-MM-DDTHH）以 awk 串流計數（固定記憶體；輸出順序不保證，由解析端排序）
 log_journal() {
@@ -406,6 +429,7 @@ section admins s_admins
 section ssh_keys s_ssh_keys
 section scheduled s_scheduled
 section services s_services
+section containers s_containers
 
 # log:<name> 區段：來源由 BEACON_LOG_SOURCES_B64 指定，逐行驗證，不符的行直接略過
 if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then

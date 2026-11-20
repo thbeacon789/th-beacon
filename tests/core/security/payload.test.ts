@@ -188,6 +188,20 @@ describe('parseSecurityScanPayload', () => {
     expect(bad((p) => { p.inventory.listeners[0].proto = 'icmp' }).ok).toBe(false)
   })
 
+  it('inventory.containers：缺省與合法值通過，型別錯誤與超過上限被拒', () => {
+    expect(parseSecurityScanPayload(validVm(), now).ok).toBe(true)
+    const ok = (cs: unknown) => bad((p) => { p.inventory.containers = cs }).ok
+    expect(ok([{ name: 'a', image: 'repo/a', ports: ['0.0.0.0:80->80/tcp'] }])).toBe(true)
+    expect(ok([])).toBe(true)
+    expect(ok('x')).toBe(false)
+    expect(ok([{ name: '', image: 'i', ports: [] }])).toBe(false)
+    expect(ok([{ name: 'a', image: 1, ports: [] }])).toBe(false)
+    expect(ok([{ name: 'a', image: 'i', ports: 'x' }])).toBe(false)
+    expect(ok([{ name: 'a'.repeat(301), image: 'i', ports: [] }])).toBe(false)
+    expect(ok([{ name: 'a', image: 'i', ports: Array.from({ length: 51 }, (_, i) => `p${i}->1`) }])).toBe(false)
+    expect(ok(Array.from({ length: 201 }, (_, i) => ({ name: `c${i}`, image: 'i', ports: [] })))).toBe(false)
+  })
+
   it('忽略未知的頂層鍵', () => {
     const p = { ...validVm(), evil: 1 }
     const r = parseSecurityScanPayload(p, now)

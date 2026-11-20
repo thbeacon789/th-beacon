@@ -39,6 +39,8 @@ alice	SHA256:bbb
 @@BEACON:0123456789abcdef0123456789abcdef:services@@
 nginx.service
 ssh.service
+@@BEACON:0123456789abcdef0123456789abcdef:containers@@
+web	repo/web:1.2	0.0.0.0:443->443/tcp, [::]:443->443/tcp, 3000/tcp
 @@BEACON:0123456789abcdef0123456789abcdef:log:nginx@@
 2026-11-18T20:00:00Z	120
 2026-11-18T21:00:00Z	95

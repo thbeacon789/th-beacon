@@ -510,7 +510,8 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
     "sshKeys": [ { "user": "ubuntu", "fingerprint": "SHA256:abc123" } ],
     "scheduled": [ { "location": "/etc/cron.d/backup", "schedule": "0 3 * * *", "executable": "/usr/local/bin/backup.sh", "hash": "sha256:abc123" } ],
     "listeners": [ { "proto": "tcp", "port": 443, "process": "nginx" } ],
-    "services": ["nginx.service"]
+    "services": ["nginx.service"],
+    "containers": [ { "name": "web", "image": "repo/web", "ports": ["0.0.0.0:443->443/tcp"] } ]   // 選填：無 Docker 的機器省略；image 不含版本與 digest，ports 只含發佈到主機的對應
   }
 }
 ```
@@ -526,6 +527,7 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `findings[].recommendation` | 最長 300 字，可為空字串 |
 | `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
+| `inventory.containers`（選填） | 陣列，最多 200 個；`name`／`image` 為非空字串（各至多 300 字），`ports` 為字串陣列（至多 50 個、每個至多 300 字） |
 | `exposure[].sensitivePaths`、`exposure[].headers` | 必填；`headers` 的五個鍵（`hsts`、`contentTypeOptions`、`frameProtection`、`csp`、`referrerPolicy`）都必須是布林 |
 | `exposure[].sensitivePaths[].path` | 必須以 `/` 開頭 |
 | `scannedAt` | 須為嚴格 ISO 8601 且帶時區（`YYYY-MM-DDTHH:MM:SS(.fff)?` 後接 `Z` 或 `±HH:MM`）；不得晚於現在 10 分鐘，**不得早於現在 2 小時**（`MAX_SCAN_AGE_HOURS`，擋住回填過去快照來偽造變動比對基準）。超出回 422 |

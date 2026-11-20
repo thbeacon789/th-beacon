@@ -1,6 +1,6 @@
 // 注意：本檔會被 Node 直接執行（type stripping），import 只能用相對路徑加 .ts 副檔名。
 // 輸入（VM 輸出）為不可信資料：只做字串切割與固定樣式比對，格式不符的行一律略過。
-import type { Inventory, Listener, LogSourceVolume, ScheduledEntry } from '../types.ts'
+import type { ContainerEntry, Inventory, Listener, LogSourceVolume, ScheduledEntry } from '../types.ts'
 
 export interface VmFacts {
   listeners: Array<Listener & { address: string }>
@@ -23,7 +23,7 @@ export interface VmFacts {
 
 export const REQUIRED_SECTIONS: readonly string[] = [
   'listeners', 'apt_upgradable', 'reboot_required', 'os_release', 'auto_updates', 'sshd',
-  'auth', 'users', 'admins', 'ssh_keys', 'scheduled', 'services',
+  'auth', 'users', 'admins', 'ssh_keys', 'scheduled', 'services', 'containers',
 ]
 
 const NONCE_RE = /^[a-f0-9]{32}$/
@@ -164,6 +164,53 @@ function parseSshKeys(s: string | undefined): Inventory['sshKeys'] {
   return out
 }
 
+const UNTAGGED = '<untagged>'
+
+/** 映像檔來源（不含版本）：去掉 @digest 與 tag；映像檔 ID（本機未標記建置）一律記為 <untagged>。 */
+export function normalizeImage(raw: string): string {
+  let s = raw.trim()
+  if (/^sha256:/.test(s) || /^[0-9a-f]{12,64}$/.test(s)) return UNTAGGED
+  const at = s.indexOf('@')
+  if (at >= 0) s = s.slice(0, at)
+  // registry 可帶埠號（host:5000/app:tag），只有最後一個 / 之後的 : 才是 tag
+  const colon = s.lastIndexOf(':')
+  if (colon > s.lastIndexOf('/')) s = s.slice(0, colon)
+  return s === '' ? UNTAGGED : s
+}
+
+/** 只留發佈到主機的對應（含 ->），排序並去重；未發佈的（如 3000/tcp）捨棄。 */
+export function normalizePorts(raw: string): string[] {
+  const out = new Set<string>()
+  for (const p of raw.split(',')) {
+    const t = p.trim()
+    if (t.includes('->')) out.add(t)
+  }
+  return [...out].sort()
+}
+
+/** 容器區段：NONE → undefined；ERROR → failed（呼叫端視為區段缺漏）；其餘逐行解析，未知格式保留為哨兵項目。 */
+function parseContainers(s: string | undefined): { containers: ContainerEntry[] | undefined; failed: boolean } {
+  const body = lines(s)
+  if (body.includes('ERROR')) return { containers: undefined, failed: true }
+  if (body.length === 1 && body[0] === 'NONE') return { containers: undefined, failed: false }
+  const out: ContainerEntry[] = []
+  for (const raw of (s ?? '').split('\n')) {
+    const line = raw.replace(/\r$/, '')
+    if (line.trim() === '') continue
+    if (line.startsWith('?container:') && !line.includes('\t')) {
+      out.push({ name: line.trim(), image: '?', ports: [] })
+      continue
+    }
+    const p = line.split('\t')
+    if (p.length !== 3 || p[0].trim() === '' || p[1].trim() === '') {
+      out.push({ name: '?container:unparsed', image: '?', ports: [] })
+      continue
+    }
+    out.push({ name: p[0].trim(), image: normalizeImage(p[1]), ports: normalizePorts(p[2]) })
+  }
+  return { containers: out, failed: false }
+}
+
 function parseLogVolume(sections: Record<string, string>): LogSourceVolume[] {
   const out: LogSourceVolume[] = []
   for (const name of Object.keys(sections)) {
@@ -214,20 +261,26 @@ export function parseVmDump(dump: string, nonce: string): VmFacts {
     if (target && target.process === '' && l.process !== '') target.process = l.process
   }
 
+  const containers = parseContainers(sections.containers)
+  const inventory: Inventory = {
+    users: lines(sections.users),
+    admins: lines(sections.admins),
+    sshKeys: parseSshKeys(sections.ssh_keys),
+    scheduled: parseScheduled(sections.scheduled),
+    listeners: invListeners,
+    services: lines(sections.services),
+  }
+  if (containers.containers !== undefined) inventory.containers = containers.containers
+  // docker 存在卻無法取得清單：收集失敗不可顯示成正常，併入缺漏區段讓整次掃描失敗
+  const missingSections = REQUIRED_SECTIONS.filter((n) => !(n in sections) || (n === 'containers' && containers.failed))
+
   return {
     listeners,
     updates: parseUpdates(sections),
     ssh: parseSsh(sections.sshd),
     authLines: lines(sections.auth),
-    inventory: {
-      users: lines(sections.users),
-      admins: lines(sections.admins),
-      sshKeys: parseSshKeys(sections.ssh_keys),
-      scheduled: parseScheduled(sections.scheduled),
-      listeners: invListeners,
-      services: lines(sections.services),
-    },
+    inventory,
     logVolume: parseLogVolume(sections),
-    missingSections: REQUIRED_SECTIONS.filter((n) => !(n in sections)),
+    missingSections,
   }
 }
