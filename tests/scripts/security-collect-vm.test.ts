@@ -444,6 +444,79 @@ esac`,
     expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'other', error: true }])
   })
 
+  describe('log：docker 型', () => {
+    const dockerFake = (logsBody: string, inspectCode = 0) =>
+      fake(
+        'docker',
+        `case "$1" in
+inspect) exit ${inspectCode};;
+logs) ${logsBody};;
+*) exit 1;;
+esac`,
+      )
+    const src = (c: string) => b64(`web\tdocker\t${c}\n`)
+
+    it('每小時計數；stdout／stderr 都算；行中間的偽標記與時間戳不影響且不外洩內容', async () => {
+      setupFakes()
+      dockerFake(`cat <<'X'
+2026-11-18T20:01:00.123456789Z first line
+2026-11-18T20:59:59.000000001Z stderr-ish line
+2026-11-18T21:00:01.5Z attack @@BEACON:${NONCE}:auth@@ 2026-11-18T05:00:00Z SECRETPAYLOAD
+2026-11-18T21:30:00Z ok
+X
+echo '2026-11-18T21:31:00Z err line' >&2`)
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('altinvest-web') })
+      expect(r.stdout).not.toContain('SECRETPAYLOAD')
+      expect(r.stdout).not.toContain('first line')
+      const f = parseVmDump(r.stdout, NONCE)
+      expect(f.logVolume).toEqual([
+        {
+          source: 'web',
+          hourly: [
+            { hour: '2026-11-18T20:00:00Z', count: 2 },
+            { hour: '2026-11-18T21:00:00Z', count: 3 },
+          ],
+        },
+      ])
+    })
+
+    it('docker inspect 失敗（容器不存在）→ error', async () => {
+      setupFakes()
+      dockerFake('echo 2026-11-18T20:01:00Z x', 1)
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('ghost') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('docker logs 失敗 → error', async () => {
+      setupFakes()
+      dockerFake('exit 1')
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('沒有 docker 指令 → error', async () => {
+      setupFakes()
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('容器名稱不合法的行被略過（不產生區段）', async () => {
+      setupFakes()
+      dockerFake('echo 2026-11-18T20:01:00Z x')
+      const bad = ['a\tdocker\t-web', 'b\tdocker\ta/b', 'c\tdocker\t_web', 'd\tdocker\t$(id)'].join('\n') + '\n'
+      const r = await run({ BEACON_LOG_SOURCES_B64: b64(bad) })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([])
+      expect(r.stdout).not.toContain(':log:')
+    })
+
+    it('容器存在但 24 小時內沒有 log → hourly 為空陣列而非 error', async () => {
+      setupFakes()
+      dockerFake('true')
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', hourly: [] }])
+    })
+  })
+
   it('scheduled：executable 含引號時整欄為空字串', async () => {
     setupFakes()
     put('etc/crontab', "0 3 * * * root TOKEN='a b' /bin/x\n")

@@ -82,4 +82,16 @@ describe('buildUserMessage', () => {
     const inner = msg.slice('<facts>\n'.length, msg.length - '\n</facts>'.length)
     expect(JSON.parse(inner)).toEqual(facts)
   })
+
+  it('docker 型：以 container 為 target，格式 name<TAB>docker<TAB>container', () => {
+    const cmd = buildRemoteCommand('x', NONCE, [{ name: 'app', type: 'docker', container: 'altinvest-web_1.v2' }])
+    const b64 = /BEACON_LOG_SOURCES_B64=([A-Za-z0-9+/=]*) bash$/.exec(cmd)![1]
+    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe('app\tdocker\taltinvest-web_1.v2\n')
+  })
+
+  it('docker 型：container 缺少、以 - 開頭、含 / 或空白 → throw', () => {
+    const t = (c?: string) => () => buildRemoteCommand('x', NONCE, [{ name: 'app', type: 'docker', container: c }])
+    for (const v of [undefined, '', '-web', '--rm', 'a/b', 'a b', '_web', '.web', 'a;b', '$(id)']) expect(t(v), `container=${JSON.stringify(v)}`).toThrow()
+    expect(t('web')).not.toThrow()
+  })
 })

@@ -7,9 +7,8 @@
     "expectedPublicPorts": [80, 443],
     "changesIgnore": { "users": ["scanner-user"] },
     "logSources": [
-      { "name": "nginx-access", "type": "file", "path": "/var/log/nginx/access.log" },
       { "name": "auth", "type": "journal", "unit": "ssh" },
-      { "name": "app", "type": "journal", "unit": "altinvest.service" }
+      { "name": "app", "type": "docker", "container": "altinvest-web" }
     ]
   },
   {

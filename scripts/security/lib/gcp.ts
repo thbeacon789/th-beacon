@@ -30,6 +30,8 @@ const check = (what: string, v: string): void => {
 const LOG_NAME_RE = /^[A-Za-z0-9_.-]+$/
 const LOG_PATH_RE = /^[A-Za-z0-9_.@/-]+$/
 const LOG_UNIT_RE = /^[A-Za-z0-9_.@-]+$/
+// Docker 容器命名規則：首字元為英數，因此不可能以 - 開頭，也不含 /
+const LOG_CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 
 const GCP_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i
 
@@ -50,13 +52,15 @@ export function buildRemoteCommand(
   const lines: string[] = []
   const seen = new Set<string>()
   for (const s of logSources ?? []) {
-    const value = s.type === 'file' ? s.path : s.type === 'journal' ? s.unit : undefined
-    if (value === undefined) throw new Error('logSources 缺少 path 或 unit')
+    const value = s.type === 'file' ? s.path : s.type === 'journal' ? s.unit : s.type === 'docker' ? s.container : undefined
+    if (value === undefined) throw new Error('logSources 缺少 path、unit 或 container')
     check('logSources.name', s.name)
     check('logSources.target', value)
     if (!LOG_NAME_RE.test(s.name)) throw new Error('logSources.name 格式不符')
     if (s.type === 'file') {
       if (!value.startsWith('/') || !LOG_PATH_RE.test(value)) throw new Error('logSources.path 須以 / 開頭且只含 A-Za-z0-9_.@/-')
+    } else if (s.type === 'docker') {
+      if (!LOG_CONTAINER_RE.test(value)) throw new Error('logSources.container 只可含 A-Za-z0-9_.-，且須以英數字開頭')
     } else if (!LOG_UNIT_RE.test(value) || value.startsWith('-')) {
       throw new Error('logSources.unit 只可含 A-Za-z0-9_.@-，且不可以 - 開頭')
     }

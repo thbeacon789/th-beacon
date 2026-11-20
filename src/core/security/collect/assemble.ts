@@ -13,7 +13,7 @@ export interface TargetConfig {
   domains: string[]
   expectedPublicPorts?: number[]
   changesIgnore?: { users?: string[] }
-  logSources?: Array<{ name: string; type: 'file' | 'journal'; path?: string; unit?: string }>
+  logSources?: Array<{ name: string; type: 'file' | 'journal' | 'docker'; path?: string; unit?: string; container?: string }>
   repo?: string
 }
 

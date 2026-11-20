@@ -13,12 +13,12 @@
 #
 # 環境變數：
 #   BEACON_NONCE            必填，[a-f0-9]{32}；不符即 exit 2
-#   BEACON_LOG_SOURCES_B64  選填，base64 文字；解碼後每行 name<TAB>type<TAB>target，type 為 file 或 journal
+#   BEACON_LOG_SOURCES_B64  選填，base64 文字；解碼後每行 name<TAB>type<TAB>target，type 為 file、journal 或 docker
 #   BEACON_ROOT             僅供測試：讀取的絕對路徑前綴。正式執行時必須為空字串（未設定）
 #
 # 用到的指令（全部唯讀）：
 #   ss, /usr/lib/update-notifier/apt-check, apt list --upgradable, cat, apt-config dump,
-#   sshd -T, journalctl, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
+#   sshd -T, journalctl, docker inspect, docker logs, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
 #   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut tail tr printf
 #
 # 相容性：目標為 Ubuntu 22.04/24.04（bash 5、GNU coreutils），但避免 bash 4+ 專屬語法，
@@ -322,6 +322,23 @@ log_journal() {
   fi
 }
 
+# docker 型：以容器名稱計算每小時 log 行數（輸出格式與 log_journal 相同）。
+# 先以 docker inspect 確認容器存在（不存在時不可當成「沒有 log」）；docker 不存在、daemon 連不上同樣 ERROR。
+# stdout 與 stderr 都算 log 行（2>&1）；--timestamps 的時間為 UTC（RFC3339Nano，結尾 Z），取前 13 字元計數。
+# 只輸出小時與計數，絕不輸出 log 內容（內容為遠端攻擊者可控）。
+# 注意：`docker logs` 的 `--`、`--since 24h`、`--timestamps` 輸出格式未在真實 Docker 上驗證前，以首次實跑為準。
+log_docker() {
+  docker inspect --type container -- "$1" >/dev/null 2>&1 < /dev/null || { echo ERROR; return 0; }
+  if ! (
+    set -o pipefail
+    docker logs --timestamps --since 24h -- "$1" 2>&1 < /dev/null \
+      | { grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
+      | awk '{ c[substr($0, 1, 13)]++ } END { for (k in c) printf "%s:00:00Z\t%d\n", k, c[k] }'
+  ); then
+    echo ERROR
+  fi
+}
+
 # file 型：讀 target 與 target.1，解析 [18/Nov/2026:02:13:44 +0000]，換算 UTC 整點，只留過去 24 小時
 log_file() {
   local t="$R$1" now
@@ -398,6 +415,7 @@ if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then
   name_re='^[A-Za-z0-9_.-]+$'
   target_re='^[A-Za-z0-9_.@/-]+$'
   unit_re='^[A-Za-z0-9_.@-]+$'
+  container_re='^[A-Za-z0-9][A-Za-z0-9_.-]*$'
   seen_names=" "
   while IFS=$'\t' read -r lname ltype ltarget lextra; do
     [ -z "$lextra" ] || continue
@@ -411,6 +429,12 @@ if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then
         case "$ltarget" in -*) continue ;; esac
         seen_names="$seen_names$lname "
         section "log:$lname" log_journal "$ltarget"
+        ;;
+      docker)
+        # 容器名稱首字元為英數，故不會以 - 開頭、不含 /
+        [[ $ltarget =~ $container_re ]] || continue
+        seen_names="$seen_names$lname "
+        section "log:$lname" log_docker "$ltarget"
         ;;
       file)
         case "$ltarget" in /*) ;; *) continue ;; esac

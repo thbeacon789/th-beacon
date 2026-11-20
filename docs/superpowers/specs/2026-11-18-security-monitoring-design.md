@@ -151,7 +151,7 @@ beacon
     "logSources": [
       { "name": "nginx-access", "type": "file", "path": "/var/log/nginx/access.log" },
       { "name": "auth", "type": "journal", "unit": "ssh" },
-      { "name": "app", "type": "journal", "unit": "<altinvest 的 systemd unit>" }
+      { "name": "app", "type": "docker", "container": "<altinvest 的容器名稱>" }
     ]
   },
   {
@@ -189,8 +189,9 @@ runner 端的 CLI 為 Node（`scripts/security/scan.mts` 與 `scripts/security/l
 - 可登入帳號：shell 以白名單完全比對（`/usr/sbin/nologin`、`/sbin/nologin`、`/bin/false`、`/usr/bin/false` 才算不可登入）。
 - 排程：除 crontab 與 systemd timer 外，涵蓋 `/etc/cron.{hourly,daily,weekly,monthly}/*`、`/etc/anacrontab`、`/var/spool/cron/atjobs/*`（每檔一筆，雜湊取檔案內容）；timer 的雜湊包含它啟動的 unit；異常路徑輸出 `?path:<雜湊>`、異常 unit 名輸出 `?unit:<雜湊>`。掃描 executable 時只要掃過的任何 token 含引號（`'` 或 `"`），整欄輸出空字串，避免 `TOKEN="a b c" /bin/x` 被拆開後把引號內的中段片段當成執行檔。
 - 登入紀錄：成功登入取最後 5000 行、失敗登入取最後 20000 行，分開擷取（防止洗版擠掉成功登入）。樣式錨定在 sshd 訊息開頭：成功為 `sshd(-session)?\[[0-9]+\]: Accepted `，失敗為 `sshd(-session)?\[[0-9]+\]: (Failed password|Invalid user|Connection closed by (authenticating|invalid) user) `；不錨定的話，攻擊者用帳號名 `Accepted` 大量連線產生的 `Invalid user Accepted from …` 會命中成功登入的樣式而擠掉真實紀錄。`Connection closed by … user` 計為失敗，與同一連線的 `Invalid user` 行可能重複計，可接受。`auth` 為輸出的最後一個區段（內容為遠端攻擊者可控，排最後可避免偽造區段標記；區段標記另含每次執行的隨機 nonce）。
+- log 量（`docker` 型）：以容器名稱指定。先 `docker inspect --type container -- <name>` 確認容器存在（docker 不存在、容器不存在、daemon 連不上皆輸出 `ERROR`，不可當成「沒有 log」），再以 `docker logs --timestamps --since 24h -- <name> 2>&1`（stdout 與 stderr 都算）串流計數，輸出格式與 `journal` 型相同；只輸出小時與計數，不輸出 log 內容。`docker logs` 的 `--`、`--since`、`--timestamps` 輸出格式未在真實 Docker 上驗證，以首次實跑為準。
 - log 量：`journal` 型先以 `systemctl show -p LoadState --value -- <unit>` 確認 unit 為 `loaded` 才查詢（unit 不存在時 `journalctl -u` 仍以 0 結束且無輸出，會被誤當成「沒有 log」），否則（或 `systemctl` 不存在、`journalctl` 失敗）該區段輸出 `ERROR`；以 `awk` 串流計數（固定記憶體，不把整份 journal 讀進變數，也不用 `sort` 以免在正式機寫暫存檔），輸出順序不保證，由解析端依時間排序。腳本全文不使用 `sort`。
-- 設定的 `logSources` 在結果中缺席（例如被 shell 端驗證略過）時，runner 的 `assemblePayload` 補一筆 `{source, error:true}`；runner 端 `buildRemoteCommand` 的驗證規則與 shell 端完全一致（`name` 須符合 `^[A-Za-z0-9_.-]+$`；`file` 的 `path` 須以 `/` 開頭且符合 `^[A-Za-z0-9_.@/-]+$`；`journal` 的 `unit` 須符合 `^[A-Za-z0-9_.@-]+$` 且不以 `-` 開頭），不符即 throw，設定錯誤在 runner 端大聲失敗。`parseVmDump` 的 log 區段內容非空但沒有任何一行可解析時也標 `error`；內容為空（unit 存在但 24 小時無輸出）維持 `hourly: []`。
+- 設定的 `logSources` 在結果中缺席（例如被 shell 端驗證略過）時，runner 的 `assemblePayload` 補一筆 `{source, error:true}`；runner 端 `buildRemoteCommand` 的驗證規則與 shell 端完全一致（`name` 須符合 `^[A-Za-z0-9_.-]+$`；`file` 的 `path` 須以 `/` 開頭且符合 `^[A-Za-z0-9_.@/-]+$`；`journal` 的 `unit` 須符合 `^[A-Za-z0-9_.@-]+$` 且不以 `-` 開頭；`docker` 的 `container` 須符合 `^[A-Za-z0-9][A-Za-z0-9_.-]*$`），不符即 throw，設定錯誤在 runner 端大聲失敗。`parseVmDump` 的 log 區段內容非空但沒有任何一行可解析時也標 `error`；內容為空（unit 存在但 24 小時無輸出）維持 `hourly: []`。
 - 區段缺漏視為收集失敗：VM 回傳缺少任何必要區段時，CLI 結束碼為 1、不推送快照，不讓殘缺結果顯示成正常。
 - 副作用：少見但合法的 sudoers 寫法第一次出現時會被標成「新增管理員」一次，之後成為基準。
 
@@ -402,6 +403,7 @@ Payload：
 - hosted 稽核的防線與殘留：已確立的是稽核暫存目錄裡的 `package.json` 經淨化（只留 dependencies 類三個鍵）、pnpm 版本由 workflow 自己釘住而不受目標 repo 的 `packageManager` 欄位影響、子行程只拿最小環境。**未實測**：稽核工具（`pnpm audit`／`npm audit`）對 lockfile 內容的處理，即是否真的不會依 lockfile 抓取或執行任何東西（見 §11）；能寫入目標 repo 的人至少可以讓稽核結果失真。最後一道防線是 §11「啟用前必做」的 environment 分離，使 hosted job 的權杖換不到正式機權限。
 - **快照與 ingest 共用同一把服務金鑰**：這把金鑰也存在於被監控的服務自身（它用來推 `/api/ingest`）。取得它的人可以推送偽造的「全部正常」快照。`scannedAt` 的 2 小時下限擋住回填舊基準，但擋不住偽造當下的快照。根本解法是掃描器使用只存在於 GitHub secrets 的獨立金鑰；本版未做，列為後續工作。
 - **OS Login VM 上的可見度**：管理員授權放在被 sudoers include 引入的目錄，跟進一層後可見；SSH 金鑰經 `AuthorizedKeysCommand` 提供者仍不可見（只有設定變更會以 `CONFIG:` 哨兵浮現）。
+- **`docker` 型 log 量只反映現存容器與 log 輪替上限內的資料**：容器重建（部署）後只算得到新容器的 log，部署當天的量會偏低，隔天相對該基準的量可能看起來偏高；`json-file` 輪替上限（例如 10m×3）會讓極大量的突增被截斷而低估（偵測偏遲鈍，不會因此多報）。
 - **log 量基準偏高**：收集端不輸出零筆的小時，中位數只算有 log 的小時，因此基準偏高、偵測偏保守。
 - **多網域部分失敗**：頁面只反映成功取得事實的網域，靠心跳 `fail` 提示。
 - **收集失敗時**（不推快照）頁面在 30 小時內仍顯示前一次的快照為現況，靠心跳 `fail` 提示。
