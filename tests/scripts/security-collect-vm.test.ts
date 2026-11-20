@@ -70,6 +70,8 @@ esac`,
     fake('ssh-keygen', `l=$(cat); case "$l" in *BADKEY*) exit 1;; esac; echo "256 SHA256:fakeprint+/= deploy@laptop (ED25519)"`)
     fake('sha256sum', `exec shasum -a 256`)
     fake('date', `echo ${NOW}`)
+    // macOS 沒有 timeout；假的 timeout 直接執行後面的指令（略過時間參數）
+    fake('timeout', `shift; exec "$@"`)
     fake(
       'systemctl',
       `case "$1" in
@@ -445,11 +447,11 @@ esac`,
   })
 
   describe('log：docker 型', () => {
-    const dockerFake = (logsBody: string, inspectCode = 0) =>
+    const dockerFake = (logsBody: string, inspectCode = 0, running = 'true') =>
       fake(
         'docker',
         `case "$1" in
-inspect) exit ${inspectCode};;
+inspect) echo ${running}; exit ${inspectCode};;
 logs) ${logsBody};;
 *) exit 1;;
 esac`,
@@ -507,6 +509,62 @@ echo '2026-11-18T21:31:00Z err line' >&2`)
       const r = await run({ BEACON_LOG_SOURCES_B64: b64(bad) })
       expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([])
       expect(r.stdout).not.toContain(':log:')
+    })
+
+    it('log 內含 NUL 位元組的行，其後的行仍被正確計數', async () => {
+      setupFakes()
+      dockerFake(`printf '2026-11-18T20:01:00Z a\\n2026-11-18T20:02:00Z b\\000c\\n2026-11-18T20:03:00Z d\\n2026-11-18T21:00:00Z e\\n'`)
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([
+        {
+          source: 'web',
+          hourly: [
+            { hour: '2026-11-18T20:00:00Z', count: 3 },
+            { hour: '2026-11-18T21:00:00Z', count: 1 },
+          ],
+        },
+      ])
+    })
+
+    it('對不受信任內容的 grep 一律帶 -a（log_docker／log_journal／s_auth）', () => {
+      const code = fs.readFileSync(SCRIPT, 'utf8')
+      const fn = (name: string) => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, 'm').exec(code)![0]
+      for (const n of ['log_docker', 'log_journal', 's_auth']) {
+        const greps = fn(n).match(/grep\s+-\S+/g) ?? []
+        expect(greps.length).toBeGreaterThan(0)
+        for (const g of greps) expect(g).toMatch(/-\w*a/)
+      }
+    })
+
+    it('容器已停止（State.Running 非 true）→ error，而非 0 行的正常流量', async () => {
+      setupFakes()
+      dockerFake('true', 0, 'false')
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('逾時（timeout 退出碼 124）→ error', async () => {
+      setupFakes()
+      dockerFake('echo 2026-11-18T20:01:00Z x')
+      fake('timeout', 'exit 124')
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('只有 docker logs 逾時（inspect 正常）→ error', async () => {
+      setupFakes()
+      dockerFake('echo 2026-11-18T20:01:00Z x')
+      fake('timeout', 'case "$3" in logs) exit 124;; esac; shift; exec "$@"')
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
+    })
+
+    it('系統沒有 timeout 指令 → error（不退回無逾時執行）', async () => {
+      setupFakes()
+      dockerFake('echo 2026-11-18T20:01:00Z x')
+      fs.rmSync(path.join(bin, 'timeout'))
+      const r = await run({ BEACON_LOG_SOURCES_B64: src('web') })
+      expect(parseVmDump(r.stdout, NONCE).logVolume).toEqual([{ source: 'web', error: true }])
     })
 
     it('容器存在但 24 小時內沒有 log → hourly 為空陣列而非 error', async () => {
@@ -570,6 +628,22 @@ echo '2026-11-18T21:31:00Z err line' >&2`)
       const r = await run()
       expect(section(r.stdout)).toBe('ERROR\n')
       expect(parseVmDump(r.stdout, NONCE).missingSections).toEqual(['containers'])
+    })
+
+    it('docker ps 逾時（timeout 退出碼 124）→ ERROR', async () => {
+      setupFakes()
+      psFake('echo web')
+      fake('timeout', 'exit 124')
+      const r = await run()
+      expect(section(r.stdout)).toBe('ERROR\n')
+    })
+
+    it('docker 存在但系統沒有 timeout 指令 → ERROR（不退回無逾時執行）', async () => {
+      setupFakes()
+      psFake('echo web')
+      fs.rmSync(path.join(bin, 'timeout'))
+      const r = await run()
+      expect(section(r.stdout)).toBe('ERROR\n')
     })
 
     it('沒有任何容器 → 空區段', async () => {

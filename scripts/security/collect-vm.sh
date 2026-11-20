@@ -18,7 +18,7 @@
 #
 # 用到的指令（全部唯讀）：
 #   ss, /usr/lib/update-notifier/apt-check, apt list --upgradable, cat, apt-config dump,
-#   sshd -T, journalctl, docker ps, docker inspect, docker logs, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
+#   sshd -T, journalctl, timeout, docker ps, docker inspect, docker logs, getent, ssh-keygen -lf, systemctl list-timers / list-unit-files / cat / show,
 #   sha256sum, date -u +%s, base64 -d, 以及文字工具 awk grep cut tail tr printf
 #
 # 相容性：目標為 Ubuntu 22.04/24.04（bash 5、GNU coreutils），但避免 bash 4+ 專屬語法，
@@ -86,9 +86,9 @@ loc_of() {
 s_auth() {
   local head_re='^[^ ]+ [^ ]+ sshd(-session)?\[[0-9]+\]: '
   # 日誌大小受遠端攻擊者影響：全程串流，不存入變數（兩次查詢之間多幾行無妨）
-  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E "${head_re}Accepted " | tail -n 5000
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -aE "${head_re}Accepted " | tail -n 5000
   # Connection closed by (authenticating|invalid) user 也算失敗；與同連線的 Invalid user 行可能重複計，可接受
-  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -E "${head_re}(Failed password|Invalid user|Connection closed by (authenticating|invalid) user) " | tail -n 20000
+  journalctl -u ssh -u sshd --since '24 hours ago' --no-pager -o short-iso 2>/dev/null | grep -aE "${head_re}(Failed password|Invalid user|Connection closed by (authenticating|invalid) user) " | tail -n 20000
 }
 
 # 可登入判斷用「完全相等」白名單；shell 為空視為可登入
@@ -309,6 +309,8 @@ s_services() {
 # 執行中的容器清單：每個容器一行「名稱<TAB>image<TAB>ports」，正規化（去版本、只留對外埠）在解析端做。
 # docker 不存在 → NONE（這台機器沒有 Docker，是合法的「沒有容器」）；docker ps 失敗 → ERROR；沒有容器 → 空。
 # 欄位含不符預期字元的行輸出哨兵 ?container:<雜湊>，不輸出原文（容器名稱可能被攻擊者影響，且哨兵內容一變就會浮現）。
+# docker 呼叫一律以 timeout 20 包住（docker daemon 卡住時不可讓整次收集掛住）；逾時（退出碼 124）視同失敗 → ERROR。
+# 系統沒有 timeout 指令時（退出碼 127）同樣 ERROR，不退回無逾時執行。
 # 注意：`docker ps --format` 的輸出格式（\t 展開、Ports 欄位寫法）未在真實 Docker 上驗證前，以首次實跑為準。
 s_containers() {
   command -v docker >/dev/null 2>&1 || { echo NONE; return 0; }
@@ -317,7 +319,7 @@ s_containers() {
   local cimage_re='^[A-Za-z0-9][A-Za-z0-9_.:/@-]*$'
   gt=$(printf '\076')
   local cports_re="^[][A-Za-z0-9_.:,${gt}/ -]*\$"
-  out=$(docker ps --no-trunc --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
+  out=$(timeout 20 docker ps --no-trunc --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
   printf '%s\n' "$out" | while IFS=$'\t' read -r cname cimage cports cextra; do
     [ -n "$cname$cimage$cports$cextra" ] || continue
     if [ -z "$cextra" ] && [[ $cname =~ $cname_re ]] && [[ $cimage =~ $cimage_re ]] && [[ $cports =~ $cports_re ]]; then
@@ -338,7 +340,7 @@ log_journal() {
   if ! (
     set -o pipefail
     journalctl --utc -u "$1" --since '24 hours ago' --no-pager -o short-iso 2>/dev/null \
-      | { grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
+      | { grep -aE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
       | awk '{ c[substr($0, 1, 13)]++ } END { for (k in c) printf "%s:00:00Z\t%d\n", k, c[k] }'
   ); then
     echo ERROR
@@ -346,16 +348,20 @@ log_journal() {
 }
 
 # docker 型：以容器名稱計算每小時 log 行數（輸出格式與 log_journal 相同）。
-# 先以 docker inspect 確認容器存在（不存在時不可當成「沒有 log」）；docker 不存在、daemon 連不上同樣 ERROR。
+# 先以 docker inspect 確認容器存在且正在執行（不存在或已停止時不可當成「沒有 log」的零流量）；docker 不存在、daemon 連不上同樣 ERROR。
+# docker 呼叫有逾時（inspect 20 秒、logs 60 秒；逾時退出碼 124，在 pipefail 下讓整段輸出 ERROR）；系統沒有 timeout 指令同樣 ERROR，不退回無逾時執行。
+# grep 帶 -a：容器 log 為攻擊者可控，含 NUL 位元組時不可被當成 binary 而截斷計數。
 # stdout 與 stderr 都算 log 行（2>&1）；--timestamps 的時間為 UTC（RFC3339Nano，結尾 Z），取前 13 字元計數。
 # 只輸出小時與計數，絕不輸出 log 內容（內容為遠端攻擊者可控）。
 # 注意：`docker logs` 的 `--`、`--since 24h`、`--timestamps` 輸出格式未在真實 Docker 上驗證前，以首次實跑為準。
 log_docker() {
-  docker inspect --type container -- "$1" >/dev/null 2>&1 < /dev/null || { echo ERROR; return 0; }
+  local running
+  running=$(timeout 20 docker inspect --type container -f '{{.State.Running}}' -- "$1" 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
+  [ "$running" = true ] || { echo ERROR; return 0; }
   if ! (
     set -o pipefail
-    docker logs --timestamps --since 24h -- "$1" 2>&1 < /dev/null \
-      | { grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
+    timeout 60 docker logs --timestamps --since 24h -- "$1" 2>&1 < /dev/null \
+      | { grep -aE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}' || :; } \
       | awk '{ c[substr($0, 1, 13)]++ } END { for (k in c) printf "%s:00:00Z\t%d\n", k, c[k] }'
   ); then
     echo ERROR

@@ -81,6 +81,11 @@ export function evaluateChanges(kind: ScanKind, current: Inventory | undefined, 
     }
   }
 
+  // 基準有容器、目前卻拿不到清單（docker 被移除或搬離預設路徑 → NONE）：不可無聲略過
+  if (current.containers === undefined && baseline.containers !== undefined && baseline.containers.length > 0) {
+    add('high', clip(`容器清單無法取得（先前有 ${baseline.containers.length} 個容器）；docker 可能已被移除或搬離預設路徑`))
+  }
+
   let status: CheckStatus = 'ok'
   if (findings.some((f) => f.severity === 'high')) status = 'bad'
   else if (findings.length > 0) status = 'warn'

@@ -190,6 +190,13 @@ describe('normalizePorts', () => {
       '0.0.0.0:443->443/tcp', '0.0.0.0:80->80/tcp', '[::]:80->80/tcp',
     ])
   })
+  it('IPv6 的 `:::80` 與 `[::]:80` 兩種寫法正規化後相同；IPv4 不受影響且不與 IPv6 合併', () => {
+    expect(normalizePorts(':::80->80/tcp')).toEqual(['[::]:80->80/tcp'])
+    expect(normalizePorts(':::80->80/tcp')).toEqual(normalizePorts('[::]:80->80/tcp'))
+    expect(normalizePorts('0.0.0.0:80->80/tcp')).toEqual(['0.0.0.0:80->80/tcp'])
+    expect(normalizePorts('127.0.0.1:3306->3306/tcp')).toEqual(['127.0.0.1:3306->3306/tcp'])
+    expect(normalizePorts('0.0.0.0:80->80/tcp, :::80->80/tcp')).toEqual(['0.0.0.0:80->80/tcp', '[::]:80->80/tcp'])
+  })
   it('空字串與全部未發佈 → 空陣列', () => {
     expect(normalizePorts('')).toEqual([])
     expect(normalizePorts('3000/tcp, 5432/tcp')).toEqual([])
@@ -218,6 +225,11 @@ describe('parseVmDump containers', () => {
   it('哨兵行保留為項目；格式不符的行不可消失', () => {
     expect(parse('?container:0123456789abcdef').inventory.containers).toEqual([{ name: '?container:0123456789abcdef', image: '?', ports: [] }])
     expect(parse('only-one-column').inventory.containers).toEqual([{ name: '?container:unparsed', image: '?', ports: [] }])
+  })
+  it('行尾 TAB 被去掉的兩欄行（無埠容器）：ports 視為空；其他欄數仍為 unparsed', () => {
+    expect(parse('db\tpostgres:16').inventory.containers).toEqual([{ name: 'db', image: 'postgres', ports: [] }])
+    expect(parse('db\t').inventory.containers).toEqual([{ name: '?container:unparsed', image: '?', ports: [] }])
+    expect(parse('a\tb\tc\td').inventory.containers).toEqual([{ name: '?container:unparsed', image: '?', ports: [] }])
   })
   it('缺 containers 區段列入 missingSections', () => {
     expect(parse(null).missingSections).toEqual(['containers'])

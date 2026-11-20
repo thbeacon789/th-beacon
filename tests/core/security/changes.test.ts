@@ -149,8 +149,19 @@ describe('evaluateChanges 容器', () => {
   })
   it('基準或目前沒有 containers：跳過，狀態維持 ok', () => {
     expect(titles([c('a')], undefined)).toEqual([])
-    expect(titles(undefined, [c('a')])).toEqual([])
     expect(evaluateChanges('vm', inv({ containers: [c('a')] }), inv()).check.status).toBe('ok')
+  })
+  it('基準有容器但目前清單無法取得 → 一筆 high 且狀態為 bad', () => {
+    const r = evaluateChanges('vm', inv({ containers: undefined }), inv({ containers: [c('a'), c('b')] }))
+    expect(r.findings.map((f) => [f.severity, f.title])).toEqual([
+      ['high', '容器清單無法取得（先前有 2 個容器）；docker 可能已被移除或搬離預設路徑'],
+    ])
+    expect(r.check.status).toBe('bad')
+  })
+  it('基準為空陣列或未定義、目前 undefined → 不報', () => {
+    expect(titles(undefined, [])).toEqual([])
+    expect(titles(undefined, undefined)).toEqual([])
+    expect(evaluateChanges('vm', inv({ containers: undefined }), inv({ containers: [] })).check.status).toBe('ok')
   })
   it('標題超長時截斷到 MAX_TITLE 且通過 payload 驗證', () => {
     const f = evaluateChanges('vm', inv({ containers: [c('n', 'x'.repeat(300))] }), inv({ containers: [] })).findings[0]

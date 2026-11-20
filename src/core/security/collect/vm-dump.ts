@@ -182,7 +182,8 @@ export function normalizeImage(raw: string): string {
 export function normalizePorts(raw: string): string[] {
   const out = new Set<string>()
   for (const p of raw.split(',')) {
-    const t = p.trim()
+    // Docker 不同版本把 IPv6 綁定寫成 `:::80->…` 或 `[::]:80->…`，統一成後者（IPv4 與 IPv6 不合併）
+    const t = p.trim().replace(/^:::/, '[::]:')
     if (t.includes('->')) out.add(t)
   }
   return [...out].sort()
@@ -202,11 +203,12 @@ function parseContainers(s: string | undefined): { containers: ContainerEntry[] 
       continue
     }
     const p = line.split('\t')
-    if (p.length !== 3 || p[0].trim() === '' || p[1].trim() === '') {
+    // 行尾 TAB 可能被傳輸層去掉：無埠容器只剩 2 欄，ports 視為空
+    if ((p.length !== 3 && p.length !== 2) || p[0].trim() === '' || p[1].trim() === '') {
       out.push({ name: '?container:unparsed', image: '?', ports: [] })
       continue
     }
-    out.push({ name: p[0].trim(), image: normalizeImage(p[1]), ports: normalizePorts(p[2]) })
+    out.push({ name: p[0].trim(), image: normalizeImage(p[1]), ports: normalizePorts(p[2] ?? '') })
   }
   return { containers: out, failed: false }
 }
