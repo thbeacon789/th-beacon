@@ -18,6 +18,32 @@ describe('pickBaseline', () => {
     ])
     expect(r).toBe(a)
   })
+  it('最舊快照沒有容器清單時，以最舊且含容器清單的快照補上 containers，其餘欄位仍取最舊者', () => {
+    const oldest = inv({ users: ['old'] })
+    const mid = inv({ users: ['mid'], containers: [{ name: 'api', image: 'repo/app', ports: [] }] })
+    const newest = inv({ users: ['new'], containers: [{ name: 'api', image: 'repo/app', ports: [] }, { name: 'x', image: 'y', ports: [] }] })
+    const r = pickBaseline([
+      { scannedAt: '2026-11-17T00:00:00.000Z', inventory: newest },
+      { scannedAt: '2026-11-10T00:00:00.000Z', inventory: oldest },
+      { scannedAt: '2026-11-12T00:00:00.000Z', inventory: mid },
+    ])
+    expect(r).toEqual({ ...oldest, containers: mid.containers })
+    expect(oldest.containers).toBeUndefined() // 不可改動輸入
+  })
+  it('窗內沒有任何快照含容器清單時，基準不帶 containers', () => {
+    const a = inv({ users: ['a'] })
+    expect(pickBaseline([{ scannedAt: '2026-11-12T00:00:00.000Z', inventory: a }])).toBe(a)
+  })
+  it('最舊快照本身含容器清單（即使為空陣列）時原樣回傳', () => {
+    const a = inv({ containers: [] })
+    const b = inv({ containers: [{ name: 'api', image: 'repo/app', ports: [] }] })
+    expect(
+      pickBaseline([
+        { scannedAt: '2026-11-12T00:00:00.000Z', inventory: a },
+        { scannedAt: '2026-11-13T00:00:00.000Z', inventory: b },
+      ]),
+    ).toBe(a)
+  })
   it('沒有可用快照回 null', () => {
     expect(pickBaseline([])).toBeNull()
     expect(pickBaseline([{ scannedAt: '2026-11-10T00:00:00.000Z', inventory: null }])).toBeNull()

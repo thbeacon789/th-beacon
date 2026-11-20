@@ -8,11 +8,21 @@ const clip = (title: string) => truncateToUtf16Length(title, MAX_TITLE)
 
 export function pickBaseline<T extends { scannedAt: string; inventory: Inventory | null }>(history: T[]): Inventory | null {
   let best: T | null = null
+  // 容器清單是後來才加入的欄位：窗內最舊的快照可能沒有它。此時改取「最舊且含容器清單」的那一筆補上，
+  // 否則容器比較要等舊快照全部滑出窗外（七天）才會開始生效。
+  let bestWithContainers: T | null = null
   for (const h of history) {
     if (h.inventory === null) continue
     if (best === null || h.scannedAt < best.scannedAt) best = h
+    if (h.inventory.containers !== undefined && (bestWithContainers === null || h.scannedAt < bestWithContainers.scannedAt)) {
+      bestWithContainers = h
+    }
   }
-  return best?.inventory ?? null
+  if (best === null || best.inventory === null) return null
+  if (best.inventory.containers === undefined && bestWithContainers?.inventory?.containers !== undefined) {
+    return { ...best.inventory, containers: bestWithContainers.inventory.containers }
+  }
+  return best.inventory
 }
 
 function added<T>(cur: T[], base: T[], key: (x: T) => string): T[] {
