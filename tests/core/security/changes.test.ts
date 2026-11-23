@@ -95,6 +95,19 @@ describe('evaluateChanges', () => {
     expect(r.check).toEqual({ status: 'bad', summary: '新增 1 項' })
     expect(r.findings).toEqual([{ check: 'changes', severity: 'high', title: '新增管理員帳號 eve', recommendation: REC }])
   })
+  it('帳號已在基準的管理員清單中，晚一步才出現在帳號清單時不視為新增', () => {
+    // OS Login 帳號在 sudoers 立即可見，getent passwd 要等本機快取刷新才列出
+    const base = inv({ users: ['alice'], admins: ['alice', 'navibluer_gmail_com', '%google-sudoers'] })
+    const cur = inv({ users: ['alice', 'navibluer_gmail_com'], admins: ['alice', 'navibluer_gmail_com', '%google-sudoers'] })
+    const r = evaluateChanges('vm', cur, base)
+    expect(r.check).toEqual({ status: 'ok', summary: '無變動' })
+    expect(r.findings).toEqual([])
+  })
+  it('基準管理員清單中的哨兵條目不會遮蔽同字面的帳號名', () => {
+    const base = inv({ admins: ['alice', '%ops'] })
+    const r = evaluateChanges('vm', inv({ users: ['alice', 'ops'], admins: ['alice', '%ops'] }), base)
+    expect(r.findings.map((f) => f.title)).toEqual(['新增帳號 ops'])
+  })
   it('新增一般帳號、SSH 金鑰、服務、監聽埠', () => {
     const r = evaluateChanges('vm', inv({
       users: ['alice', 'bob'],

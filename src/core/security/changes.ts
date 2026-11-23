@@ -53,7 +53,11 @@ export function evaluateChanges(kind: ScanKind, current: Inventory | undefined, 
     else if (k.fingerprint.startsWith('UNPARSEABLE:')) add('high', `${k.user} 的授權金鑰檔出現無法解析的項目`)
     else add('high', `${k.user} 新增 SSH 金鑰 ${k.fingerprint}`)
   }
-  for (const name of added(current.users, baseline.users, (x) => x)) {
+  // 基準的管理員帳號也算已知帳號：OS Login 帳號登入當下就寫進 sudoers，但 getent passwd
+  // 要等本機快取刷新才列出，否則同一個舊帳號會在一兩天後被誤報為「新增帳號」。
+  // 管理員清單的哨兵（?／#／% 開頭）不是帳號名，不納入，以免遮蔽同字面的真帳號。
+  const knownUsers = [...baseline.users, ...baseline.admins.filter((x) => !/^[?#%]/.test(x))]
+  for (const name of added(current.users, knownUsers, (x) => x)) {
     if (!newAdminSet.has(name)) add('medium', `新增帳號 ${name}`)
   }
   for (const s of added(current.scheduled, baseline.scheduled, (x) => `${x.location}\0${x.hash}`)) {

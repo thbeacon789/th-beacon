@@ -378,6 +378,7 @@ Payload：
 - 只看「新增」，不看移除。`changesIgnore` 中列出的項目先排除。
 - 新增具管理員權限的帳號、新增 SSH 金鑰＝`bad`，各一筆 `high` 發現。哨兵條目（`?sudoers:`、`#uid`、`%群組`、`UNPARSEABLE:`、`(sshd)` 的 `CONFIG:`、`?path:`／`?unit:`）的發現 title 會補上人看得懂的說明，比對邏輯與嚴重度不變。
 - 新增一般帳號、排程工作（以位置＋雜湊判定，內容改了也算新增）、監聽埠、已啟用服務＝`warn`，各一筆 `medium` 發現。
+- 一般帳號的「已知」集合＝基準的 `users` 加上基準 `admins` 中的帳號名（哨兵條目除外）。原因：OS Login 帳號登入當下就寫進 sudoers，但 `getent passwd` 要等本機快取刷新才列出，實測（altinvest-prod，2026-11-20～21）同一個帳號會晚一天才出現在 `users`；不併入的話，舊帳號會被誤報為「新增帳號」。
 - 容器（`inventory.containers`，目前與基準**都有**才比較；任一方沒有就跳過，舊基準沒有此欄位時第一次帶上視為建立容器基準）：新增容器名稱、同名容器的映像檔來源（不含版本）改變、同名容器新增對外埠對應＝`warn`，各一筆 `medium` 發現；容器消失、埠減少不報。收集端 `docker ps` 失敗（區段為 `ERROR`）視同收集缺漏，整次掃描失敗而不推快照。
 - 無新增＝`ok`。沒有可比對的基準（首次掃描）＝`unknown`，文字顯示「基準建立中」。
 - 已知限制：正常的部署或維運也會產生變動（例如新增排程），會顯示約七天；這是預期行為，由使用者自行判斷是否為自己人所為。
@@ -482,7 +483,7 @@ trustnel 官網  留意    ◌ 不適用     ● 相依套件 2 項      ◌ 不
 
 1. `gcloud compute ssh --tunnel-through-iap --command` 能執行 base64 內嵌的腳本，且 `sudo` 不要求 tty。
 2. 服務帳號的最小角色組合足夠（見 §6.3；是否另需 `roles/compute.instanceAdmin.v1` 以實測為準）。
-3. OS Login 連線是否在 VM 上建立 `sa_*` 帳號；若是，填進該目標的 `changesIgnore.users`。
+3. OS Login 連線是否在 VM 上建立 `sa_*` 帳號；若是，填進該目標的 `changesIgnore.users`。**已確認（2026-11-23）**：會建立，帳號名為 `sa_<服務帳號 uniqueId>`（altinvest 為 `sa_118012915246676849402`），且具 sudo。
 4. **收集腳本從未在真實 Ubuntu 上執行過**，只在 macOS 以假指令驗證。首次實跑前，建議先在一台測試機以 root 手動執行一次並檢視輸出。需確認：`ss -H -tulnp`、`systemctl list-timers`、`sshd -T`、`journalctl -u ssh` 的實際輸出格式與 fixture 一致；mawk（Ubuntu 預設）下 awk 段落行為正確；`ssh-keygen -lf /dev/stdin` 對帶選項前綴的 `authorized_keys` 行的行為。
 5. `apt list --upgradable` 與 `apt-check` 以 root 執行時是否會寫入快取檔（如 `/var/cache/apt/pkgcache.bin`）。若會，違反腳本「不寫任何檔案」的要求，需改用不寫快取的呼叫方式。**【未確認】**
 6. Node 24 的 `tls` 能否區分「伺服器拒絕舊版 TLS」與「客戶端無法發起」；若一律無法判斷，該項維持未知（頁面不會誤報）。

@@ -5,6 +5,7 @@
     "kind": "vm",
     "domains": ["altinvest.finance", "www.altinvest.finance", "api.altinvest.finance"],
     "expectedPublicPorts": [80, 443],
+    "changesIgnore": { "users": ["sa_118012915246676849402"] },
     "logSources": [
       { "name": "auth", "type": "journal", "unit": "ssh" },
       { "name": "caddy", "type": "docker", "container": "caddy" },
