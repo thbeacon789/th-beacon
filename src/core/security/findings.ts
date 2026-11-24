@@ -7,7 +7,7 @@ import {
 } from './constants.ts'
 import { fingerprintOf } from './finding-key.ts'
 import { truncateToUtf16Length } from './text.ts'
-import type { CertFact, CheckKey, CheckResult, ExposureFact, Finding, FindingSeverity, LogSourceVolume } from './types.ts'
+import type { CertFact, CheckKey, CheckResult, ExposureFact, Finding, ImageDeps, FindingSeverity, LogSourceVolume } from './types.ts'
 import type { StoredCheckKey } from './view.ts'
 
 export type SecurityFindingStatus = 'open' | 'resolved' | 'ignored'
@@ -49,6 +49,8 @@ export interface CoverageInput {
   /** LLM 判讀類發現達上限被截斷：ports／updates／logins 無法確認「沒出現」 */
   judgedTruncated: boolean
   certs: CertFact[]
+  /** 本次 deps 明細（vm）；用來排除掃描失敗的映像檔，其既有發現不可算「沒出現」 */
+  deps?: ImageDeps[] | null
 }
 
 export const MANUAL_TRANSITIONS: Record<SecurityFindingStatus, readonly SecurityFindingStatus[]> = {
@@ -73,7 +75,10 @@ export function isCovered(record: Pick<SecurityFindingRecord, 'check' | 'fingerp
     case 'logins':
       return !cov.judgedTruncated && checked(cov.checks[check]) // 含 _fallback（類別級）
     case 'deps':
-      return checked(cov.checks.deps) // runner 確定性計算，不受 judgedTruncated 影響
+      // runner 確定性計算，不受 judgedTruncated 影響；整體 warn／bad 仍可能夾帶掃描失敗的映像檔
+      if (!checked(cov.checks.deps)) return false
+      if (!cov.deps) return true
+      return !cov.deps.some((d) => `image:${d.image}` === key && (d.error !== undefined || d.counts === undefined))
     case 'changes':
       return false
     case 'logVolume':

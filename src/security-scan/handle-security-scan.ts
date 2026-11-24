@@ -104,6 +104,7 @@ export async function handleSecurityScan(
           evaluatedLogSources: logVolume.evaluatedSources,
           judgedTruncated: payload.findings.filter((f) => f.check !== 'deps').length >= JUDGE_MAX_FINDINGS,
           certs: payload.certs,
+          deps: payload.deps ?? null,
         },
         scannedAt: payload.scannedAt,
       })

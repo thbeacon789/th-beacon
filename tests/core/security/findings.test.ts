@@ -158,6 +158,19 @@ describe('isCovered', () => {
     expect(c(fp, 'deps', cov({ checks: { deps: { status: 'na', summary: '' } } }))).toBe(false)
     expect(c(fp, 'deps', cov({ checks: { deps: ok }, judgedTruncated: true }))).toBe(true)
   })
+  it('deps：掃描失敗的映像檔不算已檢查；成功後才算；已不在清單視為已檢查', () => {
+    const counts = { critical: 0, high: 1, moderate: 0, low: 0, unscored: 0 }
+    const A = { image: 'ghcr.io/a/a', digest: null, containers: ['a'], counts, packages: [] }
+    const failB = { image: 'ghcr.io/a/b', digest: null, containers: ['b'], error: 'boom' }
+    const okB = { image: 'ghcr.io/a/b', digest: null, containers: ['b'], counts: { ...counts, high: 0 }, packages: [] }
+    const warn = { status: 'warn' as const, summary: '' }
+    const fpB = 'deps:image:ghcr.io/a/b'
+    expect(c(fpB, 'deps', cov({ checks: { deps: warn }, deps: [A, failB] }))).toBe(false)
+    expect(c('deps:image:ghcr.io/a/a', 'deps', cov({ checks: { deps: warn }, deps: [A, failB] }))).toBe(true)
+    expect(c(fpB, 'deps', cov({ checks: { deps: warn }, deps: [A, okB] }))).toBe(true)
+    expect(c(fpB, 'deps', cov({ checks: { deps: warn }, deps: [A] }))).toBe(true)
+    expect(c(fpB, 'deps', cov({ checks: { deps: warn }, deps: null }))).toBe(true)
+  })
   it('fallback record uses check-level coverage', () => {
     expect(c('ports:_fallback', 'ports', cov())).toBe(true)
     expect(c('ports:_fallback', 'ports', cov({ checks: { ports: { status: 'unknown', summary: '' } } }))).toBe(false)
