@@ -5,6 +5,8 @@ import { evaluateLogVolume } from '@/core/security/log-volume'
 import { evaluateExposure } from '@/core/security/exposure'
 import { evaluateChanges, pickBaseline } from '@/core/security/changes'
 import { BASELINE_WINDOW_DAYS } from '@/core/security/constants'
+import { evaluateCertFindings } from '@/core/security/cert-findings'
+import { reconcileFindings } from '@/core/security/findings'
 import type { Store } from '@/store/contracts'
 
 const UNAUTHORIZED: IngestResponse = { status: 401, body: { error: 'unauthorized' } }
@@ -62,6 +64,8 @@ export async function handleSecurityScan(
     exposure: exposure.check,
     changes: changes.check,
   }
+  // 先取最新快照時間（insert 前）：晚到的舊快照只存檔，不可用過期事實改寫發現紀錄
+  const latestScanAt = await store.getLatestSecurityScanAt(auth.service.id)
   const inserted = await store.insertSecurityScan({
     serviceId: auth.service.id,
     scannedAt: payload.scannedAt,
@@ -74,5 +78,30 @@ export async function handleSecurityScan(
     inventory: payload.inventory ?? null,
   })
   if (inserted === null) return { status: 200, body: { duplicate: true } }
+
+  // 以 Date.parse 比較：Supabase 回傳 PG 正規化字串（+00:00），不可直接比字串
+  if (latestScanAt === null || Date.parse(payload.scannedAt) >= Date.parse(latestScanAt)) {
+    try {
+      const observed = [
+        ...payload.findings,
+        ...logVolume.findings,
+        ...exposure.findings,
+        ...changes.findings,
+        ...evaluateCertFindings(payload.certs, new Date(payload.scannedAt)),
+      ]
+      const existing = await store.listSecurityFindings(auth.service.id)
+      const rows = reconcileFindings({
+        serviceId: auth.service.id,
+        existing,
+        observed,
+        coverage: { checks, exposure: payload.exposure, logVolume: logVolume.logVolume, certs: payload.certs },
+        scannedAt: payload.scannedAt,
+      })
+      await store.upsertSecurityFindings(rows)
+    } catch (err) {
+      // 快照已寫入；發現紀錄下次掃描會自行補齊，不讓 reconcile 失敗拖垮回報
+      console.error('[security-scan] reconcile failed', err)
+    }
+  }
   return { status: 201, body: { id: inserted.id, checks } }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { handleSecurityScan } from '@/security-scan/handle-security-scan'
 import { InMemoryStore } from '@/store/memory'
@@ -205,5 +205,60 @@ describe('handleSecurityScan', () => {
     expect(checks.logVolume.status).toBe('na')
     expect(checks.changes.status).toBe('na')
     expect(store.listSecurityScans()[0].inventory).toBeNull()
+  })
+  describe('資安發現紀錄 reconcile', () => {
+    const certPayload = (scannedAt = '2026-11-18T09:00:00.000Z', over: Record<string, unknown> = {}) =>
+      payload({ scannedAt, certs: [{ domain: 'a.example.com', notAfter: '2026-11-23T09:00:00.000Z' }], ...over })
+
+    it('first scan creates open findings', async () => {
+      const res = await send(store, certPayload())
+      expect(res.status).toBe(201)
+      const rows = store.listAllSecurityFindings()
+      const cert = rows.find((r) => r.check === 'cert')
+      expect(cert).toBeDefined()
+      expect(cert!.status).toBe('open')
+      expect(cert!.serviceId).toBe('s-1')
+    })
+
+    it('second scan same findings creates no duplicates', async () => {
+      await send(store, certPayload('2026-11-18T09:00:00.000Z'))
+      const before = store.listAllSecurityFindings().length
+      await send(store, certPayload('2026-11-18T09:30:00.000Z'))
+      const rows = store.listAllSecurityFindings()
+      expect(rows).toHaveLength(before)
+      expect(rows.find((r) => r.check === 'cert')!.lastSeenAt).toBe('2026-11-18T09:30:00.000Z')
+    })
+
+    it('duplicate scannedAt does not reconcile', async () => {
+      await send(store, certPayload())
+      const spy = vi.spyOn(store, 'upsertSecurityFindings')
+      const res = await send(store, certPayload())
+      expect(res).toEqual({ status: 200, body: { duplicate: true } })
+      expect(spy).not.toHaveBeenCalled()
+    })
+
+    it('older scannedAt than latest skips reconcile but stores snapshot', async () => {
+      await send(store, certPayload('2026-11-18T09:30:00.000Z'))
+      const spy = vi.spyOn(store, 'upsertSecurityFindings')
+      const res = await send(store, certPayload('2026-11-18T09:00:00.000Z'))
+      expect(res.status).toBe(201)
+      expect(spy).not.toHaveBeenCalled()
+      expect(store.listSecurityScans()).toHaveLength(2)
+    })
+
+    it('reconcile failure still returns 201', async () => {
+      vi.spyOn(store, 'upsertSecurityFindings').mockRejectedValue(new Error('boom'))
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const res = await send(store, certPayload())
+      expect(res.status).toBe(201)
+      expect(store.listSecurityScans()).toHaveLength(1)
+      expect(errSpy).toHaveBeenCalled()
+      errSpy.mockRestore()
+    })
+
+    it('cert findings not stored in snapshot', async () => {
+      await send(store, certPayload())
+      expect(store.listSecurityScans()[0].findings.some((f) => f.check === 'cert')).toBe(false)
+    })
   })
 })
