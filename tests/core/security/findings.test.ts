@@ -12,7 +12,7 @@ import type { StoredCheckKey } from '../../../src/core/security/view.ts'
 const NOW = '2026-11-24T22:07:00Z'
 const ok: CheckResult = { status: 'ok', summary: '' }
 
-function cov(over: Omit<Partial<CoverageInput>, 'checks'> & { checks?: Partial<Record<StoredCheckKey, CheckResult>> } = {}): CoverageInput {
+function cov(over: Omit<Partial<CoverageInput>, 'checks'> & { checks?: Partial<Record<StoredCheckKey | 'deps', CheckResult>> } = {}): CoverageInput {
   return {
     exposure: [], logVolume: [], evaluatedLogSources: [], judgedTruncated: false, certs: [],
     ...over,
@@ -151,6 +151,12 @@ describe('isCovered', () => {
     const certs = [{ domain: 'a.com', notAfter: NOW }]
     expect(c('cert:expiry:a.com', 'cert', cov({ certs }))).toBe(true)
     expect(c('cert:untrusted:b.com', 'cert', cov({ certs }))).toBe(false)
+  })
+  it('deps covered only when the deps check ran, regardless of judged truncation', () => {
+    const fp = 'deps:image:ghcr.io/a/b'
+    expect(c(fp, 'deps', cov())).toBe(false) // hosted／舊快照無 deps
+    expect(c(fp, 'deps', cov({ checks: { deps: { status: 'na', summary: '' } } }))).toBe(false)
+    expect(c(fp, 'deps', cov({ checks: { deps: ok }, judgedTruncated: true }))).toBe(true)
   })
   it('fallback record uses check-level coverage', () => {
     expect(c('ports:_fallback', 'ports', cov())).toBe(true)

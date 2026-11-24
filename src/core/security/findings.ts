@@ -40,7 +40,8 @@ export type SecurityFindingWrite = Omit<SecurityFindingRecord, 'id'> & {
 }
 
 export interface CoverageInput {
-  checks: Record<StoredCheckKey, CheckResult>
+  /** deps 只有 vm 帶；缺席（hosted／舊快照）視為未檢查 */
+  checks: Record<StoredCheckKey, CheckResult> & { deps?: CheckResult }
   exposure: ExposureFact[]
   logVolume: LogSourceVolume[]
   /** 本次基準足夠、真正完成評估的 logVolume 來源（基準建立中不算檢查過） */
@@ -71,6 +72,8 @@ export function isCovered(record: Pick<SecurityFindingRecord, 'check' | 'fingerp
     case 'updates':
     case 'logins':
       return !cov.judgedTruncated && checked(cov.checks[check]) // 含 _fallback（類別級）
+    case 'deps':
+      return checked(cov.checks.deps) // runner 確定性計算，不受 judgedTruncated 影響
     case 'changes':
       return false
     case 'logVolume':

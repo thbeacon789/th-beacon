@@ -227,7 +227,7 @@ export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
 
 const FINDING_STATUSES: readonly SecurityFindingStatus[] = ['open', 'resolved', 'ignored']
 const FINDING_SEVERITIES: readonly FindingSeverity[] = ['low', 'medium', 'high']
-const CHECK_KEYS: readonly CheckKey[] = ['ports', 'updates', 'logins', 'logVolume', 'exposure', 'changes', 'cert']
+const CHECK_KEYS: readonly CheckKey[] = ['ports', 'updates', 'logins', 'logVolume', 'exposure', 'changes', 'cert', 'deps']
 
 export function rowToSecurityFinding(row: SecurityFindingRow): SecurityFindingRecord {
   return {
