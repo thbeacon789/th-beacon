@@ -42,3 +42,9 @@ export interface SecurityScanPayload {
 }
 
 export interface Evaluation { check: CheckResult; findings: Finding[] }
+
+/** 映像檔相依套件漏洞（osv-scanner）的嚴重度；unscored＝來源沒有給等級 */
+export type DepSeverity = 'critical' | 'high' | 'moderate' | 'low' | 'unscored'
+export interface DepCounts { critical: number; high: number; moderate: number; low: number; unscored: number }
+export interface DepPackage { name: string; version: string; ecosystem: string; severity: DepSeverity; ids: string[] }
+export interface ImageScanSummary { counts: DepCounts; packages: DepPackage[] }
