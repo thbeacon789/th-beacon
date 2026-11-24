@@ -1,7 +1,8 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { imageScanEnv, scanImages, type ImageScanRunner } from '../../scripts/security/lib/image-scan'
+import { dockerOsvRunner, imageScanEnv, scanImages, type ImageScanRunner } from '../../scripts/security/lib/image-scan'
 import type { ScanTarget } from '@/core/security/collect/images'
 
 const FX = path.join(__dirname, '../core/security/collect/fixtures')
@@ -17,6 +18,13 @@ describe('scanImages', () => {
     const [r] = scanImages([target('local/app', null)], run)
     expect(run).not.toHaveBeenCalled()
     expect(r).toEqual({ image: 'local/app', digest: null, containers: ['a'], error: '無 registry digest' })
+  })
+
+  it('target 帶 error：不呼叫 runner，直接帶出該 error', () => {
+    const run = vi.fn<ImageScanRunner>()
+    const [r] = scanImages([{ image: 'unknown', digest: null, ref: null, containers: ['unknown-x'], error: '無法查詢容器' }], run)
+    expect(run).not.toHaveBeenCalled()
+    expect(r).toEqual({ image: 'unknown', digest: null, containers: ['unknown-x'], error: '無法查詢容器' })
   })
 
   it('runner 失敗：error 為 runner 的 reason', () => {
@@ -68,5 +76,21 @@ describe('imageScanEnv', () => {
 
   it('來源缺值就不帶該鍵', () => {
     expect(imageScanEnv({ PATH: '/bin' }, 'docker')).toEqual({ PATH: '/bin' })
+  })
+})
+
+describe('dockerOsvRunner：osv-scanner 不存在（安裝 step 失敗、OSV_SCANNER_BIN 未設）', () => {
+  it('每個映像檔得到 error 而不是丟例外', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'osvbin-'))
+    try {
+      const docker = path.join(dir, 'docker')
+      fs.writeFileSync(docker, '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+      const run = dockerOsvRunner({ osvBin: path.join(dir, 'no-such-osv-scanner'), timeoutMs: 10_000, env: { PATH: `${dir}:/usr/bin:/bin` } })
+      const out = scanImages([target('a/a', 'a'), target('b/b', 'b')], run)
+      expect(out.map((i) => i.error)).toEqual(['osv-scanner 無法執行', 'osv-scanner 無法執行'])
+      expect(out.every((i) => i.counts === undefined)).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

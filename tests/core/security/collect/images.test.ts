@@ -66,3 +66,16 @@ describe('planImageScans', () => {
     expect(t.map((x) => x.image)).toEqual(['aaa', 'zzz'])
   })
 })
+
+describe('planImageScans 無法查詢的容器', () => {
+  const unresolved = (container: string): ImageEntry => ({ container, configImage: 'unknown', imageId: '', repoDigests: [] })
+  it('每個哨兵各自一個 target，帶 error 且 ref 為 null，不與其他容器合併', () => {
+    const t = planImageScans([unresolved('unknown-aaa'), unresolved('unknown-bbb'), entry({})])
+    const bad = t.filter((x) => x.error !== undefined)
+    expect(bad).toEqual([
+      { image: 'unknown', digest: null, ref: null, containers: ['unknown-aaa'], error: '無法查詢容器' },
+      { image: 'unknown', digest: null, ref: null, containers: ['unknown-bbb'], error: '無法查詢容器' },
+    ])
+    expect(t).toHaveLength(3)
+  })
+})

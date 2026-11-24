@@ -265,8 +265,17 @@ describe('parseVmDump images', () => {
     expect(r.images).toEqual({ entries: undefined, failed: true })
     expect(r.missingSections).toEqual([])
   })
-  it('欄位數不符的行略過', () => {
+  it('欄位數不符的行不略過：各產生一筆無法查詢的項目（imageId 為空）', () => {
     const r = parse(`only-one\na\tb\na\tb\tc\td\te\n\tx\ty\tz\nok\timg:1\tsha256:${H('1')}\t`)
-    expect(r.images.entries?.map((e) => e.container)).toEqual(['ok'])
+    expect(r.images.entries?.map((e) => e.container)).toEqual([
+      'unknown-unparsed', 'unknown-unparsed', 'unknown-unparsed', 'unknown-unparsed', 'ok',
+    ])
+    expect(r.images.entries?.slice(0, 4).every((e) => e.imageId === '' && e.configImage === 'unknown')).toBe(true)
+  })
+  it('哨兵行 ?image:<雜湊> → 無法查詢的項目，名稱含雜湊前 12 碼且符合 payload 白名單', () => {
+    const r = parse(`?image:0123456789abcdef\nok\timg:1\tsha256:${H('1')}\t`)
+    expect(r.images.entries?.[0]).toEqual({ container: 'unknown-0123456789ab', configImage: 'unknown', imageId: '', repoDigests: [] })
+    expect(r.images.entries?.[0].container).toMatch(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/)
+    expect(r.images.entries).toHaveLength(2)
   })
 })

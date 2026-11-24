@@ -215,7 +215,12 @@ function parseContainers(s: string | undefined): { containers: ContainerEntry[] 
   return { containers: out, failed: false }
 }
 
-/** images 區段：NONE → undefined；ERROR 或缺區段 → failed；欄位數不符的行略過。 */
+/**
+ * images 區段：NONE → undefined；ERROR 或缺區段 → failed。
+ * 收集端的哨兵行（?image:<雜湊>）與欄位數不符的行不可略過：各產生一筆 imageId 為 '' 的項目，
+ * 表示「這個容器的映像檔無法查詢」，由 planImageScans 轉成帶 error 的 target，deps 因此判 unknown。
+ * 佔位名稱符合 payload 的字元白名單（image `unknown`、container `unknown-<雜湊前 12 碼>`）。
+ */
 function parseImages(s: string | undefined): VmFacts['images'] {
   if (s === undefined) return { entries: undefined, failed: true }
   const body = lines(s)
@@ -225,9 +230,18 @@ function parseImages(s: string | undefined): VmFacts['images'] {
   for (const raw of s.split('\n')) {
     const line = raw.replace(/\r$/, '')
     if (line.trim() === '') continue
+    const unresolved = (suffix: string): ImageEntry => ({ container: `unknown-${suffix}`, configImage: 'unknown', imageId: '', repoDigests: [] })
+    const sentinel = /^\?image:([a-f0-9]{16})$/.exec(line.trim())
+    if (sentinel) {
+      entries.push(unresolved(sentinel[1].slice(0, 12)))
+      continue
+    }
     const p = line.split('\t')
     // 行尾 TAB 可能被傳輸層去掉：沒有 RepoDigests 時只剩 3 欄
-    if ((p.length !== 4 && p.length !== 3) || p[0].trim() === '' || p[1].trim() === '' || p[2].trim() === '') continue
+    if ((p.length !== 4 && p.length !== 3) || p[0].trim() === '' || p[1].trim() === '' || p[2].trim() === '') {
+      entries.push(unresolved('unparsed'))
+      continue
+    }
     const repoDigests = (p[3] ?? '').split(',').map((x) => x.trim()).filter((x) => x.length > 0)
     entries.push({ container: p[0].trim(), configImage: p[1].trim(), imageId: p[2].trim(), repoDigests })
   }

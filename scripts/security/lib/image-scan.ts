@@ -74,6 +74,7 @@ function timedOut(e: Error): boolean {
 export function scanImages(targets: ScanTarget[], run: ImageScanRunner): ImageDeps[] {
   return targets.map((t): ImageDeps => {
     const base = { image: t.image, digest: t.digest, containers: t.containers }
+    if (t.error !== undefined) return { ...base, error: t.error }
     if (t.ref === null) return { ...base, error: '無 registry digest' }
     const r = run(t.ref)
     if (!r.ok) return { ...base, error: r.reason }

@@ -344,12 +344,21 @@ s_images() {
   local iid_re='^sha256:[a-f0-9]{64}$'
   local dig_re='^[A-Za-z0-9][A-Za-z0-9._/:@,-]*$'
   ids=$(timeout 20 docker ps -q --no-trunc 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
+  # 無法取得單一容器的映像檔資訊（inspect 失敗、欄位不符白名單、id 格式不符）時輸出哨兵行 ?image:<id 雜湊>，
+  # 不可默默略過：少掉一個容器會讓 deps 在掃描其餘映像檔後顯示 ok。解析端把哨兵視為「無法查詢」，deps 判 unknown。
+  # 容器在 ps 與 inspect 之間退出也會走這條路而變 unknown，這是可接受的保守行為（下次排程會恢復）。
+  # 只輸出 id 的雜湊，不輸出原文（輸入為不可信資料）。
   printf '%s\n' "$ids" | while IFS= read -r id; do
-    [[ $id =~ $id_re ]] || continue
-    meta=$(timeout 20 docker inspect --type container -f '{{.Name}}{{"\t"}}{{.Config.Image}}{{"\t"}}{{.Image}}' -- "$id" 2>/dev/null < /dev/null) || continue
+    [ -z "$id" ] && continue
+    [[ $id =~ $id_re ]] || { printf '?image:%s\n' "$(hstr "$id")"; continue; }
+    meta=$(timeout 20 docker inspect --type container -f '{{.Name}}{{"\t"}}{{.Config.Image}}{{"\t"}}{{.Image}}' -- "$id" 2>/dev/null < /dev/null) \
+      || { printf '?image:%s\n' "$(hstr "$id")"; continue; }
     IFS=$'\t' read -r iname iimage iid iextra <<< "$meta"
     iname=${iname#/}
-    [ -z "$iextra" ] && [[ $iname =~ $name_re ]] && [[ $iimage =~ $image_re ]] && [[ $iid =~ $iid_re ]] || continue
+    if [ -n "$iextra" ] || ! [[ $iname =~ $name_re ]] || ! [[ $iimage =~ $image_re ]] || ! [[ $iid =~ $iid_re ]]; then
+      printf '?image:%s\n' "$(hstr "$id")"
+      continue
+    fi
     digests=$(timeout 20 docker image inspect -f '{{join .RepoDigests ","}}' -- "$iid" 2>/dev/null < /dev/null) || digests=""
     [[ -z $digests || $digests =~ $dig_re ]] || digests=""
     printf '%s\t%s\t%s\t%s\n' "$iname" "$iimage" "$iid" "$digests"

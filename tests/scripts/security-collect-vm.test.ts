@@ -700,15 +700,20 @@ esac`,
       dockerFake(`printf 'aaaaaaaaaaaa\\nbbbbbbbbbbbb\\ncccccccccccc\\ndddddddddddd\\nnot-an-id\\neeeeeeeeeeee\\n'`)
       const r = await run()
       const body = section(r.stdout)
-      // 含非法字元的容器名、非法 id、inspect 失敗的容器一律略過，且不輸出原文
-      expect(body).toBe(
-        `api\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}\n` +
-          `worker\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}\n` +
-          `local\tlocal-build:1\tsha256:${H('2')}\t\n`,
-      )
+      // 含非法字元的容器名、非法 id、inspect 失敗的容器不輸出原文，改輸出哨兵行 ?image:<雜湊>（不可默默略過）
+      const lines = body.trimEnd().split('\n')
+      expect(lines.slice(0, 3)).toEqual([
+        `api\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}`,
+        `worker\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}`,
+        `local\tlocal-build:1\tsha256:${H('2')}\t`,
+      ])
+      expect(lines.slice(3)).toHaveLength(3) // dddddddddddd（容器名非法）、not-an-id、eeeeeeeeeeee（inspect 失敗）
+      for (const l of lines.slice(3)) expect(l).toMatch(/^\?image:[a-f0-9]{16}$/)
       expect(body).not.toContain('ev il')
+      expect(body).not.toContain('not-an-id')
       const f = parseVmDump(r.stdout, NONCE)
-      expect(f.images.entries).toHaveLength(3)
+      expect(f.images.entries).toHaveLength(6)
+      expect(f.images.entries?.filter((e) => e.imageId === '')).toHaveLength(3)
       expect(f.images.failed).toBe(false)
     })
 
