@@ -34,7 +34,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
     getSecurityView(client, now),
     getSecurityFindings(client, tab),
   ])
-  const staleServices = new Set(view.staleServices)
+  const staleServices = new Set(view.staleServices.map((x) => x.serviceName))
   const windowStart = now.getTime() - BASELINE_WINDOW_DAYS * DAY_MS
 
   return (
@@ -44,10 +44,25 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
         <p className="hint">共 {view.rows.length} 項服務｜每日 06:00 掃描</p>
       </div>
 
-      {view.rows.length === 0 ? (
-        <p className="hint">尚無掃描資料。資料由每日排程的 security-scan workflow 推送。</p>
-      ) : (
-        <>
+      {view.staleServices.length > 0 && (
+        <div className="security-todos" role="alert">
+          <ul>
+            {view.staleServices.map((x) => (
+              <li key={x.serviceName} className="security-todo">
+                <span className="badge security-sev-high">高</span>
+                <div className="security-todo-body">
+                  <div>
+                    <span className="security-todo-service">{x.serviceName}</span>
+                    <span>資安掃描已停擺 {x.hours} 小時</span>
+                  </div>
+                  <div className="security-todo-rec">檢查 GitHub Actions 的 security-scan workflow</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
           <section className="security-todos" aria-labelledby="security-todos-title">
             <h2 id="security-todos-title" className="sr-only">資安發現</h2>
             <nav className="security-tabs" aria-label="資安發現狀態">
@@ -95,6 +110,10 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
             )}
           </section>
 
+      {view.rows.length === 0 ? (
+        <p className="hint">尚無掃描資料。資料由每日排程的 security-scan workflow 推送。</p>
+      ) : (
+        <>
           <div className="table-wrap">
             <table className="security-matrix">
               <thead>

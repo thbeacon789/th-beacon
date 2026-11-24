@@ -111,7 +111,7 @@ export interface ServiceSecurityRow {
 }
 export interface SecurityView {
   /** 掃描停擺的服務名稱；待處理紀錄仍顯示，但標註狀態可能過期 */
-  staleServices: string[]
+  staleServices: Array<{ serviceName: string; hours: number }>
   rows: ServiceSecurityRow[]
 }
 
@@ -119,7 +119,7 @@ export function buildSecurityView(
   input: Array<{ serviceName: string; scan: StoredSecurityScan }>,
   now: Date,
 ): SecurityView {
-  const staleServices: string[] = []
+  const staleServices: Array<{ serviceName: string; hours: number }> = []
   const rows: ServiceSecurityRow[] = []
 
   for (const { serviceName, scan } of input) {
@@ -135,7 +135,7 @@ export function buildSecurityView(
       checks,
       logVolume: scan.logVolume,
     })
-    if (stale) staleServices.push(serviceName)
+    if (stale) staleServices.push({ serviceName, hours: Math.floor((now.getTime() - Date.parse(scan.scannedAt)) / HOUR_MS) })
   }
 
   rows.sort((a, b) => a.serviceName.localeCompare(b.serviceName))

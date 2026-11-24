@@ -104,7 +104,7 @@ describe('buildSecurityView', () => {
     const v = buildSecurityView([{ serviceName: 'A', scan: stale }, { serviceName: 'B', scan: scan() }], now)
     expect(v.rows[0].stale).toBe(true)
     expect(v.rows[0].overall).toBe('unknown')
-    expect(v.staleServices).toEqual(['A'])
+    expect(v.staleServices).toEqual([{ serviceName: 'A', hours: 50 }])
   })
   it('非過期列的 bad 憑證使該列 overall 為 bad，staleServices 為空', () => {
     const v = buildSecurityView([{ serviceName: 'A', scan: scan({ certs: [{ domain: 'a.com', notAfter: inDays(5) }] }) }], now)
