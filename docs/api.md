@@ -477,18 +477,29 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 {
   "scannedAt": "2026-11-18T22:03:11Z",   // 必填，帶時區的 ISO 8601；不可晚於現在超過 10 分鐘，也不可早於現在超過 2 小時
   "kind": "vm",                           // 必填，"vm" | "hosted"
-  "checks": {                             // 必填，三項都要有
+  "checks": {                             // 必填；ports／updates／logins 三項必備，vm 另須帶 deps
     "ports":   { "status": "bad",  "summary": "3306 對外" },
     "updates": { "status": "warn", "summary": "12 項（3 安全性）" },
-    "logins":  { "status": "ok",   "summary": "正常" }
+    "logins":  { "status": "ok",   "summary": "正常" },
+    "deps":    { "status": "warn", "summary": "2 個映像檔有漏洞" }   // 只有 kind 為 vm 必帶；hosted 不得帶
     // 不適用：{ "status": "na", "summary": "" }；判讀失敗：{ "status": "unknown", "summary": "" }
   },
   "findings": [
     {
-      "check": "ports",                   // "ports" | "updates" | "logins"
+      "check": "ports",                   // "ports" | "updates" | "logins" | "deps"
       "severity": "high",                 // "high" | "medium" | "low"
       "title": "MySQL 3306 埠對全網開放",
       "recommendation": "改為僅內網或防火牆白名單"   // 可為空字串
+    }
+  ],
+  "deps": [                               // vm 必填（可為空陣列）；hosted 不得帶
+    {
+      "image": "asia-east1-docker.pkg.dev/proj/altinvest/backend",   // 不含 tag 與 digest
+      "digest": "sha256:0123abcd...（64 位小寫十六進位）",              // 或 null
+      "containers": ["backend"],
+      "counts": { "critical": 0, "high": 1, "moderate": 2, "low": 0, "unscored": 0 },
+      "packages": [ { "name": "openssl", "version": "3.0.2", "ecosystem": "Ubuntu:22.04:LTS", "severity": "high", "ids": ["CVE-2025-0001"] } ]
+      // 掃描失敗時改帶 "error": "原因"，且不可同時帶 counts／packages
     }
   ],
   "certs": [ { "domain": "example.com", "notAfter": "2027-01-18T00:00:00Z", "trusted": true } ],   // trusted（布林）、error（字串，≤ 120 字）選填
@@ -526,6 +537,8 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `findings[].title` | 1–120 字 |
 | `findings[].recommendation` | 最長 300 字，可為空字串 |
 | `findings[].key` | 選填。發現的穩定識別，完整指紋為 `<check>:<key>`（key 不含 check 前綴），用於跨次掃描追蹤同一個發現。規格：`ports` 為 `tcp/<1-65535>` 或 `udp/<1-65535>`；`updates` 為 `security`／`eol`／`reboot`／`auto-disabled`；`logins` 為 `password-auth`／`root-login`／`failed-spike` 或 `unexpected-success:<IPv4/IPv6>`。缺少或不合規格**不會被拒收**，改退回類別級指紋 `_fallback`（該筆標記為 key 退回） |
+| `findings[].key`（`deps`） | `deps` 發現的 key 為 `image:<repository>`（`<repository>` 為映像檔名，不含 tag／digest），整體至多 310 字、字元為 `[A-Za-z0-9._/:-]` 且首字元為英數。不合規格同樣不拒收，退回 `_fallback`（標記為 key 退回） |
+| `deps`（vm 必填，hosted 不得帶） | 陣列，最多 50 個映像檔。`image`：非空字串、至多 300 字，字元限 `[A-Za-z0-9._/:-]` 且首字元為英數；`digest`：`sha256:` 加 64 位小寫十六進位，或 `null`；`containers`：字串陣列，最多 50 個，每個至多 300 字、字元限 `[A-Za-z0-9_.-]` 且首字元為英數；`error`：選填字串，至多 300 字，有 `error` 時不可同時帶 `counts`／`packages`；`counts`：`critical`／`high`／`moderate`／`low`／`unscored` 五個非負整數；`packages`：最多 20 筆，每筆 `name`／`version`／`ecosystem`（`version`、`ecosystem` 可為空字串，各至多 300 字）、`severity`（`critical`／`high`／`moderate`／`low`／`unscored`）、`ids`（字串陣列，最多 5 個，每個至多 300 字）。hosted 快照帶 `deps` 或 `checks.deps` 回 422 |
 | `exposure[].probeErrors` | 選填，非負整數：該網域敏感路徑請求失敗（逾時、連線錯誤）的數量。缺少則視為未涵蓋，敏感路徑發現不會被自動判為已解決；非整數或負數回 422 |
 | `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
@@ -539,7 +552,7 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 
 ### 哪些狀態由 beacon 計算
 
-payload **只送事實與 `ports`／`updates`／`logins` 三項判讀**。以下四項的狀態**不由 payload 提供**，送了也不採用：
+payload **只送事實與 `ports`／`updates`／`logins` 三項判讀，加上 vm 快照的 `deps`**。`deps` 由排程端（th-beacon 自己的掃描 workflow，以 osv-scanner 掃描映像檔）確定性計算，不經 Claude；vm 必填、hosted 不得帶（beacon 補 `na`），舊快照在讀取端也視為 `na`。因此**快照只應由 th-beacon 自己的掃描 workflow 送出**。以下四項的狀態**不由 payload 提供**，送了也不採用：
 
 - `logVolume`、`exposure`、`changes`：寫入時由 beacon 依規則計算（log 量對照近 7 天基準、暴露路徑與安全標頭、與 7 天窗內最舊一筆 `inventory` 的差異），結果併入回應的 `checks` 並存入快照。
 - `cert`：讀取時依 `certs` 的到期日與 `trusted` 推導，不存。

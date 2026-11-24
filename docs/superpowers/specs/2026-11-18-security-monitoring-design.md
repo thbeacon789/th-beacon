@@ -22,6 +22,7 @@
 | `logVolume` | log 量突然異常增加 | 每小時 log 行數相對平常暴增 |
 | `exposure` | 對外暴露 | 從外部看網站：不該公開的路徑是否有回應、瀏覽器安全標頭、是否接受過時的 TLS |
 | `changes` | 與先前掃描相比的變動 | 新的帳號、管理員權限、SSH 金鑰、排程工作、監聽埠、常駐服務（入侵後留後門的常見痕跡） |
+| `deps` | 容器映像檔的相依套件漏洞 | 第八項（僅 vm）：排程端以 osv-scanner 確定性掃描，不經 Claude；見 `2026-11-24-image-deps-scan-design.md` |
 
 ## 2. 目標、非目標、反目標
 
@@ -400,6 +401,7 @@ Payload：
 - 收集腳本是「變動偵測」，不是完整的入侵偵測。不涵蓋：使用者層級的 systemd timer、`AuthorizedKeysCommand` 指向的外部程式內容、systemd unit 的 drop-in 覆寫；服務清冊只列 `enabled` 狀態，`static`、runtime、暫態 unit 不在清冊內。
 - 防火牆判定不處理 deny 規則與優先序；來源 `0.0.0.0/0` 與 `::/0` 都計。`IPProtocol` 為 `"6"` 視同 tcp、`"17"` 視同 udp，缺漏或非字串視為適用該 proto，`ports: []` 視同全部埠（寧可多報）。
 - hosted 服務的相依套件稽核只支援 pnpm 與 npm。
+- 容器映像檔的相依套件漏洞（`deps`）另有專屬 spec，限制見 `docs/superpowers/specs/2026-11-24-image-deps-scan-design.md`（含 Artifact Registry 讀取權限、osv-scanner 釘版與涵蓋範圍）。
 - **容器映像檔版本不列入比較**（每次部署版本都會變）：同一倉庫內被換成惡意版本偵測不到；未標記的本機映像檔（只有映像檔 ID）一律記為 `<untagged>`，換掉也偵測不到。`docker ps --format` 的輸出格式以首次實跑為準。
 - **容器清單的誤報來源**：(a) 以 `-P` 隨機指派主機埠的容器每次重啟埠號都變，會被報成新增對外埠對應；(b) Docker 可能把連續埠合併成範圍寫法，與單一對應視為不同；(c) `docker pull` 後、容器重建前，`docker ps` 會顯示映像檔 ID，被記為 `<untagged>`，而短暫報「映像檔來源變更」；(d) 帶 legacy link 的容器名稱（含逗號或斜線）會以哨兵呈現；(e) 基準在窗內最舊快照沒有容器清單時，容器基準取自較新的快照，兩者日期可能不同。
 - 變動會持續顯示約七天（比對基準為七天窗內最舊的一筆）。
