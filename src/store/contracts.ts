@@ -4,6 +4,7 @@ import type { OpenIssue, PollState } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 
 export type { IssueAiTriage, IssueAiFix }
 
@@ -243,4 +244,11 @@ export interface Store {
   listSecurityScansBetween(serviceId: string, fromIso: string, beforeIso: string): Promise<StoredSecurityScan[]>
   /** 回傳刪除筆數。每個服務 scannedAt 最新的一筆一律保留（即使早於界線），服務才會顯示「停擺」而不是從頁面消失 */
   purgeSecurityScansBefore(beforeIso: string): Promise<number>
+  /** 該服務最新一筆快照的 scannedAt；沒有則 null */
+  getLatestSecurityScanAt(serviceId: string): Promise<string | null>
+  listSecurityFindings(serviceId: string): Promise<SecurityFindingRecord[]>
+  /** 以 (serviceId, fingerprint) upsert */
+  upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void>
+  /** 僅當目前 status = expectedFrom 才更新（同時 missed_count 歸零）；成功回 true */
+  setSecurityFindingStatus(id: string, to: SecurityFindingStatus, expectedFrom: SecurityFindingStatus, by: string, nowIso: string): Promise<boolean>
 }

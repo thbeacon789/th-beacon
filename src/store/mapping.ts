@@ -5,6 +5,8 @@ import type { RuleMatch, TriageRule } from '@/core/rules'
 import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
 import { FALLBACK_KEY } from '@/core/security/constants'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
+import type { CheckKey, FindingSeverity } from '@/core/security/types'
 import type { IssueAiFix, IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
@@ -12,6 +14,7 @@ type ServiceRow = Database['public']['Tables']['services']['Row']
 type RuleRow = Database['public']['Tables']['triage_rules']['Row']
 type HeartbeatRow = Database['public']['Tables']['heartbeats']['Row']
 type SecurityScanRow = Database['public']['Tables']['security_scans']['Row']
+type SecurityFindingRow = Database['public']['Tables']['security_findings']['Row']
 type AiJudgmentRow = Database['public']['Tables']['ai_judgments']['Row']
 
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
@@ -219,5 +222,48 @@ export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
     logVolume: row.log_volume as unknown as StoredSecurityScan['logVolume'],
     exposure: row.exposure as unknown as StoredSecurityScan['exposure'],
     inventory: row.inventory === null ? null : (row.inventory as unknown as StoredSecurityScan['inventory']),
+  }
+}
+
+const FINDING_STATUSES: readonly SecurityFindingStatus[] = ['open', 'resolved', 'ignored']
+const FINDING_SEVERITIES: readonly FindingSeverity[] = ['low', 'medium', 'high']
+const CHECK_KEYS: readonly CheckKey[] = ['ports', 'updates', 'logins', 'logVolume', 'exposure', 'changes', 'cert']
+
+export function rowToSecurityFinding(row: SecurityFindingRow): SecurityFindingRecord {
+  return {
+    id: row.id,
+    serviceId: row.service_id,
+    fingerprint: row.fingerprint,
+    check: narrow(row.check, CHECK_KEYS, 'security check'),
+    status: narrow(row.status, FINDING_STATUSES, 'security finding status'),
+    severity: narrow(row.severity, FINDING_SEVERITIES, 'security finding severity'),
+    title: row.title,
+    recommendation: row.recommendation,
+    keyFallback: row.key_fallback,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    statusChangedAt: row.status_changed_at,
+    statusChangedBy: row.status_changed_by,
+    reopenCount: row.reopen_count,
+    missedCount: row.missed_count,
+  }
+}
+
+export function securityFindingWriteToRow(w: SecurityFindingWrite): Database['public']['Tables']['security_findings']['Insert'] {
+  return {
+    service_id: w.serviceId,
+    fingerprint: w.fingerprint,
+    check: w.check,
+    status: w.status,
+    severity: w.severity,
+    title: w.title,
+    recommendation: w.recommendation,
+    key_fallback: w.keyFallback,
+    first_seen_at: w.firstSeenAt,
+    last_seen_at: w.lastSeenAt,
+    status_changed_at: w.statusChangedAt,
+    status_changed_by: w.statusChangedBy,
+    reopen_count: w.reopenCount,
+    missed_count: w.missedCount,
   }
 }

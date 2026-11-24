@@ -468,6 +468,68 @@ export type Database = {
           },
         ]
       }
+      security_findings: {
+        Row: {
+          check: string
+          fingerprint: string
+          first_seen_at: string
+          id: string
+          key_fallback: boolean
+          last_seen_at: string
+          missed_count: number
+          recommendation: string
+          reopen_count: number
+          service_id: string
+          severity: string
+          status: string
+          status_changed_at: string
+          status_changed_by: string | null
+          title: string
+        }
+        Insert: {
+          check: string
+          fingerprint: string
+          first_seen_at: string
+          id?: string
+          key_fallback?: boolean
+          last_seen_at: string
+          missed_count?: number
+          recommendation: string
+          reopen_count?: number
+          service_id: string
+          severity: string
+          status: string
+          status_changed_at: string
+          status_changed_by?: string | null
+          title: string
+        }
+        Update: {
+          check?: string
+          fingerprint?: string
+          first_seen_at?: string
+          id?: string
+          key_fallback?: boolean
+          last_seen_at?: string
+          missed_count?: number
+          recommendation?: string
+          reopen_count?: number
+          service_id?: string
+          severity?: string
+          status?: string
+          status_changed_at?: string
+          status_changed_by?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_findings_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       security_scans: {
         Row: {
           certs: Json

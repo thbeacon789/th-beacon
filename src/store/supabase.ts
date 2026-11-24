@@ -6,6 +6,7 @@ import type { OpenIssue } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 import {
   narrowIssueStatus,
   narrowSeverity,
@@ -16,6 +17,8 @@ import {
   rowToHeartbeat,
   rowToAiJudgment,
   rowToSecurityScan,
+  rowToSecurityFinding,
+  securityFindingWriteToRow,
 } from '@/store/mapping'
 
 /** Postgres unique_violation。名稱重複是預期輸入，不是例外。 */
@@ -583,5 +586,41 @@ export class SupabaseStore implements Store {
     const { data, error } = await query.select('id')
     if (error) throw new Error(`purgeSecurityScansBefore failed: ${error.message}`)
     return data.length
+  }
+
+  async getLatestSecurityScanAt(serviceId: string): Promise<string | null> {
+    const { data, error } = await this.client
+      .from('security_scans')
+      .select('scanned_at')
+      .eq('service_id', serviceId)
+      .order('scanned_at', { ascending: false })
+      .limit(1)
+    if (error) throw new Error(`getLatestSecurityScanAt failed: ${error.message}`)
+    return data.length > 0 ? data[0].scanned_at : null
+  }
+
+  async listSecurityFindings(serviceId: string): Promise<SecurityFindingRecord[]> {
+    const { data, error } = await this.client.from('security_findings').select('*').eq('service_id', serviceId)
+    if (error) throw new Error(`listSecurityFindings failed: ${error.message}`)
+    return data.map(rowToSecurityFinding)
+  }
+
+  async upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void> {
+    if (rows.length === 0) return
+    const { error } = await this.client
+      .from('security_findings')
+      .upsert(rows.map(securityFindingWriteToRow), { onConflict: 'service_id,fingerprint' })
+    if (error) throw new Error(`upsertSecurityFindings failed: ${error.message}`)
+  }
+
+  async setSecurityFindingStatus(id: string, to: SecurityFindingStatus, expectedFrom: SecurityFindingStatus, by: string, nowIso: string): Promise<boolean> {
+    const { data, error } = await this.client
+      .from('security_findings')
+      .update({ status: to, status_changed_at: nowIso, status_changed_by: by, missed_count: 0 })
+      .eq('id', id)
+      .eq('status', expectedFrom)
+      .select('id')
+    if (error) throw new Error(`setSecurityFindingStatus failed: ${error.message}`)
+    return data.length === 1
   }
 }

@@ -6,6 +6,7 @@ import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 
 interface SeededRule {
   serviceId: string | null
@@ -26,6 +27,7 @@ export class InMemoryStore implements Store {
   private aiJudgments: StoredAiJudgment[] = []
   private aiUsages: Array<NewAiUsage & { id: string }> = []
   private securityScans: StoredSecurityScan[] = []
+  private securityFindings: SecurityFindingRecord[] = []
   private nextId = 1
 
   seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
@@ -568,6 +570,41 @@ export class InMemoryStore implements Store {
     const removed = this.securityScans.length - kept.length
     this.securityScans = kept
     return removed
+  }
+
+  async getLatestSecurityScanAt(serviceId: string): Promise<string | null> {
+    let max: string | null = null
+    for (const s of this.securityScans) {
+      if (s.serviceId === serviceId && (max === null || Date.parse(s.scannedAt) > Date.parse(max))) max = s.scannedAt
+    }
+    return max
+  }
+
+  async listSecurityFindings(serviceId: string): Promise<SecurityFindingRecord[]> {
+    return this.securityFindings.filter((f) => f.serviceId === serviceId).map((f) => ({ ...f }))
+  }
+
+  async upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void> {
+    for (const w of rows) {
+      const idx = this.securityFindings.findIndex((f) => f.serviceId === w.serviceId && f.fingerprint === w.fingerprint)
+      if (idx >= 0) this.securityFindings[idx] = { ...w, id: this.securityFindings[idx].id }
+      else this.securityFindings.push({ ...w, id: randomUUID() })
+    }
+  }
+
+  async setSecurityFindingStatus(id: string, to: SecurityFindingStatus, expectedFrom: SecurityFindingStatus, by: string, nowIso: string): Promise<boolean> {
+    const f = this.securityFindings.find((x) => x.id === id)
+    if (!f || f.status !== expectedFrom) return false
+    f.status = to
+    f.statusChangedAt = nowIso
+    f.statusChangedBy = by
+    f.missedCount = 0
+    return true
+  }
+
+  /** 測試輔助 */
+  listAllSecurityFindings(): SecurityFindingRecord[] {
+    return this.securityFindings.map((f) => ({ ...f }))
   }
 
   /** 測試輔助 */
