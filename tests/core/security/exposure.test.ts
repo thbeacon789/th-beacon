@@ -25,7 +25,7 @@ describe('evaluateExposure', () => {
     const r = evaluateExposure([fact({ sensitivePaths: [{ path: '/.env', exposed: true }, { path: '/.git/config', exposed: false }] })])
     expect(r.check).toEqual({ status: 'bad', summary: '1 個敏感路徑暴露' })
     expect(r.findings).toEqual([{
-      check: 'exposure', key: '_fallback', severity: 'high', title: 'a.com/.env 可被公開存取',
+      check: 'exposure', key: 'path:a.com|/.env', severity: 'high', title: 'a.com/.env 可被公開存取',
       recommendation: '立即封鎖該路徑，並輪替其中可能外洩的金鑰',
     }])
   })
@@ -46,6 +46,10 @@ describe('evaluateExposure', () => {
       ['low', 'a.com 缺少 Content-Security-Policy 標頭'],
       ['low', 'a.com 缺少 Referrer-Policy 標頭'],
     ])
+  })
+  it('key：header 用 headerKey、legacy-tls 用 domain', () => {
+    const r = evaluateExposure([fact({ legacyTls: true, headers: { hsts: false, contentTypeOptions: true, frameProtection: true, csp: false, referrerPolicy: true } })])
+    expect(r.findings.map((f) => f.key)).toEqual(['header:a.com|hsts', 'legacy-tls:a.com', 'header:a.com|csp'])
   })
   it('legacyTls 為 true 產生 medium', () => {
     const r = evaluateExposure([fact({ legacyTls: true })])

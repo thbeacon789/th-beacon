@@ -2,10 +2,16 @@
 import { FALLBACK_KEY } from './constants.ts'
 import type { Finding, JudgedCheckKey } from './types.ts'
 
-const PORT_RE = /^(tcp|udp)\/(\d{1,5})$/
+const PORT_RE = /^(tcp|udp)\/([1-9]\d{0,4})$/
 const UPDATES_KEYS = new Set(['security', 'eol', 'reboot', 'auto-disabled'])
 const LOGINS_KEYS = new Set(['password-auth', 'root-login', 'failed-spike'])
-const UNEXPECTED_RE = /^unexpected-success:[0-9A-Fa-f:.]+$/
+const UNEXPECTED_PREFIX = 'unexpected-success:'
+const IP_RE = /^[0-9A-Fa-f:.]{1,45}$/
+const isUnexpected = (s: string) => {
+  if (!s.startsWith(UNEXPECTED_PREFIX)) return false
+  const ip = s.slice(UNEXPECTED_PREFIX.length)
+  return IP_RE.test(ip) && /\d/.test(ip)
+}
 
 function isValid(check: JudgedCheckKey, s: string): boolean {
   switch (check) {
@@ -18,7 +24,7 @@ function isValid(check: JudgedCheckKey, s: string): boolean {
     case 'updates':
       return UPDATES_KEYS.has(s)
     case 'logins':
-      return LOGINS_KEYS.has(s) || UNEXPECTED_RE.test(s)
+      return LOGINS_KEYS.has(s) || isUnexpected(s)
   }
 }
 

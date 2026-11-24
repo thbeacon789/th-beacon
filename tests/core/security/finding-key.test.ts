@@ -8,7 +8,7 @@ describe('normalizeJudgedKey', () => {
   it('ports', () => {
     expect(normalizeJudgedKey('ports', 'tcp/3306')).toEqual(ok('tcp/3306'))
     expect(normalizeJudgedKey('ports', 'udp/53')).toEqual(ok('udp/53'))
-    for (const bad of ['tcp/0', 'tcp/65536', 'port:tcp/22', 'TCP/22']) expect(normalizeJudgedKey('ports', bad)).toEqual(FB)
+    for (const bad of ['tcp/0', 'tcp/65536', 'port:tcp/22', 'TCP/22', 'tcp/0022']) expect(normalizeJudgedKey('ports', bad)).toEqual(FB)
   })
   it('updates', () => {
     for (const k of ['security', 'eol', 'reboot', 'auto-disabled']) expect(normalizeJudgedKey('updates', k)).toEqual(ok(k))
@@ -18,7 +18,7 @@ describe('normalizeJudgedKey', () => {
     for (const k of ['password-auth', 'root-login', 'failed-spike', 'unexpected-success:203.0.113.5', 'unexpected-success:2001:db8::1']) {
       expect(normalizeJudgedKey('logins', k)).toEqual(ok(k))
     }
-    for (const bad of ['unexpected-success:', 'unexpected-success:evil host']) expect(normalizeJudgedKey('logins', bad)).toEqual(FB)
+    for (const bad of ['unexpected-success:', 'unexpected-success:evil host', 'unexpected-success:::::', 'unexpected-success:' + '1'.repeat(46)]) expect(normalizeJudgedKey('logins', bad)).toEqual(FB)
   })
   it('非字串或空字串退回 fallback', () => {
     for (const bad of [undefined, 42, '']) expect(normalizeJudgedKey('ports', bad)).toEqual(FB)

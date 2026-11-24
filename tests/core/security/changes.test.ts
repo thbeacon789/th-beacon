@@ -93,7 +93,7 @@ describe('evaluateChanges', () => {
   it('新增管理員為 bad，且不重複列為一般帳號', () => {
     const r = evaluateChanges('vm', inv({ users: ['alice', 'eve'], admins: ['alice', 'eve'] }), inv())
     expect(r.check).toEqual({ status: 'bad', summary: '新增 1 項' })
-    expect(r.findings).toEqual([{ check: 'changes', key: '_fallback', severity: 'high', title: '新增管理員帳號 eve', recommendation: REC }])
+    expect(r.findings).toEqual([{ check: 'changes', key: 'admin:eve', severity: 'high', title: '新增管理員帳號 eve', recommendation: REC }])
   })
   it('帳號已在基準的管理員清單中，晚一步才出現在帳號清單時不視為新增', () => {
     // OS Login 帳號在 sudoers 立即可見，getent passwd 要等本機快取刷新才列出
@@ -180,5 +180,34 @@ describe('evaluateChanges 容器', () => {
     const f = evaluateChanges('vm', inv({ containers: [c('n', 'x'.repeat(300))] }), inv({ containers: [] })).findings[0]
     expect(f.title.length).toBeLessThanOrEqual(120)
     expect(f.title.startsWith('新增容器 n（映像檔 xxx')).toBe(true)
+  })
+})
+
+describe('evaluateChanges key', () => {
+  const keys = (cur: Inventory, base: Inventory = inv()) => evaluateChanges('vm', cur, base).findings.map((f) => f.key)
+  it('admins 原樣（含哨兵）', () => {
+    expect(keys(inv({ admins: ['alice', '?sudoers:0123', '#1000', '%wheel'] }))).toEqual(['admin:?sudoers:0123', 'admin:#1000', 'admin:%wheel'])
+  })
+  it('sshKeys 以 | 連接（含 (sshd)）', () => {
+    expect(keys(inv({ sshKeys: [{ user: '(sshd)', fingerprint: 'CONFIG:ab' }, { user: 'bob', fingerprint: 'SHA256:x' }] }))).toEqual([
+      'sshkey:(sshd)|CONFIG:ab', 'sshkey:bob|SHA256:x',
+    ])
+  })
+  it('users／cron／listen／unit', () => {
+    expect(keys(inv({
+      users: ['alice', 'bob'],
+      scheduled: [{ location: '/etc/cron.d/x', schedule: '', executable: '', hash: 'h' }],
+      listeners: [{ proto: 'tcp', port: 4444, process: 'nc' }],
+      services: ['evil.service'],
+    }))).toEqual(['user:bob', 'cron:/etc/cron.d/x|h', 'listen:tcp|4444', 'unit:evil.service'])
+  })
+  it('容器三種與清單消失', () => {
+    const c = (name: string, image = 'repo/app', ports: string[] = []) => ({ name, image, ports })
+    const ev = (cur: Inventory['containers'], base: Inventory['containers']) =>
+      evaluateChanges('vm', inv({ containers: cur }), inv({ containers: base })).findings.map((f) => f.key)
+    expect(ev([c('a'), c('b')], [c('a')])).toEqual(['container:b'])
+    expect(ev([c('a', 'evil/x')], [c('a')])).toEqual(['container-image:a'])
+    expect(ev([c('a', 'repo/app', ['80:80'])], [c('a')])).toEqual(['container-port:a|80:80'])
+    expect(ev(undefined, [c('a')])).toEqual(['containers-unavailable'])
   })
 })
