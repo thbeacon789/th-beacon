@@ -57,7 +57,7 @@ describe('SupabaseStore 資安掃描', () => {
 
   it('jsonb 欄位往返深度相等；inventory null 可往返', async () => {
     const full = scan({
-      findings: [{ id: 'f1', severity: 'high', title: 't', recommendation: 'r' }] as unknown as NewSecurityScan['findings'],
+      findings: [{ id: 'f1', key: 'tcp/22', severity: 'high', title: 't', recommendation: 'r' }] as unknown as NewSecurityScan['findings'],
       certs: [{ host: 'a.example', notAfter: '2027-01-01T00:00:00.000Z' }] as unknown as NewSecurityScan['certs'],
       logVolume: [{ source: 'nginx', count: 10 }] as unknown as NewSecurityScan['logVolume'],
       exposure: [{ port: 22 }] as unknown as NewSecurityScan['exposure'],
