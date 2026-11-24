@@ -3,6 +3,10 @@ import type { DepCounts, DepPackage, DepSeverity, ImageScanSummary } from '../ty
 
 export const MAX_DEP_PACKAGES = 20
 export const MAX_DEP_IDS = 5
+/** 與 payload 驗證的欄位上限一致（payload.ts MAX_DEP_FIELD）：超過會讓整份快照被拒 */
+const MAX_FIELD = 300
+/** payload 驗證會先 trim，所以這裡也先 trim 再截斷 */
+const clip = (s: string): string => s.trim().slice(0, MAX_FIELD)
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -48,10 +52,15 @@ export function parseOsvImageScan(json: unknown): ImageScanSummary {
     if (!Array.isArray(list)) throw new Error('osv packages 不是陣列')
     for (const entry of list) {
       if (!isObj(entry) || !isObj(entry.package)) throw new Error('osv package 結構不符')
-      const { name, version, ecosystem } = entry.package
-      if (typeof name !== 'string' || typeof version !== 'string' || typeof ecosystem !== 'string') {
+      const { name: rawName, version: rawVersion, ecosystem: rawEco } = entry.package
+      if (typeof rawName !== 'string' || typeof rawVersion !== 'string' || typeof rawEco !== 'string') {
         throw new Error('osv package 缺少 name／version／ecosystem')
       }
+      // 淨化成 payload 可接受的形狀：過長截斷；任一欄為空字串的 package 仍計入 counts，但不列入 packages
+      const name = clip(rawName)
+      const version = clip(rawVersion)
+      const ecosystem = clip(rawEco)
+      const listable = name !== '' && version !== '' && ecosystem !== ''
       const vulns = (Array.isArray(entry.vulnerabilities) ? entry.vulnerabilities : []).filter(isObj)
       const groups = Array.isArray(entry.groups) ? entry.groups.filter(isObj) : []
       const pkgKey = `${ecosystem}|${name}|${version}`
@@ -63,9 +72,11 @@ export function parseOsvImageScan(json: unknown): ImageScanSummary {
           seenGroups.add(groupKey)
           counts[severity] += 1
         }
+        if (!listable) continue
         const cur = pkgs.get(pkgKey) ?? { name, version, ecosystem, severity, ids: [] }
         if (rank(severity) < rank(cur.severity)) cur.severity = severity
-        if (ids[0] !== undefined && !cur.ids.includes(ids[0]) && cur.ids.length < MAX_DEP_IDS) cur.ids.push(ids[0])
+        const firstId = ids[0] === undefined ? '' : clip(ids[0])
+        if (firstId !== '' && !cur.ids.includes(firstId) && cur.ids.length < MAX_DEP_IDS) cur.ids.push(firstId)
         pkgs.set(pkgKey, cur)
       }
     }

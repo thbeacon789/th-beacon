@@ -285,11 +285,23 @@ async function main(): Promise<number> {
   // （含憑證與暴露面事實）一起被 422 丟掉。
   // deps 只有 vm 帶：由排程端逐一拉取並掃描映像檔，確定性判燈（不經 Claude）
   const depsOutcome = vm ? collectDeps(vm, dryDir) : undefined
-  const deps = depsOutcome && { evaluation: depsOutcome.evaluation, images: depsOutcome.images }
-  const depsFailed = (depsOutcome?.failed ?? 0) > 0
+  let deps = depsOutcome && { evaluation: depsOutcome.evaluation, images: depsOutcome.images }
+  let depsFailed = (depsOutcome?.failed ?? 0) > 0
   let payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm, deps })
   let check = parseSecurityScanPayload(payload, new Date())
-  if (!check.ok && auditNote === null && !judgeFailed) {
+  // 錯誤落在 deps 欄位：問題在映像檔掃描輸出而非判讀，不可歸咎判讀（會讓 ports／updates／logins 白白變 unknown）。
+  // 每個映像檔改成帶 error，deps 重算為 unknown 後再驗一次。
+  const isDepsError = (e: string): boolean => e.startsWith('deps') || e.startsWith('checks.deps')
+  if (!check.ok && deps && check.errors.some(isDepsError)) {
+    console.error(`deps 輸出未通過驗證，改用 unknown：${check.errors.filter(isDepsError).slice(0, 5).join('；')}`)
+    const images = deps.images.map((i) => ({ image: i.image, digest: i.digest, containers: i.containers, error: 'deps 輸出未通過驗證' }))
+    deps = { evaluation: evaluateDeps({ images }), images }
+    depsFailed = true
+    payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm, deps })
+    check = parseSecurityScanPayload(payload, new Date())
+  }
+  // 剩下的錯誤若全是 deps 的，換成 unknown 判讀也救不了，不要歸咎判讀
+  if (!check.ok && auditNote === null && !judgeFailed && check.errors.some((e) => !isDepsError(e))) {
     console.error(`判讀輸出未通過驗證，改用 unknown：${check.errors.slice(0, 5).join('；')}`)
     judgment = unknownJudgment(target.kind)
     judgeFailed = true

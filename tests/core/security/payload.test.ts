@@ -289,6 +289,20 @@ describe('parseSecurityScanPayload deps', () => {
     delete (p.checks as Record<string, unknown>).deps
     expect(errs(p).join()).toContain('deps 只有 vm')
   })
+  it('hosted 的 finding 帶 check: deps 被拒', () => {
+    const p = { ...validVm(), kind: 'hosted' } as Record<string, unknown>
+    delete p.inventory
+    delete p.logVolume
+    delete p.deps
+    delete (p.checks as Record<string, unknown>).deps
+    p.findings = [{ check: 'deps', key: 'image:a/b', severity: 'high', title: 't', recommendation: 'r' }]
+    expect(errs(p).join()).toContain('findings[0].check')
+  })
+  it('映像檔名稱可含底線', () => {
+    const p = validVm()
+    p.deps = [{ image: 'my_org/my_app', digest: null, containers: ['app'], error: '無 registry digest' }]
+    expect(parseSecurityScanPayload(p, now).ok).toBe(true)
+  })
   it('hosted 不帶 deps 通過', () => {
     const p = { ...validVm(), kind: 'hosted' } as Record<string, unknown>
     delete p.inventory

@@ -114,6 +114,18 @@ describe('assemblePayload deps', () => {
     expect(p.findings).toContainEqual(judgment.findings[0])
     expect(parseSecurityScanPayload(JSON.parse(JSON.stringify(p)), now).ok).toBe(true)
   })
+  it('合計超過 MAX_FINDINGS 時截判讀 findings、保留 deps findings，且通過驗證', () => {
+    const target: TargetConfig = { ...base, kind: 'vm' }
+    const many: Judgment = {
+      ...judgment,
+      findings: Array.from({ length: 30 }, (_, i) => ({ check: 'updates' as const, key: `security:pkg${i}`, severity: 'low' as const, title: `t${i}`, recommendation: 'r' })),
+    }
+    const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment: many, certs, exposure, vm, deps: depsArg })
+    expect(p.findings).toHaveLength(30)
+    for (const f of depsArg.evaluation.findings) expect(p.findings).toContainEqual(f)
+    expect(parseSecurityScanPayload(p, now).ok).toBe(true)
+  })
+
   it('hosted 傳了 deps 也不寫入', () => {
     const target: TargetConfig = { ...base, kind: 'hosted' }
     const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment: unknownJudgment('hosted'), certs, exposure, vm, deps: depsArg })

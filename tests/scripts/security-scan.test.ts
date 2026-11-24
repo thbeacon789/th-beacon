@@ -141,6 +141,22 @@ describe('scripts/security/scan.mts', () => {
     expect(body.checks.deps.status).toBe('bad')
   })
 
+  it('deps 欄位驗證失敗：歸咎 deps 而非判讀（判讀三項不被洗成 unknown）', async () => {
+    await start(okHandler)
+    // 51 個映像檔超過 payload 上限 50；改成 deps 的 error 後仍超過，所以不會推送，
+    // 重點是錯誤訊息指向 deps、不拿判讀開刀
+    const d = fixture('vm', (x) => {
+      const p = path.join(x, 'vm-dump.txt')
+      const text = fs.readFileSync(p, 'utf8')
+      const extra = Array.from({ length: 51 }, (_, i) => `c${i}\timg${i}:1\tsha256:${String(i).padStart(2, '0').repeat(32)}\timg${i}@sha256:${String(i).padStart(2, '0').repeat(32)}`).join('\n')
+      fs.writeFileSync(p, text.replace(/(@@BEACON:0{32}:images@@\n)/, `$1${extra}\n`))
+    })
+    const r = await run(['--target', 'vmsvc', '--dry-run', d])
+    expect(r.stderr).toContain('deps 輸出未通過驗證')
+    expect(r.stderr).not.toContain('判讀輸出未通過驗證')
+    expect(r.code).toBe(1)
+  })
+
   it('hosted 乾跑：payload 不含 deps', async () => {
     await start(okHandler)
     await run(['--target', 'hostedsvc', '--dry-run', fixture('hosted')])

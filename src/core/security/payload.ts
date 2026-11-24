@@ -14,9 +14,10 @@ const MAX_DEP_PACKAGES_PER_IMAGE = 20
 const MAX_DEP_CONTAINERS = 50
 const MAX_DEP_IDS_PER_PACKAGE = 5
 const MAX_DEP_FIELD = 300
-const DEP_KEY_RE = /^image:[A-Za-z0-9][A-Za-z0-9._/:-]*$/
+// 映像檔 repository 可含底線（Docker 允許），缺了它會讓整份快照被拒
+const DEP_KEY_RE = /^image:[A-Za-z0-9][A-Za-z0-9_./:-]*$/
 const MAX_DEP_KEY = 310
-const DEP_IMAGE_RE = /^[A-Za-z0-9][A-Za-z0-9._/:-]*$/
+const DEP_IMAGE_RE = /^[A-Za-z0-9][A-Za-z0-9_./:-]*$/
 const DEP_CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 const DIGEST_RE = /^sha256:[a-f0-9]{64}$/
 const DEP_SEVERITIES: readonly DepSeverity[] = ['critical', 'high', 'moderate', 'low', 'unscored']
@@ -116,7 +117,7 @@ function normalizeDepsKey(raw: unknown): { key: string; keyFallback: boolean } {
   return { key: FALLBACK_KEY, keyFallback: true }
 }
 
-function parseFindings(v: unknown, errors: string[]): Finding[] | null {
+function parseFindings(v: unknown, errors: string[], kind: ScanKind | null): Finding[] | null {
   const a = arr(v, 'findings', errors)
   if (!a) return null
   if (a.length > MAX_FINDINGS) {
@@ -131,6 +132,10 @@ function parseFindings(v: unknown, errors: string[]): Finding[] | null {
       return
     }
     const check = oneOf(f.check, FINDING_CHECKS, `${p}.check`, errors)
+    if (check === 'deps' && kind === 'hosted') {
+      errors.push(`${p}.check 的 deps 只有 vm 快照可帶`)
+      return
+    }
     const severity = oneOf(f.severity, SEVERITIES, `${p}.severity`, errors)
     const title = str(f.title, `${p}.title`, errors, { max: MAX_TITLE })
     const recommendation = str(f.recommendation, `${p}.recommendation`, errors, { max: MAX_RECOMMENDATION, allowEmpty: true })
@@ -462,7 +467,7 @@ export function parseSecurityScanPayload(input: unknown, now: Date): ValidationR
 
   const kind = oneOf(input.kind, KINDS, 'kind', errors)
   const checks = parseChecks(input.checks, kind, errors)
-  const findings = parseFindings(input.findings, errors)
+  const findings = parseFindings(input.findings, errors, kind)
   const certs = parseCerts(input.certs, errors)
   const exposure = parseExposure(input.exposure, errors)
   const logVolume = input.logVolume === undefined ? undefined : parseLogVolume(input.logVolume, errors)

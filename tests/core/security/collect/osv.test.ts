@@ -116,4 +116,22 @@ describe('parseOsvImageScan', () => {
     const r = parseOsvImageScan(synth([{ name: 'p', groups: [{ ids: ['g'], max }] }]))
     expect(r.packages[0].severity).toBe(sev)
   })
+
+  it('淨化：空字串欄位的 package 仍計入 counts 但不列入 packages；過長欄位截斷到 300', () => {
+    const long = 'x'.repeat(400)
+    const mk = (name: string, version: string, ecosystem: string, id: string) => ({
+      package: { name, version, ecosystem },
+      vulnerabilities: [{ id, database_specific: { severity: 'HIGH' } }],
+      groups: [{ ids: [id], max_severity: '' }],
+    })
+    const r = parseOsvImageScan({
+      results: [{ packages: [mk('', '1', 'npm', 'A-1'), mk('p', '', 'npm', 'A-2'), mk('q', '1', '', 'A-3'), mk('  ', '1', 'npm', 'A-4'), mk('r', '1', 'npm', '  '), mk(long, long, long, long)] }],
+    })
+    expect(r.counts.high).toBe(6)
+    // 'r' 的 id 為空白：package 照列，但 ids 不含空字串（payload 驗證會拒絕空 id）
+    expect(r.packages.map((x) => x.name.slice(0, 1))).toEqual(['r', 'x'])
+    expect(r.packages[0].ids).toEqual([])
+    const p = r.packages[1]
+    expect([p.name.length, p.version.length, p.ecosystem.length, p.ids[0].length]).toEqual([300, 300, 300, 300])
+  })
 })

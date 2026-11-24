@@ -3,6 +3,7 @@ import type {
   CertFact, CheckResult, Evaluation, ExposureFact, Finding, ImageDeps, Inventory, JudgedCheckKey, LogSourceVolume, ScanKind,
   SecurityScanPayload,
 } from '../types.ts'
+import { MAX_FINDINGS } from '../constants.ts'
 import type { VmFacts } from './vm-dump.ts'
 
 export interface Judgment { checks: Record<JudgedCheckKey, CheckResult>; findings: Finding[] }
@@ -72,7 +73,10 @@ export function assemblePayload(args: {
   // deps 由排程端確定性計算，只有 vm 帶；hosted 即使傳入也不寫
   if (target.kind === 'vm' && deps) {
     payload.checks = { ...payload.checks, deps: deps.evaluation.check }
-    payload.findings = [...payload.findings, ...deps.evaluation.findings]
+    // deps findings 優先保留：與判讀 findings 合計上限為 MAX_FINDINGS，超過整份快照會被驗證拒絕，
+    // 所以截的是判讀 findings（模型輸出，可再產生），不是確定性的 deps findings。
+    const depsFindings = deps.evaluation.findings.slice(0, MAX_FINDINGS)
+    payload.findings = [...payload.findings.slice(0, MAX_FINDINGS - depsFindings.length), ...depsFindings]
     payload.deps = deps.images
   }
   return payload
