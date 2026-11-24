@@ -1,21 +1,41 @@
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { getSecurityView } from '@/web/security-queries'
+import Link from 'next/link'
+import { getSecurityView, getSecurityFindings } from '@/web/security-queries'
 import { LogSparkline } from '@/web/security-sparkline'
 import { formatDateTime } from '@/web/format'
 import { CHECK_LABEL, CHECK_ORDER, type OverallStatus } from '@/core/security/view'
 import type { FindingSeverity } from '@/core/security/types'
+import { MANUAL_TRANSITIONS, type SecurityFindingStatus } from '@/core/security/findings'
+import { BASELINE_WINDOW_DAYS } from '@/core/security/constants'
+import { FindingActions } from './finding-actions'
 
 export const dynamic = 'force-dynamic'
 
 const SEVERITY_LABEL: Record<FindingSeverity, string> = { high: '高', medium: '中', low: '低' }
 const OVERALL_LABEL: Record<OverallStatus, string> = { bad: '需處理', warn: '留意', ok: '正常', unknown: '未知' }
 
-export default async function SecurityPage() {
-  const [, view] = await Promise.all([
+const TABS: readonly SecurityFindingStatus[] = ['open', 'resolved', 'ignored']
+const TAB_LABEL: Record<SecurityFindingStatus, string> = { open: '待處理', resolved: '已解決', ignored: '已忽略' }
+const EMPTY_TEXT: Record<SecurityFindingStatus, string> = {
+  open: '沒有待處理的資安發現',
+  resolved: '尚無已解決紀錄',
+  ignored: '沒有已忽略的項目',
+}
+const DAY_MS = 86_400_000
+
+export default async function SecurityPage({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
+  const { tab: rawTab } = await searchParams
+  const tab: SecurityFindingStatus = TABS.find((t) => t === rawTab) ?? 'open'
+  const now = new Date()
+  const client = createServerStore().rawClient()
+  const [, view, findings] = await Promise.all([
     requireUser(),
-    getSecurityView(createServerStore().rawClient(), new Date()),
+    getSecurityView(client, now),
+    getSecurityFindings(client, tab),
   ])
+  const staleServices = new Set(view.staleServices)
+  const windowStart = now.getTime() - BASELINE_WINDOW_DAYS * DAY_MS
 
   return (
     <main>
@@ -29,20 +49,45 @@ export default async function SecurityPage() {
       ) : (
         <>
           <section className="security-todos" aria-labelledby="security-todos-title">
-            <h2 id="security-todos-title">需要處理 {view.todos.length} 項</h2>
-            {view.todos.length === 0 ? (
-              <p className="hint">目前沒有需要處理的項目</p>
+            <h2 id="security-todos-title" className="sr-only">資安發現</h2>
+            <nav className="security-tabs" aria-label="資安發現狀態">
+              {TABS.map((t) => (
+                <Link
+                  key={t}
+                  href={t === 'open' ? '/security' : `/security?tab=${t}`}
+                  className={t === tab ? 'security-tab is-active' : 'security-tab'}
+                  aria-current={t === tab ? 'page' : undefined}
+                >
+                  {TAB_LABEL[t]} ({findings.counts[t]})
+                </Link>
+              ))}
+            </nav>
+            {findings.items.length === 0 ? (
+              <p className="hint">{EMPTY_TEXT[tab]}</p>
             ) : (
               <ul>
-                {view.todos.map((t, i) => (
-                  <li key={`${t.serviceName}-${t.check}-${i}`} className="security-todo">
-                    <span className={`badge security-sev-${t.severity}`}>{SEVERITY_LABEL[t.severity]}</span>
+                {findings.items.map((f) => (
+                  <li key={f.id} className="security-todo">
+                    <span className={`badge security-sev-${f.severity}`}>{SEVERITY_LABEL[f.severity]}</span>
                     <div className="security-todo-body">
                       <div>
-                        <span className="security-todo-service">{t.serviceName}</span>
-                        <span>{t.title}</span>
+                        <span className="security-todo-service">{f.serviceName}</span>
+                        <span className="security-todo-check">{CHECK_LABEL[f.check]}</span>
+                        {f.keyFallback && <span className="security-stale">未分類</span>}
+                        <span>{f.title}</span>
                       </div>
-                      {t.recommendation !== '' && <div className="security-todo-rec">{t.recommendation}</div>}
+                      {f.recommendation !== '' && <div className="security-todo-rec">{f.recommendation}</div>}
+                      <div className="security-todo-meta">
+                        首次 {formatDateTime(f.firstSeenAt)} · 最後 {formatDateTime(f.lastSeenAt)}
+                        {f.reopenCount > 0 && ` · 復發 ${f.reopenCount} 次`}
+                        {f.status === 'open' && staleServices.has(f.serviceName) && (
+                          <span className="security-stale">掃描停擺，狀態可能過期</span>
+                        )}
+                        {f.check === 'changes' && Date.parse(f.lastSeenAt) < windowStart && (
+                          <span className="security-stale">已不在變動比對窗內</span>
+                        )}
+                      </div>
+                      <FindingActions id={f.id} status={f.status} transitions={MANUAL_TRANSITIONS[f.status]} />
                     </div>
                   </li>
                 ))}

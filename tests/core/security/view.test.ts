@@ -99,62 +99,19 @@ describe('overallStatus', () => {
 })
 
 describe('buildSecurityView', () => {
-  it('過期列的 overall 為 unknown，其發現不進待辦，改列一筆「資安掃描已停擺 N 小時」', () => {
+  it('過期列的 overall 為 unknown，且服務名列入 staleServices', () => {
     const stale = scan({ scannedAt: new Date(now.getTime() - 50.5 * 3600000).toISOString(), findings: [f('ports', 'high')] })
-    const v = buildSecurityView([{ serviceName: 'A', scan: stale }], now)
+    const v = buildSecurityView([{ serviceName: 'A', scan: stale }, { serviceName: 'B', scan: scan() }], now)
     expect(v.rows[0].stale).toBe(true)
     expect(v.rows[0].overall).toBe('unknown')
-    expect(v.todos).toEqual([
-      {
-        serviceName: 'A',
-        severity: 'high',
-        check: 'scan',
-        title: '資安掃描已停擺 50 小時',
-        recommendation: '檢查 GitHub Actions 的 security-scan workflow',
-      },
-    ])
+    expect(v.staleServices).toEqual(['A'])
   })
-  it('過期列不列出其憑證發現（只有「資安掃描已停擺」一筆）', () => {
-    const stale = scan({
-      scannedAt: new Date(now.getTime() - 40 * 3600000).toISOString(),
-      certs: [{ domain: 'a.com', notAfter: inDays(-1), trusted: false }],
-    })
-    const v = buildSecurityView([{ serviceName: 'A', scan: stale }], now)
-    expect(v.todos).toHaveLength(1)
-    expect(v.todos[0].check).toBe('scan')
-  })
-  it('非過期列的 bad 憑證使該列 overall 為 bad，並列出憑證發現', () => {
+  it('非過期列的 bad 憑證使該列 overall 為 bad，staleServices 為空', () => {
     const v = buildSecurityView([{ serviceName: 'A', scan: scan({ certs: [{ domain: 'a.com', notAfter: inDays(5) }] }) }], now)
     expect(v.rows[0].stale).toBe(false)
     expect(v.rows[0].checks.cert.status).toBe('bad')
     expect(v.rows[0].overall).toBe('bad')
-    expect(v.todos.map((t) => t.check)).toEqual(['cert'])
-  })
-  it('待辦依嚴重度、服務名、檢查項順序排序', () => {
-    const v = buildSecurityView(
-      [
-        { serviceName: 'B', scan: scan({ findings: [f('ports', 'high'), f('updates', 'low')] }) },
-        { serviceName: 'A', scan: scan({ findings: [f('logins', 'high'), f('ports', 'high'), f('updates', 'medium')] }) },
-      ],
-      now,
-    )
-    expect(v.todos.map((t) => `${t.severity}/${t.serviceName}/${t.check}`)).toEqual([
-      'high/A/ports',
-      'high/A/logins',
-      'high/B/ports',
-      'medium/A/updates',
-      'low/B/updates',
-    ])
-  })
-  it('cert 的 warn 會合成一筆 medium 待辦', () => {
-    const v = buildSecurityView(
-      [{ serviceName: 'A', scan: scan({ certs: [{ domain: 'a.com', notAfter: inDays(20) }] }) }],
-      now,
-    )
-    expect(v.rows[0].checks.cert.status).toBe('warn')
-    expect(v.rows[0].overall).toBe('warn')
-    expect(v.todos).toHaveLength(1)
-    expect(v.todos[0]).toMatchObject({ severity: 'medium', check: 'cert', serviceName: 'A' })
+    expect(v.staleServices).toEqual([])
   })
   it('rows 依 serviceName 排序，且保留 logVolume', () => {
     const v = buildSecurityView(

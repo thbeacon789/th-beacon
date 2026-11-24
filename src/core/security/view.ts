@@ -9,7 +9,6 @@ import type {
   Evaluation,
   ExposureFact,
   Finding,
-  FindingSeverity,
   Inventory,
   JudgedCheckKey,
   LogSourceVolume,
@@ -101,13 +100,6 @@ export function overallStatus(statuses: CheckStatus[]): OverallStatus {
   return worst ?? 'unknown'
 }
 
-export interface TodoItem {
-  serviceName: string
-  severity: FindingSeverity
-  check: CheckKey | 'scan'
-  title: string
-  recommendation: string
-}
 export interface ServiceSecurityRow {
   serviceId: string
   serviceName: string
@@ -118,18 +110,16 @@ export interface ServiceSecurityRow {
   logVolume: LogSourceVolume[]
 }
 export interface SecurityView {
-  todos: TodoItem[]
+  /** 掃描停擺的服務名稱；待處理紀錄仍顯示，但標註狀態可能過期 */
+  staleServices: string[]
   rows: ServiceSecurityRow[]
 }
-
-const SEVERITY_RANK: Record<FindingSeverity, number> = { high: 0, medium: 1, low: 2 }
-const checkRank = (c: CheckKey | 'scan') => (c === 'scan' ? -1 : CHECK_ORDER.indexOf(c))
 
 export function buildSecurityView(
   input: Array<{ serviceName: string; scan: StoredSecurityScan }>,
   now: Date,
 ): SecurityView {
-  const todos: TodoItem[] = []
+  const staleServices: string[] = []
   const rows: ServiceSecurityRow[] = []
 
   for (const { serviceName, scan } of input) {
@@ -145,28 +135,9 @@ export function buildSecurityView(
       checks,
       logVolume: scan.logVolume,
     })
-    if (stale) {
-      const hours = Math.floor((now.getTime() - Date.parse(scan.scannedAt)) / HOUR_MS)
-      todos.push({
-        serviceName,
-        severity: 'high',
-        check: 'scan',
-        title: `資安掃描已停擺 ${hours} 小時`,
-        recommendation: '檢查 GitHub Actions 的 security-scan workflow',
-      })
-    } else {
-      for (const fd of [...scan.findings, ...cert.findings]) {
-        todos.push({ serviceName, severity: fd.severity, check: fd.check, title: fd.title, recommendation: fd.recommendation })
-      }
-    }
+    if (stale) staleServices.push(serviceName)
   }
 
-  todos.sort(
-    (a, b) =>
-      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
-      a.serviceName.localeCompare(b.serviceName) ||
-      checkRank(a.check) - checkRank(b.check),
-  )
   rows.sort((a, b) => a.serviceName.localeCompare(b.serviceName))
-  return { todos, rows }
+  return { staleServices, rows }
 }

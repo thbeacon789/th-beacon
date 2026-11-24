@@ -1613,6 +1613,42 @@ tbody tr:last-child td {
   color: var(--fg-muted);
   font-size: 0.85rem;
 }
+.security-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.security-tab {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+.security-tab.is-active {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.security-todo-check {
+  margin-right: var(--space-3);
+  color: var(--fg-muted);
+}
+.security-todo-meta {
+  margin-top: var(--space-1);
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+}
+.security-finding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.security-finding-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .security-sev-high {
   background: var(--pink);
 }
