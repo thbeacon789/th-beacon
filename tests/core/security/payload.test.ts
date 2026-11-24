@@ -333,6 +333,15 @@ describe('parseSecurityScanPayload deps', () => {
     expect(errs(withDeps([img({ packages: [{ ...pkg, ids: ['a'.repeat(301)] }] })])).join()).toContain('ids')
     expect(errs(withDeps([{ image: 'x', digest: null, containers: [], error: 'a'.repeat(301) }])).join()).toContain('error')
   })
+  it('image 與 containers 字元白名單', () => {
+    for (const image of ['a b', 'a\nb', 'registry.test/app@sha256:' + 'a'.repeat(64), '-app']) {
+      expect(errs(withDeps([img({ image })])).join(), image).toContain('image')
+    }
+    for (const c of ['a b', 'a/b', '-a']) {
+      expect(errs(withDeps([img({ containers: [c] })])).join(), c).toContain('containers')
+    }
+    expect(errs(withDeps([img({ image: 'asia-east1-docker.pkg.dev/p/r/app:1.2_x', containers: ['app_1.web-2'] })]))).toEqual([])
+  })
   it('digest 格式', () => {
     expect(errs(withDeps([img({ digest: 'sha256:abc' })])).join()).toContain('digest')
     expect(errs(withDeps([img({ digest: 'sha256:' + 'A'.repeat(64) })])).join()).toContain('digest')

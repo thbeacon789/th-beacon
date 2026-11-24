@@ -16,6 +16,8 @@ const MAX_DEP_IDS_PER_PACKAGE = 5
 const MAX_DEP_FIELD = 300
 const DEP_KEY_RE = /^image:[A-Za-z0-9][A-Za-z0-9._/:-]*$/
 const MAX_DEP_KEY = 310
+const DEP_IMAGE_RE = /^[A-Za-z0-9][A-Za-z0-9._/:-]*$/
+const DEP_CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
 const DIGEST_RE = /^sha256:[a-f0-9]{64}$/
 const DEP_SEVERITIES: readonly DepSeverity[] = ['critical', 'high', 'moderate', 'low', 'unscored']
 const COUNT_KEYS: readonly (keyof DepCounts)[] = ['critical', 'high', 'moderate', 'low', 'unscored']
@@ -305,6 +307,7 @@ function parseDeps(v: unknown, errors: string[]): ImageDeps[] | null {
     if (!isObj(d)) return void errors.push(`${p} 必須是物件`)
     const start = errors.length
     const image = str(d.image, `${p}.image`, errors, { max: MAX_DEP_FIELD })
+    if (image !== null && !DEP_IMAGE_RE.test(image)) errors.push(`${p}.image 含不允許的字元`)
     let digest: string | null = null
     if (d.digest === null) digest = null
     else if (typeof d.digest === 'string' && DIGEST_RE.test(d.digest)) digest = d.digest
@@ -312,6 +315,7 @@ function parseDeps(v: unknown, errors: string[]): ImageDeps[] | null {
 
     const containers = strArray(d.containers, `${p}.containers`, errors)
     if (containers && containers.length > MAX_DEP_CONTAINERS) errors.push(`${p}.containers 不可超過 ${MAX_DEP_CONTAINERS} 個`)
+    if (containers && containers.some((x) => !DEP_CONTAINER_RE.test(x))) errors.push(`${p}.containers 的項目含不允許的字元`)
     if (containers && containers.some((x) => x.length > MAX_DEP_FIELD)) errors.push(`${p}.containers 的項目不可超過 ${MAX_DEP_FIELD} 字`)
 
     let error: string | undefined
