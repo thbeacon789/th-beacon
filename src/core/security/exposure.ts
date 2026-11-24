@@ -1,3 +1,4 @@
+import { FALLBACK_KEY } from './constants.ts'
 import type { CheckStatus, Evaluation, ExposureFact, Finding } from './types.ts'
 
 const REQUIRED: Array<[keyof ExposureFact['headers'], string]> = [
@@ -15,7 +16,7 @@ export function evaluateExposure(facts: ExposureFact[]): Evaluation {
 
   const findings: Finding[] = []
   const add = (severity: Finding['severity'], title: string, recommendation: string) =>
-    findings.push({ check: 'exposure', severity, title, recommendation })
+    findings.push({ check: 'exposure', key: FALLBACK_KEY, severity, title, recommendation })
 
   for (const f of facts) {
     for (const p of f.sensitivePaths) {

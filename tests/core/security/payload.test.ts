@@ -13,7 +13,7 @@ function validVm(): Record<string, unknown> {
       logins: { status: 'na', summary: '' },
     },
     findings: [
-      { check: 'updates', severity: 'medium', title: 'openssl 待更新', recommendation: '執行 apt upgrade' },
+      { check: 'updates', key: 'security', severity: 'medium', title: 'openssl 待更新', recommendation: '執行 apt upgrade' },
     ],
     certs: [{ domain: 'example.com', notAfter: '2027-01-01T00:00:00.000Z' }],
     exposure: [
@@ -48,6 +48,36 @@ function bad(mutate: (p: Record<string, any>) => void) {
 describe('parseSecurityScanPayload', () => {
   it('接受完整的 vm payload', () => {
     expect(parseSecurityScanPayload(validVm(), now)).toEqual({ ok: true, value: validVm() })
+  })
+
+  it('findings 帶合法 key 時保留且無 keyFallback', () => {
+    const r = parseSecurityScanPayload(validVm(), now)
+    expect(r.ok && r.value.findings[0]).toEqual(expect.objectContaining({ key: 'security' }))
+    expect(r.ok && 'keyFallback' in r.value.findings[0]).toBe(false)
+  })
+
+  it('findings 缺 key 或 key 不合法時不回 422，退回 _fallback', () => {
+    for (const k of [undefined, 'kernel']) {
+      const p = validVm()
+      ;(p.findings as any[])[0].key = k
+      const r = parseSecurityScanPayload(p, now)
+      expect(r.ok).toBe(true)
+      expect(r.ok && r.value.findings[0]).toMatchObject({ key: '_fallback', keyFallback: true })
+    }
+  })
+
+  it('exposure probeErrors：合法保留、缺省無此欄、負數或非整數 422', () => {
+    const withPe = (v: unknown) => {
+      const p = validVm()
+      ;(p.exposure as any[])[0].probeErrors = v
+      return parseSecurityScanPayload(p, now)
+    }
+    const ok = withPe(2)
+    expect(ok.ok && ok.value.exposure[0].probeErrors).toBe(2)
+    const none = parseSecurityScanPayload(validVm(), now)
+    expect(none.ok && 'probeErrors' in none.value.exposure[0]).toBe(false)
+    expect(withPe(-1).ok).toBe(false)
+    expect(withPe(1.5).ok).toBe(false)
   })
 
   it('接受省略 logVolume 與 inventory 的 hosted payload', () => {

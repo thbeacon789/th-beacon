@@ -1,4 +1,4 @@
-import { MAX_TITLE } from './constants.ts'
+import { FALLBACK_KEY, MAX_TITLE } from './constants.ts'
 import { truncateToUtf16Length } from './text.ts'
 import type { CheckStatus, Evaluation, Finding, Inventory, ScanKind } from './types.ts'
 
@@ -37,7 +37,7 @@ export function evaluateChanges(kind: ScanKind, current: Inventory | undefined, 
 
   const findings: Finding[] = []
   const add = (severity: Finding['severity'], title: string) =>
-    findings.push({ check: 'changes', severity, title, recommendation: RECOMMENDATION })
+    findings.push({ check: 'changes', key: FALLBACK_KEY, severity, title, recommendation: RECOMMENDATION })
 
   const newAdmins = added(current.admins, baseline.admins, (x) => x)
   const newAdminSet = new Set(newAdmins)

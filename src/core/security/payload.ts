@@ -1,4 +1,5 @@
 import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SCAN_AGE_HOURS, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
+import { normalizeJudgedKey } from './finding-key.ts'
 import type {
   CertFact, CheckResult, CheckStatus, ExposureFact, ExposureHeaders, Finding, FindingSeverity,
   ContainerEntry, HourCount, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
@@ -108,7 +109,10 @@ function parseFindings(v: unknown, errors: string[]): Finding[] | null {
     const severity = oneOf(f.severity, SEVERITIES, `${p}.severity`, errors)
     const title = str(f.title, `${p}.title`, errors, { max: MAX_TITLE })
     const recommendation = str(f.recommendation, `${p}.recommendation`, errors, { max: MAX_RECOMMENDATION, allowEmpty: true })
-    if (check && severity && title !== null && recommendation !== null) out.push({ check, severity, title, recommendation })
+    if (check && severity && title !== null && recommendation !== null) {
+      const { key, keyFallback } = normalizeJudgedKey(check, f.key)
+      out.push(keyFallback ? { check, key, keyFallback: true, severity, title, recommendation } : { check, key, severity, title, recommendation })
+    }
   })
   return out
 }
@@ -199,7 +203,16 @@ function parseExposure(v: unknown, errors: string[]): ExposureFact[] | null {
       })
     } else ok = false
 
-    if (ok && domain !== null && headers) out.push({ domain, sensitivePaths, headers, legacyTls })
+    let probeErrors: number | undefined
+    if (e.probeErrors !== undefined) {
+      if (typeof e.probeErrors === 'number' && Number.isInteger(e.probeErrors) && e.probeErrors >= 0) probeErrors = e.probeErrors
+      else {
+        errors.push(`${p}.probeErrors 必須是非負整數`)
+        ok = false
+      }
+    }
+
+    if (ok && domain !== null && headers) out.push({ domain, sensitivePaths, headers, legacyTls, ...(probeErrors !== undefined ? { probeErrors } : {}) })
   })
   return out
 }

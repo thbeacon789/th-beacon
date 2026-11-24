@@ -28,7 +28,7 @@ describe('evaluateLogVolume', () => {
     expect(r.check).toEqual({ status: 'bad', summary: '暴增 7 倍' })
     expect(r.logVolume[0].anomalousHours).toEqual([H(1)])
     expect(r.findings).toEqual([{
-      check: 'logVolume', severity: 'high',
+      check: 'logVolume', key: '_fallback', severity: 'high',
       title: 'nginx 在 01:00–02:00 UTC 的 log 量為平常的 7 倍',
       recommendation: '檢查該時段的存取紀錄與來源 IP，確認是攻擊、爬蟲或程式異常',
     }])

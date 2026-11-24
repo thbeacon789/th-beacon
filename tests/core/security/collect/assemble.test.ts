@@ -15,7 +15,7 @@ const judgment: Judgment = {
     updates: { status: 'warn', summary: '5 個待更新' },
     logins: { status: 'ok', summary: '無異常' },
   },
-  findings: [{ check: 'updates', severity: 'medium', title: 'openssl 待更新', recommendation: 'apt upgrade' }],
+  findings: [{ check: 'updates', key: 'security', severity: 'medium', title: 'openssl 待更新', recommendation: 'apt upgrade' }],
 }
 const base = { service: 's', secretEnv: 'X', domains: ['example.com'] }
 const certs = [{ domain: 'example.com', notAfter: '2027-01-01T00:00:00.000Z' }]

@@ -25,7 +25,7 @@ describe('evaluateExposure', () => {
     const r = evaluateExposure([fact({ sensitivePaths: [{ path: '/.env', exposed: true }, { path: '/.git/config', exposed: false }] })])
     expect(r.check).toEqual({ status: 'bad', summary: '1 個敏感路徑暴露' })
     expect(r.findings).toEqual([{
-      check: 'exposure', severity: 'high', title: 'a.com/.env 可被公開存取',
+      check: 'exposure', key: '_fallback', severity: 'high', title: 'a.com/.env 可被公開存取',
       recommendation: '立即封鎖該路徑，並輪替其中可能外洩的金鑰',
     }])
   })

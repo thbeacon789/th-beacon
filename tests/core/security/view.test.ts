@@ -25,7 +25,7 @@ function scan(over: Partial<StoredSecurityScan> = {}): StoredSecurityScan {
 }
 
 function f(check: Finding['check'], severity: Finding['severity'], title = 't'): Finding {
-  return { check, severity, title, recommendation: 'r' }
+  return { check, key: '_fallback', severity, title, recommendation: 'r' }
 }
 
 describe('evaluateCert', () => {
@@ -54,7 +54,7 @@ describe('evaluateCert', () => {
     const r = evaluateCert([{ domain: 'a.com', notAfter: inDays(90), trusted: false, error: 'SELF_SIGNED' }], now)
     expect(r.check).toEqual({ status: 'bad', summary: '憑證不受信任' })
     expect(r.findings).toEqual([{
-      check: 'cert', severity: 'high',
+      check: 'cert', key: '_fallback', severity: 'high',
       title: 'a.com 的 SSL 憑證不受信任（SELF_SIGNED）',
       recommendation: '檢查憑證鏈與網域名稱是否相符，重新簽發憑證',
     }])

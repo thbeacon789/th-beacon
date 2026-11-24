@@ -1,5 +1,5 @@
 import type { Evaluation, Finding, HourCount, LogSourceVolume, ScanKind } from './types.ts'
-import { LOG_BASELINE_MIN_SCANS, LOG_SPIKE_MIN_EXCESS, LOG_SPIKE_RATIO } from './constants.ts'
+import { FALLBACK_KEY, LOG_BASELINE_MIN_SCANS, LOG_SPIKE_MIN_EXCESS, LOG_SPIKE_RATIO } from './constants.ts'
 
 const HOUR_MS = 3600_000
 
@@ -84,6 +84,7 @@ export function evaluateLogVolume(
     }
     findings.push({
       check: 'logVolume',
+      key: FALLBACK_KEY,
       severity: 'high',
       title,
       recommendation: '檢查該時段的存取紀錄與來源 IP，確認是攻擊、爬蟲或程式異常',

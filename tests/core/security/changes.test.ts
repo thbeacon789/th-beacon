@@ -93,7 +93,7 @@ describe('evaluateChanges', () => {
   it('新增管理員為 bad，且不重複列為一般帳號', () => {
     const r = evaluateChanges('vm', inv({ users: ['alice', 'eve'], admins: ['alice', 'eve'] }), inv())
     expect(r.check).toEqual({ status: 'bad', summary: '新增 1 項' })
-    expect(r.findings).toEqual([{ check: 'changes', severity: 'high', title: '新增管理員帳號 eve', recommendation: REC }])
+    expect(r.findings).toEqual([{ check: 'changes', key: '_fallback', severity: 'high', title: '新增管理員帳號 eve', recommendation: REC }])
   })
   it('帳號已在基準的管理員清單中，晚一步才出現在帳號清單時不視為新增', () => {
     // OS Login 帳號在 sudoers 立即可見，getent passwd 要等本機快取刷新才列出

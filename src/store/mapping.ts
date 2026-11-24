@@ -3,6 +3,7 @@ import { AI_FIX_STATUSES } from '@/core/ai-fix'
 import type { AiJudgmentSource, AiUsageSource, EventSource, HealthStatus, IssueStatus, Severity, Verdict } from '@/core/types'
 import type { RuleMatch, TriageRule } from '@/core/rules'
 import type { DiagnosisCategory, HeartbeatRunStatus } from '@/core/heartbeat'
+import { FALLBACK_KEY } from '@/core/security/constants'
 import type { StoredSecurityScan } from '@/core/security/view'
 import type { IssueAiFix, IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
@@ -211,7 +212,9 @@ export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
     scannedAt: row.scanned_at,
     kind: narrow(row.kind, SCAN_KINDS, 'scan kind'),
     checks: row.checks as unknown as StoredSecurityScan['checks'],
-    findings: row.findings as unknown as StoredSecurityScan['findings'],
+    findings: (row.findings as unknown as Array<Record<string, unknown>>).map((f) =>
+      typeof f.key === 'string' ? f : { ...f, key: FALLBACK_KEY, keyFallback: true },
+    ) as unknown as StoredSecurityScan['findings'],
     certs: row.certs as unknown as StoredSecurityScan['certs'],
     logVolume: row.log_volume as unknown as StoredSecurityScan['logVolume'],
     exposure: row.exposure as unknown as StoredSecurityScan['exposure'],

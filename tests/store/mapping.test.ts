@@ -10,6 +10,7 @@ import {
   narrowAiUsageSource,
   rowToService,
   ruleRowToTriageRule,
+  rowToSecurityScan,
 } from '@/store/mapping'
 import type { Database } from '@/db/database.types'
 
@@ -272,5 +273,22 @@ describe('rowToAiFix', () => {
     expect(() =>
       rowToAiFix({ ...issueRow, ai_fix_status: 'bogus', ai_fix_reported_at: '2026-11-13T00:00:00+00:00' }),
     ).toThrow()
+  })
+})
+
+describe('rowToSecurityScan', () => {
+  it('findings 元素無 key 時補 _fallback 與 keyFallback', () => {
+    const row = {
+      id: 'i', service_id: 's', scanned_at: '2026-11-18T00:00:00.000Z', kind: 'vm',
+      checks: {}, certs: [], log_volume: null, exposure: [], inventory: null,
+      findings: [
+        { check: 'ports', severity: 'high', title: 't', recommendation: 'r' },
+        { check: 'ports', key: 'tcp/22', severity: 'high', title: 't', recommendation: 'r' },
+      ],
+    } as unknown as Parameters<typeof rowToSecurityScan>[0]
+    const r = rowToSecurityScan(row)
+    expect(r.findings[0]).toMatchObject({ key: '_fallback', keyFallback: true })
+    expect(r.findings[1]).toMatchObject({ key: 'tcp/22' })
+    expect('keyFallback' in r.findings[1]).toBe(false)
   })
 })

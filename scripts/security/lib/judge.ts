@@ -2,7 +2,7 @@
 // 認證與請求格式照抄 scripts/diagnose-e2e-failure.sh；請求不帶任何 tools。
 import type { Judgment } from '../../../src/core/security/collect/assemble.ts'
 import type { CheckResult, Finding, JudgedCheckKey, ScanKind } from '../../../src/core/security/types.ts'
-import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
+import { FALLBACK_KEY, MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
 import { truncateToUtf16Length } from '../../../src/core/security/text.ts'
 
 export interface JudgeResult {
@@ -165,6 +165,7 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
     }
     findings.push({
       check: f.check as Finding['check'],
+      key: typeof f.key === 'string' ? f.key : FALLBACK_KEY,
       severity: f.severity as Finding['severity'],
       title: truncateToUtf16Length(f.title, MAX_TITLE),
       recommendation: truncateToUtf16Length(f.recommendation, MAX_RECOMMENDATION),

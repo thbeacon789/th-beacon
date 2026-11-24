@@ -1,5 +1,5 @@
 // 讀取端推導：憑證、過期、整體狀態、頁面視圖模型（純函式，時鐘由 now 注入）
-import { CERT_BAD_DAYS, CERT_WARN_DAYS, STALE_AFTER_HOURS } from './constants.ts'
+import { CERT_BAD_DAYS, FALLBACK_KEY, CERT_WARN_DAYS, STALE_AFTER_HOURS } from './constants.ts'
 import type {
   CertFact,
   CheckKey,
@@ -54,6 +54,7 @@ export function evaluateCert(certs: CertFact[], now: Date): Evaluation {
   if (untrusted.length === 0) return expiry
   const trustFindings: Finding[] = untrusted.map((c) => ({
     check: 'cert',
+    key: FALLBACK_KEY,
     severity: 'high',
     title: `${c.domain} 的 SSL 憑證不受信任（${c.error && c.error.length > 0 ? c.error : '未知原因'}）`,
     recommendation: '檢查憑證鏈與網域名稱是否相符，重新簽發憑證',
@@ -70,17 +71,17 @@ function evaluateCertExpiry(certs: CertFact[], now: Date): Evaluation {
   if (diff <= 0) {
     return {
       check: { status: 'bad', summary: '已過期' },
-      findings: [{ check: 'cert', severity: 'high', title: `${earliest.domain} 的 SSL 憑證已過期`, recommendation }],
+      findings: [{ check: 'cert', key: FALLBACK_KEY, severity: 'high', title: `${earliest.domain} 的 SSL 憑證已過期`, recommendation }],
     }
   }
   const days = Math.floor(diff / DAY_MS)
   const summary = `剩 ${days} 天`
   const title = `${earliest.domain} 的 SSL 憑證剩 ${days} 天到期`
   if (days < CERT_BAD_DAYS) {
-    return { check: { status: 'bad', summary }, findings: [{ check: 'cert', severity: 'high', title, recommendation }] }
+    return { check: { status: 'bad', summary }, findings: [{ check: 'cert', key: FALLBACK_KEY, severity: 'high', title, recommendation }] }
   }
   if (days < CERT_WARN_DAYS) {
-    return { check: { status: 'warn', summary }, findings: [{ check: 'cert', severity: 'medium', title, recommendation }] }
+    return { check: { status: 'warn', summary }, findings: [{ check: 'cert', key: FALLBACK_KEY, severity: 'medium', title, recommendation }] }
   }
   return { check: { status: 'ok', summary }, findings: [] }
 }
