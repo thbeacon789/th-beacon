@@ -312,7 +312,7 @@
 
 - [ ] **Step 2: 驗證 workflow 語法**
 
-  Run: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/security-scan.yml'))"`
+  Run: `ruby -ryaml -e 'YAML.load_file(".github/workflows/security-scan.yml"); puts "ok"'`
   Expected: 無錯誤輸出；另以 `grep -n "pull_request\|push:" .github/workflows/security-scan.yml` 確認沒有出現新觸發。
 
 - [ ] **Step 3: 文件**：`docs/api.md` §9 的 body 範例加 `checks.deps`、`deps`，欄位限制段寫入 Task 4 的上限，「哪些狀態由 beacon 計算」段補「`deps` 由排程端確定性計算、vm 必填、hosted 不得帶（beacon 補 na）」；標明快照只由 th-beacon 自己的掃描 workflow 送出。`pnpm docs:build` 重生 api-doc。
