@@ -31,7 +31,7 @@ export function evaluateDeps(input: DepsInput): Evaluation {
     const c = i.counts!
     const isCritical = c.critical > 0
     const title = truncateToUtf16Length(
-      `映像檔 ${i.image} 有 ${isCritical ? `critical ${c.critical}、` : ''}high ${c.high} 個漏洞套件`,
+      `映像檔 ${i.image} 有 ${isCritical ? `critical ${c.critical}、` : ''}high ${c.high} 個漏洞`,
       MAX_TITLE,
     )
     findings.push({ check: 'deps', key: `image:${i.image}`, severity: isCritical ? 'high' : 'medium', title, recommendation: RECOMMENDATION })
@@ -40,6 +40,14 @@ export function evaluateDeps(input: DepsInput): Evaluation {
   findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1))
 
   return { check: { status, summary: buildSummary(images.length, critical, high, flagged, scanFailed) }, findings }
+}
+
+/** 去掉 registry host（第一段含 . 或 : 或為 localhost），保留其後的路徑；Docker Hub 短名不變 */
+function displayName(image: string): string {
+  const slash = image.indexOf('/')
+  if (slash < 0) return image
+  const first = image.slice(0, slash)
+  return first.includes('.') || first.includes(':') || first === 'localhost' ? image.slice(slash + 1) : image
 }
 
 function buildSummary(total: number, critical: number, high: number, flagged: ImageDeps[], scanFailed: number): string {
@@ -53,7 +61,7 @@ function buildSummary(total: number, critical: number, high: number, flagged: Im
   }
   const body = counts.join('、')
   const more = flagged.length > MAX_NAMED ? '等' : ''
-  const names = flagged.slice(0, MAX_NAMED).map((i) => i.image).join('、')
+  const names = flagged.slice(0, MAX_NAMED).map((i) => displayName(i.image)).join('、')
   // 名稱可能很長：保留數量與未能掃描數，只截名稱
   const budget = MAX_SUMMARY - head.length - body.length - tail.length - 2 - more.length
   const shown = budget > 0 ? truncateToUtf16Length(names, budget) : ''

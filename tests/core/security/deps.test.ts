@@ -37,6 +37,20 @@ describe('evaluateDeps', () => {
     expect(r.check.summary).toContain('1 個未能掃描')
     expect(r.check.summary.length).toBeLessThanOrEqual(MAX_SUMMARY)
   })
+  it('summary 的映像檔名去掉 registry host，保留其後路徑；title 仍用完整名稱', () => {
+    const full = 'asia-east1-docker.pkg.dev/altinvest/backend/app'
+    const r = evaluateDeps({ images: [img(full, { critical: 1 }), img('localhost:5000/x/y', { high: 1 }), img('caddy', { high: 1 })] })
+    expect(r.check.summary).toContain('altinvest/backend/app')
+    expect(r.check.summary).not.toContain('pkg.dev')
+    expect(r.check.summary).not.toContain('localhost')
+    expect(r.check.summary).toContain('x/y')
+    expect(r.check.summary).toContain('caddy')
+    expect(r.findings[0].title).toContain(full)
+  })
+  it('title 以「個漏洞」結尾（數字是 group 數，不是套件數）', () => {
+    const r = evaluateDeps({ images: [img('a/app', { critical: 2, high: 1 })] })
+    expect(r.findings[0].title.endsWith('個漏洞')).toBe(true)
+  })
   it('括號最多列 3 個映像檔，超過以「等」結尾；長名稱仍不超長', () => {
     const imgs = ['a', 'b', 'c', 'd'].map((n) => img(`registry.example.com/team/${n.repeat(20)}`, { critical: 1 }))
     const r = evaluateDeps({ images: imgs })

@@ -113,6 +113,7 @@ export interface ServiceSecurityRow {
   overall: OverallStatus
   checks: Record<CheckKey, CheckResult>
   logVolume: LogSourceVolume[]
+  kind: ScanKind
   deps: ImageDeps[] | null
 }
 export interface SecurityView {
@@ -145,6 +146,7 @@ export function buildSecurityView(
       overall: stale ? 'unknown' : overallStatus(CHECK_ORDER.map((k) => checks[k].status)),
       checks,
       logVolume: scan.logVolume,
+      kind: scan.kind,
       deps: scan.deps ?? null,
     })
     if (stale) staleServices.push({ serviceName, hours: Math.floor((now.getTime() - Date.parse(scan.scannedAt)) / HOUR_MS) })

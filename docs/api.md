@@ -494,9 +494,9 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
   ],
   "deps": [                               // vm 必填（可為空陣列）；hosted 不得帶
     {
-      "image": "asia-east1-docker.pkg.dev/proj/altinvest/backend",   // 不含 tag 與 digest
+      "image": "asia-east1-docker.pkg.dev/altinvest/backend/app",   // 不含 tag 與 digest
       "digest": "sha256:0123abcd...（64 位小寫十六進位）",              // 或 null
-      "containers": ["backend"],
+      "containers": ["app"],
       "counts": { "critical": 0, "high": 1, "moderate": 2, "low": 0, "unscored": 0 },
       "packages": [ { "name": "openssl", "version": "3.0.2", "ecosystem": "Ubuntu:22.04:LTS", "severity": "high", "ids": ["CVE-2025-0001"] } ]
       // 掃描失敗時改帶 "error": "原因"，且不可同時帶 counts／packages
@@ -537,8 +537,8 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `findings[].title` | 1–120 字 |
 | `findings[].recommendation` | 最長 300 字，可為空字串 |
 | `findings[].key` | 選填。發現的穩定識別，完整指紋為 `<check>:<key>`（key 不含 check 前綴），用於跨次掃描追蹤同一個發現。規格：`ports` 為 `tcp/<1-65535>` 或 `udp/<1-65535>`；`updates` 為 `security`／`eol`／`reboot`／`auto-disabled`；`logins` 為 `password-auth`／`root-login`／`failed-spike` 或 `unexpected-success:<IPv4/IPv6>`。缺少或不合規格**不會被拒收**，改退回類別級指紋 `_fallback`（該筆標記為 key 退回） |
-| `findings[].key`（`deps`） | `deps` 發現的 key 為 `image:<repository>`（`<repository>` 為映像檔名，不含 tag／digest），整體至多 310 字、字元為 `[A-Za-z0-9._/:-]` 且首字元為英數。不合規格同樣不拒收，退回 `_fallback`（標記為 key 退回） |
-| `deps`（vm 必填，hosted 不得帶） | 陣列，最多 50 個映像檔。`image`：非空字串、至多 300 字，字元限 `[A-Za-z0-9._/:-]` 且首字元為英數；`digest`：`sha256:` 加 64 位小寫十六進位，或 `null`；`containers`：字串陣列，最多 50 個，每個至多 300 字、字元限 `[A-Za-z0-9_.-]` 且首字元為英數；`error`：選填字串，至多 300 字，有 `error` 時不可同時帶 `counts`／`packages`；`counts`：`critical`／`high`／`moderate`／`low`／`unscored` 五個非負整數；`packages`：最多 20 筆，每筆 `name`／`version`／`ecosystem`（`version`、`ecosystem` 可為空字串，各至多 300 字）、`severity`（`critical`／`high`／`moderate`／`low`／`unscored`）、`ids`（字串陣列，最多 5 個，每個至多 300 字）。hosted 快照帶 `deps` 或 `checks.deps` 回 422 |
+| `findings[].key`（`deps`） | `deps` 發現的 key 為 `image:<repository>`（`<repository>` 為映像檔名，不含 tag／digest），整體至多 310 字、字元為 `[A-Za-z0-9_./:-]` 且首字元為英數。不合規格同樣不拒收，退回 `_fallback`（標記為 key 退回） |
+| `deps`（vm 必填，hosted 不得帶） | 陣列，最多 50 個映像檔。`image`：非空字串、至多 300 字，字元限 `[A-Za-z0-9_./:-]` 且首字元為英數；`digest`：`sha256:` 加 64 位小寫十六進位，或 `null`；`containers`：字串陣列，最多 50 個，每個至多 300 字、字元限 `[A-Za-z0-9_.-]` 且首字元為英數；`error`：選填字串，至多 300 字，有 `error` 時不可同時帶 `counts`／`packages`；`counts`：`critical`／`high`／`moderate`／`low`／`unscored` 五個非負整數；`packages`：最多 20 筆，每筆 `name`／`version`／`ecosystem`（`version`、`ecosystem` 可為空字串，各至多 300 字）、`severity`（`critical`／`high`／`moderate`／`low`／`unscored`）、`ids`（字串陣列，最多 5 個，每個至多 300 字）。hosted 快照帶 `deps` 或 `checks.deps` 回 422 |
 | `exposure[].probeErrors` | 選填，非負整數：該網域敏感路徑請求失敗（逾時、連線錯誤）的數量。缺少則視為未涵蓋，敏感路徑發現不會被自動判為已解決；非整數或負數回 422 |
 | `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
@@ -562,10 +562,10 @@ payload **只送事實與 `ports`／`updates`／`logins` 三項判讀，加上 v
 ### 成功回應 `201`
 
 ```json
-{ "id": "uuid", "checks": { "ports": { "status": "ok", "summary": "..." }, "updates": {}, "logins": {}, "logVolume": {}, "exposure": {}, "changes": {} } }
+{ "id": "uuid", "checks": { "ports": { "status": "ok", "summary": "..." }, "updates": {}, "logins": {}, "deps": {}, "logVolume": {}, "exposure": {}, "changes": {} } }
 ```
 
-`checks` 為合併後的六項結果（三項來自 payload，三項由 beacon 計算）。
+`checks` 為合併後的結果：`ports`／`updates`／`logins` 來自判讀，`deps`（僅 vm）由排程端提供，`logVolume`／`exposure`／`changes` 由 beacon 計算。
 
 ### 重送 `200`
 

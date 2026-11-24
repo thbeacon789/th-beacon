@@ -163,6 +163,11 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
             </table>
           </div>
 
+          {/* 舊快照（本功能上線前）沒有套件掃描明細：明說，避免讀成「沒有漏洞」（spec §5.9） */}
+          {view.rows.filter((r) => r.kind === 'vm' && r.deps === null).map((row) => (
+            <p key={row.serviceId} className="hint">{row.serviceName}：此快照無套件掃描</p>
+          ))}
+
           {view.rows.filter((r) => r.deps !== null && r.deps.length > 0).map((row) => (
             <details key={row.serviceId} className="security-deps">
               <summary>{row.serviceName} 映像檔套件漏洞</summary>
