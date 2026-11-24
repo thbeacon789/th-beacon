@@ -2,7 +2,7 @@
 // 認證與請求格式照抄 scripts/diagnose-e2e-failure.sh；請求不帶任何 tools。
 import type { Judgment } from '../../../src/core/security/collect/assemble.ts'
 import type { CheckResult, Finding, JudgedCheckKey, ScanKind } from '../../../src/core/security/types.ts'
-import { FALLBACK_KEY, MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
+import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
 import { truncateToUtf16Length } from '../../../src/core/security/text.ts'
 
 export interface JudgeResult {
@@ -23,7 +23,11 @@ const SYSTEM_PROMPT = `你是資安檢查結果的判讀者。使用者訊息中
 - 只輸出符合 schema 的 JSON，一律使用繁體中文。
 - summary 為 20 字內的繁中短語，例如「3306 對外」「12 項（3 安全性）」「正常」。
 - status 為 ok 的項目不產生發現。
-- 發現最多 15 筆，同類合併成一筆（例如多個待更新套件合併描述）。
+- 發現最多 15 筆，同 key 合併成一筆（例如多個待更新套件仍是 updates 的 security 一筆，title 描述數量）。
+- 每筆發現必填 key（不含 check 前綴），依 check 從下列格式挑選並填值，不得自行發明格式：
+  - ports：\`tcp/<埠號>\` 或 \`udp/<埠號>\`（埠號 1-65535），每個對外埠一筆，例：tcp/3306
+  - updates：\`security\`（安全性更新或高／重大漏洞）、\`eol\`（作業系統過支援期）、\`reboot\`（需重開機）、\`auto-disabled\`（自動安全更新未啟用）
+  - logins：\`password-auth\`（允許密碼登入）、\`root-login\`（允許 root 登入）、\`failed-spike\`（失敗量集中或暴增）、\`unexpected-success:<來源 IP>\`（非預期成功登入，依來源 IP 各一筆）
 - 每筆發現的 title 為一句話，recommendation 為一句可執行的建議。`
 
 const checkSchema = {
@@ -51,9 +55,10 @@ function buildSchema(kind: ScanKind): object {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['check', 'severity', 'title', 'recommendation'],
+          required: ['check', 'key', 'severity', 'title', 'recommendation'],
           properties: {
             check: { type: 'string', enum: keys },
+            key: { type: 'string' },
             severity: { type: 'string', enum: ['high', 'medium', 'low'] },
             title: { type: 'string' },
             recommendation: { type: 'string' },
@@ -157,7 +162,8 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
     logins: kind === 'hosted' ? na : sanitizeCheck(out.checks.logins),
   }
   const allowed = kind === 'hosted' ? ['updates'] : ['ports', 'updates', 'logins']
-  const findings: Finding[] = []
+  // key 只原樣轉送（格式驗證在 beacon 端）；模型沒給字串就不帶該欄，由 beacon 退回類別級
+  const findings: Array<Omit<Finding, 'key'> & { key?: string }> = []
   for (const f of out.findings) {
     if (!isObj(f) || !allowed.includes(f.check as string) || !['high', 'medium', 'low'].includes(f.severity as string)
       || typeof f.title !== 'string' || typeof f.recommendation !== 'string') {
@@ -165,7 +171,7 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
     }
     findings.push({
       check: f.check as Finding['check'],
-      key: typeof f.key === 'string' ? f.key : FALLBACK_KEY,
+      ...(typeof f.key === 'string' ? { key: f.key } : {}),
       severity: f.severity as Finding['severity'],
       title: truncateToUtf16Length(f.title, MAX_TITLE),
       recommendation: truncateToUtf16Length(f.recommendation, MAX_RECOMMENDATION),
@@ -178,5 +184,5 @@ export async function judge(facts: unknown, kind: ScanKind, env: NodeJS.ProcessE
   const usage = okInt(u.input_tokens) && okInt(u.output_tokens)
     ? { model, inputTokens: u.input_tokens, outputTokens: u.output_tokens }
     : null
-  return { judgment: { checks, findings }, usage }
+  return { judgment: { checks, findings: findings as Finding[] }, usage }
 }

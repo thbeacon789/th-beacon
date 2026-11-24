@@ -39,7 +39,7 @@ async function readHead(res: Response): Promise<string> {
   return Buffer.concat(chunks).subarray(0, MAX_BODY).toString('utf8')
 }
 
-/** probeErrors：請求失敗（逾時、連線錯誤）的路徑數，不進 payload；HTTP 4xx／5xx 是正常回應，不算失敗 */
+/** probeErrors：請求失敗（逾時、連線錯誤）的路徑數，隨 exposure 送進 payload（beacon 據此判斷敏感路徑是否真的探到）；HTTP 4xx／5xx 是正常回應，不算失敗 */
 export async function probeDomain(
   domain: string,
   paths: ExposurePath[],

@@ -84,7 +84,7 @@ async function externalChecks(target: TargetConfig, dryDir: string | undefined):
       if (probe.status === 'fulfilled') {
         const { probeErrors: failed, ...fact }: Probed = probe.value
         probeErrors += failed
-        exposure.push({ ...fact, legacyTls: legacy.status === 'fulfilled' ? legacy.value : null })
+        exposure.push({ ...fact, probeErrors: failed, legacyTls: legacy.status === 'fulfilled' ? legacy.value : null })
       }
     }),
   )

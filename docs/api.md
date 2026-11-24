@@ -525,6 +525,8 @@ th-beacon 自己的每日資安掃描（`.github/workflows/security-scan.yml`）
 | `findings` | 最多 30 筆 |
 | `findings[].title` | 1–120 字 |
 | `findings[].recommendation` | 最長 300 字，可為空字串 |
+| `findings[].key` | 選填。發現的穩定識別，完整指紋為 `<check>:<key>`（key 不含 check 前綴），用於跨次掃描追蹤同一個發現。規格：`ports` 為 `tcp/<1-65535>` 或 `udp/<1-65535>`；`updates` 為 `security`／`eol`／`reboot`／`auto-disabled`；`logins` 為 `password-auth`／`root-login`／`failed-spike` 或 `unexpected-success:<IPv4/IPv6>`。缺少或不合規格**不會被拒收**，改退回類別級指紋 `_fallback`（該筆標記為 key 退回） |
+| `exposure[].probeErrors` | 選填，非負整數：該網域敏感路徑請求失敗（逾時、連線錯誤）的數量。缺少則視為未涵蓋，敏感路徑發現不會被自動判為已解決；非整數或負數回 422 |
 | `logVolume[]` | 每筆擇一：`error: true`（不可再帶 `hourly`），或 `hourly`（`count` 為非負整數） |
 | `inventory.listeners[].port` | 1–65535 整數；`proto` 為 `tcp`／`udp` |
 | `inventory.containers`（選填） | 陣列，最多 200 個；`name`／`image` 為非空字串（各至多 300 字），`ports` 為字串陣列（至多 50 個、每個至多 300 字） |
