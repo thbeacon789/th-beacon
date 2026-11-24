@@ -51,7 +51,9 @@ function payload(over: Record<string, unknown> = {}) {
       ports: { status: 'ok', summary: '無異常' },
       updates: { status: 'ok', summary: '無待更新' },
       logins: { status: 'ok', summary: '無異常' },
+      deps: { status: 'na', summary: '' },
     },
+    deps: [],
     findings: [],
     certs: [],
     exposure: [
@@ -199,7 +201,11 @@ describe('handleSecurityScan', () => {
   })
 
   it('hosted 快照的 logVolume 與 changes 為 na，inventory 存 null', async () => {
-    const res = await send(store, payload({ kind: 'hosted', logVolume: undefined, inventory: undefined }))
+    const res = await send(store, (() => {
+      const p = payload({ kind: 'hosted', logVolume: undefined, inventory: undefined, deps: undefined })
+      delete (p.checks as Record<string, unknown>).deps
+      return p
+    })())
     expect(res.status).toBe(201)
     const checks = (res.body as { checks: Record<string, { status: string }> }).checks
     expect(checks.logVolume.status).toBe('na')

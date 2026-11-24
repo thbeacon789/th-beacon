@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { applyChangesIgnore, assemblePayload, unknownJudgment, type Judgment, type TargetConfig } from '@/core/security/collect/assemble'
 import { parseVmDump } from '@/core/security/collect/vm-dump'
 import { parseSecurityScanPayload } from '@/core/security/payload'
-import type { Inventory } from '@/core/security/types'
+import { evaluateDeps } from '@/core/security/deps'
+import type { ImageDeps, Inventory } from '@/core/security/types'
 import { readFileSync } from 'node:fs'
 
 const NONCE = '0123456789abcdef0123456789abcdef'
@@ -17,6 +18,12 @@ const judgment: Judgment = {
   },
   findings: [{ check: 'updates', key: 'security', severity: 'medium', title: 'openssl 待更新', recommendation: 'apt upgrade' }],
 }
+const images: ImageDeps[] = [{
+  image: 'registry.test/app', digest: 'sha256:' + 'a'.repeat(64), containers: ['app'],
+  counts: { critical: 1, high: 0, moderate: 0, low: 0, unscored: 0 },
+  packages: [{ name: 'lodash', version: '4.17.20', ecosystem: 'npm', severity: 'critical', ids: ['GHSA-x'] }],
+}]
+const depsArg = { evaluation: evaluateDeps({ images }), images }
 const base = { service: 's', secretEnv: 'X', domains: ['example.com'] }
 const certs = [{ domain: 'example.com', notAfter: '2027-01-01T00:00:00.000Z' }]
 const exposure = [{
@@ -75,7 +82,7 @@ describe('assemblePayload', () => {
   it('vm 的輸出能通過 parseSecurityScanPayload，且套用 changesIgnore、不帶 anomalousHours', () => {
     const target: TargetConfig = { ...base, kind: 'vm', changesIgnore: { users: ['alice'] } }
     const withAnomaly = { ...vm, logVolume: vm.logVolume.map((l) => ({ ...l, anomalousHours: ['2026-11-18T20:00:00Z'] })) }
-    const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment, certs, exposure, vm: withAnomaly })
+    const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment, certs, exposure, vm: withAnomaly, deps: depsArg })
     const r = parseSecurityScanPayload(JSON.parse(JSON.stringify(p)), now)
     expect(r.ok).toBe(true)
     expect(p.kind).toBe('vm')
@@ -92,5 +99,26 @@ describe('assemblePayload', () => {
     expect('logVolume' in p).toBe(false)
     expect('inventory' in p).toBe(false)
     expect(parseSecurityScanPayload(JSON.parse(JSON.stringify(p)), now).ok).toBe(true)
+  })
+})
+
+describe('assemblePayload deps', () => {
+  it('vm 帶 deps：寫入 checks.deps、payload.deps 與 deps findings，且通過驗證', () => {
+    const target: TargetConfig = { ...base, kind: 'vm' }
+    const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment, certs, exposure, vm, deps: depsArg })
+    expect(p.checks.deps).toEqual(depsArg.evaluation.check)
+    expect(p.checks.deps?.status).toBe('bad')
+    expect(p.deps).toEqual(images)
+    expect(depsArg.evaluation.findings.length).toBeGreaterThan(0)
+    for (const f of depsArg.evaluation.findings) expect(p.findings).toContainEqual(f)
+    expect(p.findings).toContainEqual(judgment.findings[0])
+    expect(parseSecurityScanPayload(JSON.parse(JSON.stringify(p)), now).ok).toBe(true)
+  })
+  it('hosted 傳了 deps 也不寫入', () => {
+    const target: TargetConfig = { ...base, kind: 'hosted' }
+    const p = assemblePayload({ scannedAt: '2026-11-18T22:00:00.000Z', target, judgment: unknownJudgment('hosted'), certs, exposure, vm, deps: depsArg })
+    expect('deps' in p).toBe(false)
+    expect('deps' in p.checks).toBe(false)
+    expect(p.findings).toEqual([])
   })
 })

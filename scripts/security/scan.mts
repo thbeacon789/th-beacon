@@ -18,6 +18,7 @@ import type { AuditSummary } from '../../src/core/security/collect/audit.ts'
 import { parseSecurityScanPayload } from '../../src/core/security/payload.ts'
 import { assemblePayload, unknownJudgment } from '../../src/core/security/collect/assemble.ts'
 import type { Judgment, TargetConfig } from '../../src/core/security/collect/assemble.ts'
+import { evaluateDeps } from '../../src/core/security/deps.ts'
 import type { CertFact, CheckResult, ExposureFact } from '../../src/core/security/types.ts'
 import { auditEnv, prepareAuditDir } from './lib/audit-run.ts'
 import { fetchCert, isValidDomain, probeDomain, probeLegacyTls } from './lib/external.ts'
@@ -245,13 +246,15 @@ async function main(): Promise<number> {
 
   // 推送前先用伺服端同一套驗證檢查：模型輸出的邊界情況（如空白 title）不可讓整筆快照
   // （含憑證與暴露面事實）一起被 422 丟掉。
-  let payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm })
+  // Task 6 取代：暫時佔位（映像檔掃描尚未接上），deps 判 unknown 但不影響 exit code
+  const deps = { evaluation: evaluateDeps({ failed: true }), images: [] }
+  let payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm, deps })
   let check = parseSecurityScanPayload(payload, new Date())
   if (!check.ok && auditNote === null && !judgeFailed) {
     console.error(`判讀輸出未通過驗證，改用 unknown：${check.errors.slice(0, 5).join('；')}`)
     judgment = unknownJudgment(target.kind)
     judgeFailed = true
-    payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm })
+    payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm, deps })
     check = parseSecurityScanPayload(payload, new Date())
   }
   if (!check.ok) {

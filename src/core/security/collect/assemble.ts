@@ -1,6 +1,6 @@
 // 注意：本檔會被 Node 直接執行（type stripping），import 只能用相對路徑加 .ts 副檔名。
 import type {
-  CertFact, CheckResult, ExposureFact, Finding, Inventory, JudgedCheckKey, LogSourceVolume, ScanKind,
+  CertFact, CheckResult, Evaluation, ExposureFact, Finding, ImageDeps, Inventory, JudgedCheckKey, LogSourceVolume, ScanKind,
   SecurityScanPayload,
 } from '../types.ts'
 import type { VmFacts } from './vm-dump.ts'
@@ -49,8 +49,9 @@ export function assemblePayload(args: {
   certs: CertFact[]
   exposure: ExposureFact[]
   vm?: VmFacts
+  deps?: { evaluation: Evaluation; images: ImageDeps[] }
 }): SecurityScanPayload {
-  const { scannedAt, target, judgment, certs, exposure, vm } = args
+  const { scannedAt, target, judgment, certs, exposure, vm, deps } = args
   const payload: SecurityScanPayload = {
     scannedAt,
     kind: target.kind,
@@ -67,6 +68,12 @@ export function assemblePayload(args: {
     }
     payload.logVolume = volumes
     payload.inventory = applyChangesIgnore(vm.inventory, target.changesIgnore)
+  }
+  // deps 由排程端確定性計算，只有 vm 帶；hosted 即使傳入也不寫
+  if (target.kind === 'vm' && deps) {
+    payload.checks = { ...payload.checks, deps: deps.evaluation.check }
+    payload.findings = [...payload.findings, ...deps.evaluation.findings]
+    payload.deps = deps.images
   }
   return payload
 }

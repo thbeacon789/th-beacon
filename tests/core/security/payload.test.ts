@@ -11,7 +11,9 @@ function validVm(): Record<string, unknown> {
       ports: { status: 'ok', summary: '僅開放 22、443' },
       updates: { status: 'warn', summary: '3 個待更新套件' },
       logins: { status: 'na', summary: '' },
+      deps: { status: 'na', summary: '' },
     },
+    deps: [],
     findings: [
       { check: 'updates', key: 'security', severity: 'medium', title: 'openssl 待更新', recommendation: '執行 apt upgrade' },
     ],
@@ -90,6 +92,8 @@ describe('parseSecurityScanPayload', () => {
     }
     delete p.logVolume
     delete p.inventory
+    delete p.deps
+    delete (p.checks as Record<string, unknown>).deps
     expect(parseSecurityScanPayload(p, now).ok).toBe(true)
   })
 
@@ -248,5 +252,114 @@ describe('parseSecurityScanPayload', () => {
     const r = bad((p) => { p.kind = 'x'; p.scannedAt = 'bad' })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('parseSecurityScanPayload deps', () => {
+  const digest = 'sha256:' + 'a'.repeat(64)
+  const counts = { critical: 1, high: 0, moderate: 2, low: 0, unscored: 0 }
+  const pkg = { name: 'lodash', version: '4.17.20', ecosystem: 'npm', severity: 'critical', ids: ['GHSA-xxxx'] }
+  const img = (over: Record<string, unknown> = {}) => ({ image: 'registry.test/app', digest, containers: ['app'], counts, packages: [pkg], ...over })
+  const withDeps = (deps: unknown) => ({ ...validVm(), deps })
+  const errs = (input: unknown): string[] => {
+    const r = parseSecurityScanPayload(input, now)
+    return r.ok ? [] : r.errors
+  }
+
+  it('vm 缺 checks.deps 被拒', () => {
+    const p = validVm()
+    delete (p.checks as Record<string, unknown>).deps
+    expect(errs(p).join()).toContain('checks.deps')
+  })
+  it('vm 缺 deps 被拒', () => {
+    const p = validVm()
+    delete p.deps
+    expect(errs(p).join()).toContain('deps')
+  })
+  it('hosted 帶 checks.deps 被拒', () => {
+    const p = { ...validVm(), kind: 'hosted', deps: undefined } as Record<string, unknown>
+    delete p.inventory
+    delete p.logVolume
+    expect(errs(p).join()).toContain('checks.deps')
+  })
+  it('hosted 帶 deps 被拒', () => {
+    const p = { ...validVm(), kind: 'hosted' } as Record<string, unknown>
+    delete p.inventory
+    delete p.logVolume
+    delete (p.checks as Record<string, unknown>).deps
+    expect(errs(p).join()).toContain('deps 只有 vm')
+  })
+  it('hosted 不帶 deps 通過', () => {
+    const p = { ...validVm(), kind: 'hosted' } as Record<string, unknown>
+    delete p.inventory
+    delete p.logVolume
+    delete p.deps
+    delete (p.checks as Record<string, unknown>).deps
+    expect(parseSecurityScanPayload(p, now).ok).toBe(true)
+  })
+  it('合法 deps 通過並保留內容', () => {
+    const r = parseSecurityScanPayload(withDeps([img(), { image: 'registry.test/b', digest: null, containers: ['b'], error: '拉取失敗' }]), now)
+    expect(r.ok && r.value.deps).toEqual([img(), { image: 'registry.test/b', digest: null, containers: ['b'], error: '拉取失敗' }])
+    expect(r.ok && r.value.checks.deps).toEqual({ status: 'na', summary: '' })
+  })
+  it("findings check 允許 'deps'、'cert' 仍拒絕", () => {
+    const f = (check: string, key: string) => ({ ...validVm(), findings: [{ check, key, severity: 'high', title: 't', recommendation: 'r' }] })
+    const ok = parseSecurityScanPayload(f('deps', 'image:registry.test/app'), now)
+    expect(ok.ok && ok.value.findings[0]).toMatchObject({ check: 'deps', key: 'image:registry.test/app' })
+    expect(ok.ok && 'keyFallback' in ok.value.findings[0]).toBe(false)
+    expect(errs(f('cert', 'x')).join()).toContain('findings[0].check')
+  })
+  it.each([['缺 image: 前綴', 'registry.test/app'], ['含空白', 'image:a b'], ['空 key', ''], ['超長', 'image:' + 'a'.repeat(305)], ['非字串', 5]])(
+    'deps finding key %s 退回 fallback',
+    (_n, key) => {
+      const r = parseSecurityScanPayload({ ...validVm(), findings: [{ check: 'deps', key, severity: 'high', title: 't', recommendation: 'r' }] }, now)
+      expect(r.ok && r.value.findings[0]).toMatchObject({ key: '_fallback', keyFallback: true })
+    },
+  )
+  it('映像檔最多 50 個', () => {
+    expect(parseSecurityScanPayload(withDeps(Array.from({ length: 50 }, () => img())), now).ok).toBe(true)
+    expect(errs(withDeps(Array.from({ length: 51 }, () => img()))).join()).toContain('50')
+  })
+  it('packages ≤ 20、containers ≤ 50、ids ≤ 5', () => {
+    expect(errs(withDeps([img({ packages: Array.from({ length: 21 }, () => pkg) })])).join()).toContain('packages')
+    expect(errs(withDeps([img({ containers: Array.from({ length: 51 }, (_, i) => `c${i}`) })])).join()).toContain('containers')
+    expect(errs(withDeps([img({ packages: [{ ...pkg, ids: ['1', '2', '3', '4', '5', '6'] }] })])).join()).toContain('ids')
+    expect(parseSecurityScanPayload(withDeps([img({ packages: Array.from({ length: 20 }, () => ({ ...pkg, ids: ['1', '2', '3', '4', '5'] })) })]), now).ok).toBe(true)
+  })
+  it('字串欄位 ≤ 300 字', () => {
+    expect(errs(withDeps([img({ image: 'a'.repeat(301) })])).join()).toContain('image')
+    expect(errs(withDeps([img({ containers: ['a'.repeat(301)] })])).join()).toContain('containers')
+    expect(errs(withDeps([img({ packages: [{ ...pkg, name: 'a'.repeat(301) }] })])).join()).toContain('name')
+    expect(errs(withDeps([img({ packages: [{ ...pkg, ids: ['a'.repeat(301)] }] })])).join()).toContain('ids')
+    expect(errs(withDeps([{ image: 'x', digest: null, containers: [], error: 'a'.repeat(301) }])).join()).toContain('error')
+  })
+  it('digest 格式', () => {
+    expect(errs(withDeps([img({ digest: 'sha256:abc' })])).join()).toContain('digest')
+    expect(errs(withDeps([img({ digest: 'sha256:' + 'A'.repeat(64) })])).join()).toContain('digest')
+    expect(errs(withDeps([img({ digest: undefined })])).join()).toContain('digest')
+  })
+  it('counts 五欄皆須為非負整數', () => {
+    expect(errs(withDeps([img({ counts: { ...counts, high: -1 } })])).join()).toContain('counts.high')
+    expect(errs(withDeps([img({ counts: { ...counts, low: 1.5 } })])).join()).toContain('counts.low')
+    const { unscored: _u, ...missing } = counts
+    expect(errs(withDeps([img({ counts: missing })])).join()).toContain('counts.unscored')
+  })
+  it('severity 須為合法值', () => {
+    expect(errs(withDeps([img({ packages: [{ ...pkg, severity: 'severe' }] })])).join()).toContain('severity')
+  })
+  it('有 error 不可同時帶 counts／packages', () => {
+    expect(errs(withDeps([img({ error: '失敗' })])).join()).toContain('error')
+    expect(errs(withDeps([{ image: 'x', digest: null, containers: [], error: '失敗', counts }])).join()).toContain('error')
+    expect(errs(withDeps([{ image: 'x', digest: null, containers: [], error: '失敗', packages: [] }])).join()).toContain('error')
+  })
+  it('50 個映像檔各 20 筆套件（長度取實務上限）的 payload 小於 512 KB 且通過驗證', () => {
+    // 各欄位都填滿 300 字的理論最大值會超過 512 KB，那種情況由路由的 body 上限擋下（見報告）；
+    // 這裡驗證實務上限（套件名 80、版本 40、ecosystem 20、id 各 40、5 個 id）仍放得下
+    const big = (c: string, n: number) => c.repeat(n)
+    const fullPkg = { name: big('n', 80), version: big('v', 40), ecosystem: big('e', 20), severity: 'critical', ids: Array.from({ length: 5 }, () => big('i', 40)) }
+    const full = { image: big('m', 150), digest, containers: Array.from({ length: 5 }, () => big('c', 40)), counts, packages: Array.from({ length: 20 }, () => fullPkg) }
+    const payload = withDeps(Array.from({ length: 50 }, () => full))
+    expect(JSON.stringify(payload).length).toBeLessThan(512 * 1024)
+    expect(errs(payload)).toEqual([])
   })
 })

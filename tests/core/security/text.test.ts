@@ -34,7 +34,8 @@ describe('truncateToUtf16Length', () => {
       {
         scannedAt: '2026-11-18T22:00:00.000Z',
         kind: 'vm',
-        checks: { ports: { status: 'ok', summary: 'x' }, updates: { status: 'ok', summary: 'x' }, logins: { status: 'na', summary: '' } },
+        checks: { ports: { status: 'ok', summary: 'x' }, updates: { status: 'ok', summary: 'x' }, logins: { status: 'na', summary: '' }, deps: { status: 'na', summary: '' } },
+        deps: [],
         certs: [],
         exposure: [],
         findings: [{ check: 'ports', severity: 'low', title, recommendation: 'r' }],

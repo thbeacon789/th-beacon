@@ -1,17 +1,28 @@
-import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SCAN_AGE_HOURS, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
+import { FALLBACK_KEY, MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SCAN_AGE_HOURS, MAX_SUMMARY, MAX_TITLE } from './constants.ts'
 import { normalizeJudgedKey } from './finding-key.ts'
 import type {
   CertFact, CheckResult, CheckStatus, ExposureFact, ExposureHeaders, Finding, FindingSeverity,
-  ContainerEntry, HourCount, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
+  ContainerEntry, DepCounts, DepPackage, DepSeverity, HourCount, ImageDeps, Inventory, JudgedCheckKey, Listener, LogSourceVolume, ScanKind, ScheduledEntry,
   SecurityScanPayload, ValidationResult,
 } from './types.ts'
 
 const MAX_CONTAINERS = 200
 const MAX_CONTAINER_FIELD = 300
 const MAX_CONTAINER_PORTS = 50
+const MAX_DEP_IMAGES = 50
+const MAX_DEP_PACKAGES_PER_IMAGE = 20
+const MAX_DEP_CONTAINERS = 50
+const MAX_DEP_IDS_PER_PACKAGE = 5
+const MAX_DEP_FIELD = 300
+const DEP_KEY_RE = /^image:[A-Za-z0-9][A-Za-z0-9._/:-]*$/
+const MAX_DEP_KEY = 310
+const DIGEST_RE = /^sha256:[a-f0-9]{64}$/
+const DEP_SEVERITIES: readonly DepSeverity[] = ['critical', 'high', 'moderate', 'low', 'unscored']
+const COUNT_KEYS: readonly (keyof DepCounts)[] = ['critical', 'high', 'moderate', 'low', 'unscored']
 const CLOCK_SKEW_MS = 10 * 60 * 1000
 const STATUSES: readonly CheckStatus[] = ['ok', 'warn', 'bad', 'unknown', 'na']
 const JUDGED: readonly JudgedCheckKey[] = ['ports', 'updates', 'logins']
+const FINDING_CHECKS: readonly (JudgedCheckKey | 'deps')[] = [...JUDGED, 'deps']
 const SEVERITIES: readonly FindingSeverity[] = ['high', 'medium', 'low']
 const KINDS: readonly ScanKind[] = ['vm', 'hosted']
 const HEADER_KEYS: readonly (keyof ExposureHeaders)[] = ['hsts', 'contentTypeOptions', 'frameProtection', 'csp', 'referrerPolicy']
@@ -65,14 +76,21 @@ function strArray(v: unknown, path: string, errors: string[]): string[] | null {
   return out
 }
 
-function parseChecks(v: unknown, errors: string[]): Record<JudgedCheckKey, CheckResult> | null {
+function parseChecks(v: unknown, kind: ScanKind | null, errors: string[]): SecurityScanPayload['checks'] | null {
   if (!isObj(v)) {
     errors.push('checks 必須是物件')
     return null
   }
-  const out = {} as Record<JudgedCheckKey, CheckResult>
+  const out = {} as SecurityScanPayload['checks']
   let ok = true
-  for (const key of JUDGED) {
+  // deps 由排程端計算：vm 必帶、hosted 不得帶
+  const keys: Array<JudgedCheckKey | 'deps'> = [...JUDGED]
+  if (kind === 'vm') keys.push('deps')
+  else if (kind === 'hosted' && v.deps !== undefined) {
+    errors.push('checks.deps 只有 vm 快照可帶')
+    ok = false
+  }
+  for (const key of keys) {
     const c = v[key]
     if (!isObj(c)) {
       errors.push(`checks.${key} 必須是物件`)
@@ -91,6 +109,11 @@ function parseChecks(v: unknown, errors: string[]): Record<JudgedCheckKey, Check
   return ok ? out : null
 }
 
+function normalizeDepsKey(raw: unknown): { key: string; keyFallback: boolean } {
+  if (typeof raw === 'string' && raw.length <= MAX_DEP_KEY && DEP_KEY_RE.test(raw)) return { key: raw, keyFallback: false }
+  return { key: FALLBACK_KEY, keyFallback: true }
+}
+
 function parseFindings(v: unknown, errors: string[]): Finding[] | null {
   const a = arr(v, 'findings', errors)
   if (!a) return null
@@ -105,12 +128,12 @@ function parseFindings(v: unknown, errors: string[]): Finding[] | null {
       errors.push(`${p} 必須是物件`)
       return
     }
-    const check = oneOf(f.check, JUDGED, `${p}.check`, errors)
+    const check = oneOf(f.check, FINDING_CHECKS, `${p}.check`, errors)
     const severity = oneOf(f.severity, SEVERITIES, `${p}.severity`, errors)
     const title = str(f.title, `${p}.title`, errors, { max: MAX_TITLE })
     const recommendation = str(f.recommendation, `${p}.recommendation`, errors, { max: MAX_RECOMMENDATION, allowEmpty: true })
     if (check && severity && title !== null && recommendation !== null) {
-      const { key, keyFallback } = normalizeJudgedKey(check, f.key)
+      const { key, keyFallback } = check === 'deps' ? normalizeDepsKey(f.key) : normalizeJudgedKey(check, f.key)
       out.push(keyFallback ? { check, key, keyFallback: true, severity, title, recommendation } : { check, key, severity, title, recommendation })
     }
   })
@@ -264,6 +287,95 @@ function parseLogVolume(v: unknown, errors: string[]): LogSourceVolume[] | null 
   return out
 }
 
+function nonNegInt(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0
+}
+
+function parseDeps(v: unknown, errors: string[]): ImageDeps[] | null {
+  const a = arr(v, 'deps', errors)
+  if (!a) return null
+  if (a.length > MAX_DEP_IMAGES) {
+    errors.push(`deps 不可超過 ${MAX_DEP_IMAGES} 個映像檔`)
+    return null
+  }
+  const before = errors.length
+  const out: ImageDeps[] = []
+  a.forEach((d, i) => {
+    const p = `deps[${i}]`
+    if (!isObj(d)) return void errors.push(`${p} 必須是物件`)
+    const start = errors.length
+    const image = str(d.image, `${p}.image`, errors, { max: MAX_DEP_FIELD })
+    let digest: string | null = null
+    if (d.digest === null) digest = null
+    else if (typeof d.digest === 'string' && DIGEST_RE.test(d.digest)) digest = d.digest
+    else errors.push(`${p}.digest 必須是 sha256:<64 位小寫十六進位> 或 null`)
+
+    const containers = strArray(d.containers, `${p}.containers`, errors)
+    if (containers && containers.length > MAX_DEP_CONTAINERS) errors.push(`${p}.containers 不可超過 ${MAX_DEP_CONTAINERS} 個`)
+    if (containers && containers.some((x) => x.length > MAX_DEP_FIELD)) errors.push(`${p}.containers 的項目不可超過 ${MAX_DEP_FIELD} 字`)
+
+    let error: string | undefined
+    if (d.error !== undefined) {
+      const e = str(d.error, `${p}.error`, errors, { max: MAX_DEP_FIELD })
+      if (e !== null) error = e
+    }
+    if (error !== undefined && (d.counts !== undefined || d.packages !== undefined)) {
+      errors.push(`${p} 有 error 時不可同時帶 counts／packages`)
+    }
+
+    let counts: DepCounts | undefined
+    if (d.counts !== undefined) {
+      if (!isObj(d.counts)) errors.push(`${p}.counts 必須是物件`)
+      else {
+        const c = {} as DepCounts
+        let cOk = true
+        for (const k of COUNT_KEYS) {
+          const n = (d.counts as Obj)[k]
+          if (nonNegInt(n)) c[k] = n
+          else {
+            errors.push(`${p}.counts.${k} 必須是非負整數`)
+            cOk = false
+          }
+        }
+        if (cOk) counts = c
+      }
+    }
+
+    let packages: DepPackage[] | undefined
+    if (d.packages !== undefined) {
+      const list = arr(d.packages, `${p}.packages`, errors)
+      if (list && list.length > MAX_DEP_PACKAGES_PER_IMAGE) errors.push(`${p}.packages 不可超過 ${MAX_DEP_PACKAGES_PER_IMAGE} 筆`)
+      else if (list) {
+        packages = []
+        list.forEach((x, j) => {
+          const pp = `${p}.packages[${j}]`
+          if (!isObj(x)) return void errors.push(`${pp} 必須是物件`)
+          const name = str(x.name, `${pp}.name`, errors, { max: MAX_DEP_FIELD })
+          const version = str(x.version, `${pp}.version`, errors, { max: MAX_DEP_FIELD, allowEmpty: true })
+          const ecosystem = str(x.ecosystem, `${pp}.ecosystem`, errors, { max: MAX_DEP_FIELD, allowEmpty: true })
+          const severity = oneOf(x.severity, DEP_SEVERITIES, `${pp}.severity`, errors)
+          const ids = strArray(x.ids, `${pp}.ids`, errors)
+          if (ids && ids.length > MAX_DEP_IDS_PER_PACKAGE) errors.push(`${pp}.ids 不可超過 ${MAX_DEP_IDS_PER_PACKAGE} 個`)
+          if (ids && ids.some((id) => id.length > MAX_DEP_FIELD)) errors.push(`${pp}.ids 的項目不可超過 ${MAX_DEP_FIELD} 字`)
+          if (name !== null && version !== null && ecosystem !== null && severity && ids && ids.length <= MAX_DEP_IDS_PER_PACKAGE) {
+            packages!.push({ name, version, ecosystem, severity, ids })
+          }
+        })
+      }
+    }
+
+    if (errors.length === start && image !== null && containers) {
+      out.push({
+        image, digest, containers,
+        ...(error !== undefined ? { error } : {}),
+        ...(counts ? { counts } : {}),
+        ...(packages ? { packages } : {}),
+      })
+    }
+  })
+  return errors.length > before ? null : out
+}
+
 function parseInventory(v: unknown, errors: string[]): Inventory | null {
   if (!isObj(v)) {
     errors.push('inventory 必須是物件')
@@ -345,18 +457,24 @@ export function parseSecurityScanPayload(input: unknown, now: Date): ValidationR
   } else scannedAt = input.scannedAt.trim()
 
   const kind = oneOf(input.kind, KINDS, 'kind', errors)
-  const checks = parseChecks(input.checks, errors)
+  const checks = parseChecks(input.checks, kind, errors)
   const findings = parseFindings(input.findings, errors)
   const certs = parseCerts(input.certs, errors)
   const exposure = parseExposure(input.exposure, errors)
   const logVolume = input.logVolume === undefined ? undefined : parseLogVolume(input.logVolume, errors)
   const inventory = input.inventory === undefined ? undefined : parseInventory(input.inventory, errors)
+  let deps: ImageDeps[] | undefined
+  if (kind === 'vm') {
+    const d = parseDeps(input.deps, errors)
+    if (d) deps = d
+  } else if (kind === 'hosted' && input.deps !== undefined) errors.push('deps 只有 vm 快照可帶')
 
-  if (errors.length > 0 || !scannedAt || !kind || !checks || !findings || !certs || !exposure) {
+  if (errors.length > 0 || (kind === 'vm' && !deps) || !scannedAt || !kind || !checks || !findings || !certs || !exposure) {
     return { ok: false, errors }
   }
   const value: SecurityScanPayload = { scannedAt, kind, checks, findings, certs, exposure }
   if (logVolume) value.logVolume = logVolume
   if (inventory) value.inventory = inventory
+  if (deps) value.deps = deps
   return { ok: true, value }
 }

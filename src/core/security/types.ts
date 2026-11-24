@@ -36,12 +36,13 @@ export interface Inventory {
 export interface SecurityScanPayload {
   scannedAt: string
   kind: ScanKind
-  checks: Record<JudgedCheckKey, CheckResult>
-  findings: Finding[] // check 只允許 JudgedCheckKey
+  checks: Record<JudgedCheckKey, CheckResult> & { deps?: CheckResult } // deps 只有 vm 帶
+  findings: Finding[] // check 只允許 JudgedCheckKey 與 deps
   certs: CertFact[]
   exposure: ExposureFact[]
   logVolume?: LogSourceVolume[] // 不含 anomalousHours
   inventory?: Inventory
+  deps?: ImageDeps[] // 只有 vm 帶
 }
 
 export interface Evaluation { check: CheckResult; findings: Finding[] }
