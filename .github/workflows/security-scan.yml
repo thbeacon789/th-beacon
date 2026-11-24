@@ -70,13 +70,17 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # deps 檢查：runner 端逐一拉取 VM 上容器使用的映像檔並以 osv-scanner 掃描
+      # 這兩個 step 失敗不可讓整個 job 失敗（八項檢查的快照仍要推送）：
+      # 失敗時 OSV_SCANNER_BIN 沒設定或 docker 未登入，runner 對每個映像檔回報 error，deps 因此為 unknown（spec §5.10）。
       - name: 設定 Artifact Registry 登入
         if: matrix.target.kind == 'vm'
+        continue-on-error: true
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
 
       # osv-scanner 釘版（v2.7.1）並驗 SHA-256；不新增第三方 action
       - name: 安裝 osv-scanner
         if: matrix.target.kind == 'vm'
+        continue-on-error: true
         run: |
           curl -fsSL -o "$RUNNER_TEMP/osv-scanner" https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_linux_amd64
           echo "fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8  $RUNNER_TEMP/osv-scanner" | sha256sum -c -

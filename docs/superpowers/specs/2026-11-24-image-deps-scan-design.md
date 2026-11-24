@@ -199,4 +199,5 @@ beacon：payload 驗證 → 存 security_scans（新欄位 deps）
 - 部分 Go 漏洞無 CVSS 分數，只能列為 `unscored`，不影響燈號。
 - 燈號不區分「有修正版可升」與「無修正版」：Debian 等 OS 漏洞多的基礎映像檔會長期紅燈，紅燈不一定代表有可執行的修正。若日後覺得雜訊過大，可改為只讓有修正版者影響燈號（OSV 的 `affected[].ranges[].events[].fixed` 可判斷），本版不做。
 - 漏洞資料來自 api.osv.dev（線上查詢），掃描時會把映像檔內的套件名稱與版本送給 Google。
+- runner 不限制可拉取的 registry：被入侵的 VM 可讓 runner 拉任意映像檔，靠 job 逾時與磁碟逐一刪除緩解。
 - 掃描帳號新增 Artifact Registry 讀取權，取得該權杖者可下載這些映像檔（內含程式碼）。

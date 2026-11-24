@@ -11,7 +11,7 @@
 
 資料來源是一個每日排程：對每個受監控的服務收集資安相關事實，交給 Claude 判讀整理（直接呼叫 Anthropic API，見 §4.2），再把結果推回 beacon 儲存與顯示。
 
-檢查項目共七項（前五項為最初需求，後兩項為討論後加入）：**【使用者決定】**
+檢查項目共八項（前五項為最初需求，後兩項為討論後加入；第八項 `deps` 套件漏洞僅 vm 適用，見 image-deps-scan spec）：**【使用者決定】**
 
 | 代號 | 項目 | 說明 |
 |---|---|---|
@@ -60,7 +60,7 @@
 
 | 服務 | 環境 | 適用項目 |
 |---|---|---|
-| altinvest | GCP Compute Engine，Ubuntu，單一 VM，沒有跑其他東西 | 七項全部 |
+| altinvest | GCP Compute Engine，Ubuntu，單一 VM，沒有跑其他東西 | 八項全部（`deps` 僅 vm） |
 | trustnel 官網（尚未登記，名稱由使用者在 `/services` 登記時決定） | Vercel | `updates`（相依套件）、`cert`、`exposure`；其餘四項不適用 |
 
 兩者同為第一版優先。**【使用者決定】**
