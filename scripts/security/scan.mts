@@ -19,11 +19,14 @@ import { parseSecurityScanPayload } from '../../src/core/security/payload.ts'
 import { assemblePayload, unknownJudgment } from '../../src/core/security/collect/assemble.ts'
 import type { Judgment, TargetConfig } from '../../src/core/security/collect/assemble.ts'
 import { evaluateDeps } from '../../src/core/security/deps.ts'
-import type { CertFact, CheckResult, ExposureFact } from '../../src/core/security/types.ts'
+import { planImageScans } from '../../src/core/security/collect/images.ts'
+import type { CertFact, CheckResult, Evaluation, ExposureFact, ImageDeps } from '../../src/core/security/types.ts'
 import { auditEnv, prepareAuditDir } from './lib/audit-run.ts'
 import { fetchCert, isValidDomain, probeDomain, probeLegacyTls } from './lib/external.ts'
 import type { ExposurePath } from './lib/external.ts'
 import { describeInstance, listFirewallRules, runVmCollector } from './lib/gcp.ts'
+import { dockerOsvRunner, scanImages } from './lib/image-scan.ts'
+import type { ImageScanRunner } from './lib/image-scan.ts'
 import { judge } from './lib/judge.ts'
 import type { JudgeResult } from './lib/judge.ts'
 import { postSigned } from './lib/beacon.ts'
@@ -166,6 +169,40 @@ function collectAudit(dryDir: string | undefined): AuditOutcome {
   }
 }
 
+const IMAGE_SCAN_TIMEOUT_MS = 5 * 60 * 1000
+const DIGEST_REF_RE = /@sha256:([a-f0-9]{64})$/
+
+interface DepsOutcome { evaluation: Evaluation; images: ImageDeps[]; failed: number }
+
+/** dry-run 的讀檔 runner：<dryDir>/osv/<digest 的 hex>.json */
+function fixtureRunner(dryDir: string): ImageScanRunner {
+  return (ref) => {
+    const m = DIGEST_REF_RE.exec(ref)
+    if (!m) return { ok: false, reason: 'fixture 不存在' }
+    try {
+      return { ok: true, json: readJson(join(dryDir, 'osv', `${m[1]}.json`)) }
+    } catch {
+      return { ok: false, reason: 'fixture 不存在' }
+    }
+  }
+}
+
+function collectDeps(vm: VmFacts, dryDir: string | undefined): DepsOutcome {
+  const { entries, failed } = vm.images
+  if (failed) {
+    console.error('映像檔清單收集失敗，deps 判 unknown')
+    return { evaluation: evaluateDeps({ failed: true }), images: [], failed: 1 }
+  }
+  if (entries === undefined) return { evaluation: evaluateDeps({ none: true }), images: [], failed: 0 }
+  const runner = dryDir !== undefined
+    ? fixtureRunner(dryDir)
+    : dockerOsvRunner({ osvBin: process.env.OSV_SCANNER_BIN || 'osv-scanner', timeoutMs: IMAGE_SCAN_TIMEOUT_MS, env: process.env })
+  const images = scanImages(planImageScans(entries), runner)
+  const failedCount = images.filter((i) => i.error !== undefined).length
+  console.log(`套件掃描：映像檔 ${images.length}、失敗 ${failedCount}`)
+  return { evaluation: evaluateDeps({ images }), images, failed: failedCount }
+}
+
 function dryJudgment(dryDir: string): JudgeResult {
   const j = readJson(join(dryDir, 'judgment.json')) as Judgment & { usage?: JudgeResult['usage'] }
   return { judgment: { checks: j.checks, findings: j.findings }, usage: j.usage ?? null }
@@ -246,8 +283,10 @@ async function main(): Promise<number> {
 
   // 推送前先用伺服端同一套驗證檢查：模型輸出的邊界情況（如空白 title）不可讓整筆快照
   // （含憑證與暴露面事實）一起被 422 丟掉。
-  // Task 6 取代：暫時佔位（映像檔掃描尚未接上），deps 判 unknown 但不影響 exit code
-  const deps = { evaluation: evaluateDeps({ failed: true }), images: [] }
+  // deps 只有 vm 帶：由排程端逐一拉取並掃描映像檔，確定性判燈（不經 Claude）
+  const depsOutcome = vm ? collectDeps(vm, dryDir) : undefined
+  const deps = depsOutcome && { evaluation: depsOutcome.evaluation, images: depsOutcome.images }
+  const depsFailed = (depsOutcome?.failed ?? 0) > 0
   let payload = assemblePayload({ scannedAt, target, judgment, certs, exposure, vm, deps })
   let check = parseSecurityScanPayload(payload, new Date())
   if (!check.ok && auditNote === null && !judgeFailed) {
@@ -277,7 +316,7 @@ async function main(): Promise<number> {
     }
   }
   if (incomplete) console.error('外部檢查不完整，快照已推送但回報失敗')
-  return judgeFailed || incomplete || auditFailed ? 1 : 0
+  return judgeFailed || incomplete || auditFailed || depsFailed ? 1 : 0
 }
 
 main().then(

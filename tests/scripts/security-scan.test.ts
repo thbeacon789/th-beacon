@@ -97,6 +97,58 @@ describe('scripts/security/scan.mts', () => {
     expect(body.checks.updates.status).toBe('warn')
   })
 
+  const BACKEND_HEX = 'b1'.repeat(32)
+
+  it('vm 乾跑：deps 依映像檔 fixture 判燈（caddy critical → bad），backend 帶 api 與 worker', async () => {
+    await start(okHandler)
+    const r = await run(['--target', 'vmsvc', '--dry-run', fixture('vm')])
+    expect(r.code, r.stdout + r.stderr).toBe(0)
+    const body = JSON.parse(scans()[0].body)
+    expect(body.checks.deps.status).toBe('bad')
+    expect(body.deps).toHaveLength(2)
+    const backend = body.deps.find((d: { digest: string }) => d.digest === `sha256:${BACKEND_HEX}`)
+    expect(backend.containers).toEqual(['api', 'worker'])
+    expect(parseSecurityScanPayload(body, new Date()).ok).toBe(true)
+  })
+
+  it('images 區段 ERROR：deps 為 unknown，其他檢查照常推送，exit 1', async () => {
+    await start(okHandler)
+    const d = fixture('vm', (x) => {
+      const p = path.join(x, 'vm-dump.txt')
+      const text = fs.readFileSync(p, 'utf8')
+      const re = /(@@BEACON:0{32}:images@@\n)[\s\S]*?(?=@@BEACON:0{32}:log:nginx@@)/
+      expect(re.test(text)).toBe(true)
+      fs.writeFileSync(p, text.replace(re, '$1ERROR\n'))
+    })
+    const r = await run(['--target', 'vmsvc', '--dry-run', d])
+    expect(r.code).toBe(1)
+    expect(scans()).toHaveLength(1)
+    const body = JSON.parse(scans()[0].body)
+    expect(body.checks.deps.status).toBe('unknown')
+    expect(body.checks.updates.status).toBe('warn')
+    expect(body.deps).toEqual([])
+  })
+
+  it('某映像檔 fixture 缺失：該映像檔帶 error，快照仍推送，exit 1', async () => {
+    await start(okHandler)
+    const d = fixture('vm', (x) => fs.rmSync(path.join(x, 'osv', `${BACKEND_HEX}.json`)))
+    const r = await run(['--target', 'vmsvc', '--dry-run', d])
+    expect(r.code).toBe(1)
+    expect(scans()).toHaveLength(1)
+    const body = JSON.parse(scans()[0].body)
+    const backend = body.deps.find((x: { digest: string }) => x.digest === `sha256:${BACKEND_HEX}`)
+    expect(backend.error).toBe('fixture 不存在')
+    expect(body.checks.deps.status).toBe('bad')
+  })
+
+  it('hosted 乾跑：payload 不含 deps', async () => {
+    await start(okHandler)
+    await run(['--target', 'hostedsvc', '--dry-run', fixture('hosted')])
+    const body = JSON.parse(scans()[0].body)
+    expect(body).not.toHaveProperty('deps')
+    expect(body.checks).not.toHaveProperty('deps')
+  })
+
   it('判讀輸出有空白 title：仍推送快照（憑證與暴露面保留），三項為 unknown，exit 1', async () => {
     await start(okHandler)
     const d = fixture('vm', (x) => {
@@ -110,7 +162,8 @@ describe('scripts/security/scan.mts', () => {
     expect(scans()).toHaveLength(1)
     const body = JSON.parse(scans()[0].body)
     for (const k of ['ports', 'updates', 'logins']) expect(body.checks[k].status).toBe('unknown')
-    expect(body.findings).toEqual([])
+    // 判讀 findings 被清空；deps 的 findings 由排程端確定性產生，不受影響
+    expect(body.findings.filter((f: { check: string }) => f.check !== 'deps')).toEqual([])
     expect(body.certs.length).toBeGreaterThan(0)
     expect(body.exposure.length).toBeGreaterThan(0)
     expect(parseSecurityScanPayload(body, new Date()).ok).toBe(true)
