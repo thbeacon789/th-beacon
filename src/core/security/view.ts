@@ -43,6 +43,7 @@ export const CHECK_LABEL: Record<CheckKey, string> = {
   exposure: '對外暴露',
   changes: '變動',
   logVolume: 'log 量',
+  deps: '套件漏洞',
 }
 
 export function evaluateCert(certs: CertFact[], now: Date): Evaluation {
@@ -124,7 +125,12 @@ export function buildSecurityView(
 
   for (const { serviceName, scan } of input) {
     const cert = evaluateCert(scan.certs, now)
-    const checks: Record<CheckKey, CheckResult> = { ...scan.checks, cert: cert.check }
+    const checks: Record<CheckKey, CheckResult> = {
+      ...scan.checks,
+      cert: cert.check,
+      // 舊快照沒有 deps：讀取端補 na（spec §5.9）
+      deps: (scan.checks as Partial<Record<CheckKey, CheckResult>>).deps ?? { status: 'na', summary: '' },
+    }
     const stale = isScanStale(scan.scannedAt, now)
     rows.push({
       serviceId: scan.serviceId,

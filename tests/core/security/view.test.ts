@@ -121,4 +121,8 @@ describe('buildSecurityView', () => {
     expect(v.rows.map((r) => r.serviceName)).toEqual(['A', 'B'])
     expect(v.rows[0].logVolume).toEqual([{ source: 's', error: true }])
   })
+  it('舊快照沒有 checks.deps 時不 throw，deps 格為 na', () => {
+    const v = buildSecurityView([{ serviceName: 'A', scan: scan() }], now)
+    expect(v.rows[0].checks.deps).toEqual({ status: 'na', summary: '' })
+  })
 })

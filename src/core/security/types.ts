@@ -4,7 +4,8 @@ export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: 
 export type CheckStatus = 'ok' | 'warn' | 'bad' | 'unknown' | 'na'
 export type JudgedCheckKey = 'ports' | 'updates' | 'logins'
 export type ComputedCheckKey = 'logVolume' | 'exposure' | 'changes'
-export type CheckKey = JudgedCheckKey | ComputedCheckKey | 'cert'
+export type RunnerCheckKey = 'deps'
+export type CheckKey = JudgedCheckKey | ComputedCheckKey | RunnerCheckKey | 'cert'
 export type FindingSeverity = 'high' | 'medium' | 'low'
 export type ScanKind = 'vm' | 'hosted'
 
@@ -50,3 +51,12 @@ export type DepSeverity = 'critical' | 'high' | 'moderate' | 'low' | 'unscored'
 export interface DepCounts { critical: number; high: number; moderate: number; low: number; unscored: number }
 export interface DepPackage { name: string; version: string; ecosystem: string; severity: DepSeverity; ids: string[] }
 export interface ImageScanSummary { counts: DepCounts; packages: DepPackage[] }
+/** 每個映像檔的掃描結果；image 不含 digest；error 存在代表掃描失敗（此時無 counts／packages） */
+export interface ImageDeps {
+  image: string
+  digest: string | null
+  containers: string[]
+  error?: string
+  counts?: DepCounts
+  packages?: DepPackage[]
+}
