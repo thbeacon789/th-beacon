@@ -256,6 +256,22 @@ describe('handleSecurityScan', () => {
       errSpy.mockRestore()
     })
 
+    it('judged list at the cap makes ports/updates/logins uncovered', async () => {
+      await store.upsertSecurityFindings([{
+        serviceId: 's-1', fingerprint: 'ports:tcp/22', check: 'ports', status: 'open', severity: 'medium',
+        title: 't', recommendation: 'r', keyFallback: false, firstSeenAt: '2026-11-01T00:00:00.000Z',
+        lastSeenAt: '2026-11-17T00:00:00.000Z', statusChangedAt: '2026-11-01T00:00:00.000Z', statusChangedBy: 'system',
+        reopenCount: 0, missedCount: 1,
+      }])
+      const findings = Array.from({ length: 15 }, (_, i) => ({
+        check: 'logins', key: `unexpected-success:10.0.0.${i + 1}`, severity: 'high', title: `login ${i}`, recommendation: 'r',
+      }))
+      const res = await send(store, payload({ findings }))
+      expect(res.status).toBe(201)
+      const port = store.listAllSecurityFindings().find((r) => r.fingerprint === 'ports:tcp/22')!
+      expect(port).toMatchObject({ status: 'open', missedCount: 1 })
+    })
+
     it('cert findings not stored in snapshot', async () => {
       await send(store, certPayload())
       expect(store.listSecurityScans()[0].findings.some((f) => f.check === 'cert')).toBe(false)

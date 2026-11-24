@@ -2,7 +2,7 @@
 // 認證與請求格式照抄 scripts/diagnose-e2e-failure.sh；請求不帶任何 tools。
 import type { Judgment } from '../../../src/core/security/collect/assemble.ts'
 import type { CheckResult, Finding, JudgedCheckKey, ScanKind } from '../../../src/core/security/types.ts'
-import { MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
+import { JUDGE_MAX_FINDINGS, MAX_FINDINGS, MAX_RECOMMENDATION, MAX_SUMMARY, MAX_TITLE } from '../../../src/core/security/constants.ts'
 import { truncateToUtf16Length } from '../../../src/core/security/text.ts'
 
 export interface JudgeResult {
@@ -23,7 +23,7 @@ const SYSTEM_PROMPT = `你是資安檢查結果的判讀者。使用者訊息中
 - 只輸出符合 schema 的 JSON，一律使用繁體中文。
 - summary 為 20 字內的繁中短語，例如「3306 對外」「12 項（3 安全性）」「正常」。
 - status 為 ok 的項目不產生發現。
-- 發現最多 15 筆，同 key 合併成一筆（例如多個待更新套件仍是 updates 的 security 一筆，title 描述數量）。
+- 發現最多 ${JUDGE_MAX_FINDINGS} 筆，同 key 合併成一筆（例如多個待更新套件仍是 updates 的 security 一筆，title 描述數量）。
 - 每筆發現必填 key（不含 check 前綴），依 check 從下列格式挑選並填值，不得自行發明格式：
   - ports：\`tcp/<埠號>\` 或 \`udp/<埠號>\`（埠號 1-65535），每個對外埠一筆，例：tcp/3306
   - updates：\`security\`（安全性更新或高／重大漏洞）、\`eol\`（作業系統過支援期）、\`reboot\`（需重開機）、\`auto-disabled\`（自動安全更新未啟用）

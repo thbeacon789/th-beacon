@@ -37,7 +37,8 @@ describe('InMemoryStore security findings', () => {
   it('upsert inserts then updates same fingerprint', async () => {
     const s = new InMemoryStore()
     await s.upsertSecurityFindings([finding()])
-    await s.upsertSecurityFindings([finding({ title: '新標題', lastSeenAt: '2026-11-21T00:00:00.000Z' })])
+    const [existing] = await s.listSecurityFindings('svc-1')
+    await s.upsertSecurityFindings([finding({ title: '新標題', lastSeenAt: '2026-11-21T00:00:00.000Z', id: existing.id, expectedStatus: 'open' })])
     const rows = await s.listSecurityFindings('svc-1')
     expect(rows).toHaveLength(1)
     expect(rows[0].title).toBe('新標題')
@@ -45,6 +46,25 @@ describe('InMemoryStore security findings', () => {
     await s.upsertSecurityFindings([finding({ serviceId: 'svc-2' })])
     expect(await s.listSecurityFindings('svc-1')).toHaveLength(1)
     expect(s.listAllSecurityFindings()).toHaveLength(2)
+  })
+
+  it('upsert keeps manual status change made after the list', async () => {
+    const s = new InMemoryStore()
+    await s.upsertSecurityFindings([finding()])
+    const [stale] = await s.listSecurityFindings('svc-1')
+    expect(await s.setSecurityFindingStatus(stale.id, 'ignored', 'open', 'a@x.com', '2026-11-22T00:00:00.000Z')).toBe(true)
+    await s.upsertSecurityFindings([finding({ title: '掃描覆寫', id: stale.id, expectedStatus: 'open' })])
+    const [after] = await s.listSecurityFindings('svc-1')
+    expect(after).toMatchObject({ status: 'ignored', title: stale.title, statusChangedBy: 'a@x.com' })
+  })
+
+  it('insert of an already existing fingerprint without id is ignored', async () => {
+    const s = new InMemoryStore()
+    await s.upsertSecurityFindings([finding()])
+    await s.upsertSecurityFindings([finding({ title: '競態新增' })])
+    const rows = await s.listSecurityFindings('svc-1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].title).toBe('SSH 對外開放')
   })
 
   it('conditional status update fails on mismatch', async () => {

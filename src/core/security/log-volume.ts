@@ -24,13 +24,14 @@ export function evaluateLogVolume(
   kind: ScanKind,
   current: LogSourceVolume[] | undefined,
   history: LogSourceVolume[][],
-): Evaluation & { logVolume: LogSourceVolume[] } {
+): Evaluation & { logVolume: LogSourceVolume[]; evaluatedSources: string[] } {
   if (kind === 'hosted' || !current || current.length === 0) {
-    return { check: { status: 'na', summary: '' }, findings: [], logVolume: [] }
+    return { check: { status: 'na', summary: '' }, findings: [], logVolume: [], evaluatedSources: [] }
   }
 
   const findings: Finding[] = []
   const logVolume: LogSourceVolume[] = []
+  const evaluatedSources: string[] = []
   let hasError = false
   let insufficient = false
   let maxRatio = 0
@@ -63,6 +64,7 @@ export function evaluateLogVolume(
       continue
     }
 
+    evaluatedSources.push(src.source)
     const baseline = median(counts)
     const anomalous = hourly.filter(
       (h) => h.count > baseline * LOG_SPIKE_RATIO && h.count - baseline >= LOG_SPIKE_MIN_EXCESS,
@@ -94,9 +96,9 @@ export function evaluateLogVolume(
   if (anyAnomaly) {
     // 只要有任一基準為 0 的異常，倍數無從計算，summary 一律為「暴增」
     const summary = zeroBaselineSpike ? '暴增' : `暴增 ${Math.round(maxRatio)} 倍`
-    return { check: { status: 'bad', summary }, findings, logVolume }
+    return { check: { status: 'bad', summary }, findings, logVolume, evaluatedSources }
   }
-  if (hasError) return { check: { status: 'unknown', summary: '來源讀不到' }, findings, logVolume }
-  if (insufficient) return { check: { status: 'unknown', summary: '基準建立中' }, findings, logVolume }
-  return { check: { status: 'ok', summary: '正常' }, findings, logVolume }
+  if (hasError) return { check: { status: 'unknown', summary: '來源讀不到' }, findings, logVolume, evaluatedSources }
+  if (insufficient) return { check: { status: 'unknown', summary: '基準建立中' }, findings, logVolume, evaluatedSources }
+  return { check: { status: 'ok', summary: '正常' }, findings, logVolume, evaluatedSources }
 }

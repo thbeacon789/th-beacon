@@ -585,10 +585,14 @@ export class InMemoryStore implements Store {
   }
 
   async upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void> {
-    for (const w of rows) {
-      const idx = this.securityFindings.findIndex((f) => f.serviceId === w.serviceId && f.fingerprint === w.fingerprint)
-      if (idx >= 0) this.securityFindings[idx] = { ...w, id: this.securityFindings[idx].id }
-      else this.securityFindings.push({ ...w, id: randomUUID() })
+    for (const { id, expectedStatus, ...w } of rows) {
+      if (id !== undefined) {
+        const idx = this.securityFindings.findIndex((f) => f.id === id)
+        if (idx >= 0 && this.securityFindings[idx].status === expectedStatus) this.securityFindings[idx] = { ...w, id }
+        continue
+      }
+      const exists = this.securityFindings.some((f) => f.serviceId === w.serviceId && f.fingerprint === w.fingerprint)
+      if (!exists) this.securityFindings.push({ ...w, id: randomUUID() })
     }
   }
 

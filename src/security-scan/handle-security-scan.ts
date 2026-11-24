@@ -4,7 +4,7 @@ import { parseSecurityScanPayload } from '@/core/security/payload'
 import { evaluateLogVolume } from '@/core/security/log-volume'
 import { evaluateExposure } from '@/core/security/exposure'
 import { evaluateChanges, pickBaseline } from '@/core/security/changes'
-import { BASELINE_WINDOW_DAYS } from '@/core/security/constants'
+import { BASELINE_WINDOW_DAYS, JUDGE_MAX_FINDINGS } from '@/core/security/constants'
 import { evaluateCertFindings } from '@/core/security/cert-findings'
 import { reconcileFindings } from '@/core/security/findings'
 import type { Store } from '@/store/contracts'
@@ -94,7 +94,14 @@ export async function handleSecurityScan(
         serviceId: auth.service.id,
         existing,
         observed,
-        coverage: { checks, exposure: payload.exposure, logVolume: logVolume.logVolume, certs: payload.certs },
+        coverage: {
+          checks,
+          exposure: payload.exposure,
+          logVolume: logVolume.logVolume,
+          evaluatedLogSources: logVolume.evaluatedSources,
+          judgedTruncated: payload.findings.length >= JUDGE_MAX_FINDINGS,
+          certs: payload.certs,
+        },
         scannedAt: payload.scannedAt,
       })
       await store.upsertSecurityFindings(rows)

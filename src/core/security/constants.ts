@@ -9,6 +9,8 @@ export const STALE_AFTER_HOURS = 30
 export const RETENTION_DAYS = 90
 export const MAX_SCAN_AGE_HOURS = 2
 export const MAX_FINDINGS = 30
+// LLM 判讀（ports／updates／logins）發現筆數上限，judge prompt 引用此值
+export const JUDGE_MAX_FINDINGS = 15
 export const MAX_SUMMARY = 80
 export const MAX_TITLE = 120
 export const MAX_RECOMMENDATION = 300

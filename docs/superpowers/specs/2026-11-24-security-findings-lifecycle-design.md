@@ -154,7 +154,7 @@ JSON schema 的 finding 加必填 `key`；prompt 列出下表規格，並把「�
 
 ## 寫入路徑
 
-`src/security-scan/handle-security-scan.ts`：快照 insert 成功（非 duplicate）後，讀該服務現有 `security_findings` → `reconcileFindings` → 批次寫回。reconcile 失敗只記 log，不影響 201 回應（快照仍是真實來源，下一次掃描會補齊）。Store port 新增 `listSecurityFindings(serviceId)`、`applySecurityFindingChanges(rows)`（以 unique 鍵 upsert）、`setSecurityFindingStatus(id, to, expectedFrom, by, now)`（條件更新，`where status = expectedFrom`，避免與掃描競態）。
+`src/security-scan/handle-security-scan.ts`：快照 insert 成功（非 duplicate）後，讀該服務現有 `security_findings` → `reconcileFindings` → 批次寫回。reconcile 失敗只記 log，不影響 201 回應（快照仍是真實來源，下一次掃描會補齊）。Store port 新增 `listSecurityFindings(serviceId)`、`upsertSecurityFindings(rows)`（既有列帶 `id`＋`expectedStatus`，僅在 DB status 仍相符時條件更新，避免蓋掉 list 之後的人工狀態變更；新列 insert，唯一鍵衝突則略過，皆不回傳衝突者，下次掃描會再 reconcile）、`setSecurityFindingStatus(id, to, expectedFrom, by, now)`（條件更新，`where status = expectedFrom`，避免與掃描競態）。
 
 ## 人工操作
 

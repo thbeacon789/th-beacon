@@ -22,6 +22,13 @@ describe('evaluateLogVolume', () => {
   it('歷史少於 3 筆回 unknown「基準建立中」', () => {
     const r = evaluateLogVolume('vm', [src('nginx', [100])], [[src('nginx', [100])], [src('nginx', [100])]])
     expect(r.check).toEqual({ status: 'unknown', summary: '基準建立中' })
+    expect(r.evaluatedSources).toEqual([])
+  })
+  it('基準足夠的來源列入 evaluatedSources，error 與基準不足者不列', () => {
+    const r = evaluateLogVolume('vm', [src('a', [100]), src('b', [100]), { source: 'c', error: true }], [
+      [src('a', [100]), src('b', [100])], [src('a', [100])], [src('a', [100])],
+    ])
+    expect(r.evaluatedSources).toEqual(['a'])
   })
   it('超過 5 倍且多 500 行以上判為 bad', () => {
     const r = evaluateLogVolume('vm', [src('nginx', [100, 700, 100])], hist3([100, 100, 100]))

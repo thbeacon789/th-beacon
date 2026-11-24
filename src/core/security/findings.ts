@@ -30,13 +30,23 @@ export interface SecurityFindingRecord {
   missedCount: number
 }
 
-/** 以 (serviceId, fingerprint) upsert */
-export type SecurityFindingWrite = Omit<SecurityFindingRecord, 'id'>
+/**
+ * 既有列帶 id＋expectedStatus（reconcile 讀到的 status）：僅在 DB status 仍相符時才更新，
+ * 避免蓋掉 list 之後的人工狀態變更。新列不帶：insert，唯一鍵衝突則略過。
+ */
+export type SecurityFindingWrite = Omit<SecurityFindingRecord, 'id'> & {
+  id?: string
+  expectedStatus?: SecurityFindingStatus
+}
 
 export interface CoverageInput {
   checks: Record<StoredCheckKey, CheckResult>
   exposure: ExposureFact[]
   logVolume: LogSourceVolume[]
+  /** 本次基準足夠、真正完成評估的 logVolume 來源（基準建立中不算檢查過） */
+  evaluatedLogSources: string[]
+  /** LLM 判讀類發現達上限被截斷：ports／updates／logins 無法確認「沒出現」 */
+  judgedTruncated: boolean
   certs: CertFact[]
 }
 
@@ -60,11 +70,11 @@ export function isCovered(record: Pick<SecurityFindingRecord, 'check' | 'fingerp
     case 'ports':
     case 'updates':
     case 'logins':
-      return checked(cov.checks[check]) // 含 _fallback（類別級）
+      return !cov.judgedTruncated && checked(cov.checks[check]) // 含 _fallback（類別級）
     case 'changes':
       return false
     case 'logVolume':
-      return cov.logVolume.some((s) => s.source === key && s.error !== true)
+      return cov.evaluatedLogSources.includes(key) && cov.logVolume.some((s) => s.source === key && s.error !== true)
     case 'cert': {
       const domain = key.slice(key.indexOf(':') + 1)
       return cov.certs.some((c) => c.domain === domain)
@@ -122,7 +132,8 @@ export function reconcileFindings(input: {
       })
       continue
     }
-    const { id: _id, ...base } = prev
+    const { id, ...rest } = prev
+    const base = { ...rest, id, expectedStatus: prev.status }
     if (prev.status === 'resolved') {
       const gapMs = Date.parse(scannedAt) - Date.parse(prev.lastSeenAt)
       if (prev.check === 'changes' && gapMs <= CHANGES_REOPEN_GAP_DAYS * DAY_MS) {
@@ -144,7 +155,8 @@ export function reconcileFindings(input: {
     if (observed.has(prev.fingerprint)) continue
     if (prev.status !== 'open' || prev.check === 'changes') continue
     if (!isCovered(prev, coverage)) continue
-    const { id: _id, ...base } = prev
+    const { id, ...rest } = prev
+    const base = { ...rest, id, expectedStatus: prev.status }
     const missed = prev.missedCount + 1
     const threshold = JUDGED.has(prev.check) ? AUTO_RESOLVE_MISSES_JUDGED : AUTO_RESOLVE_MISSES_COMPUTED
     out.push(

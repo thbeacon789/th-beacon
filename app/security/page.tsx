@@ -63,52 +63,52 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
         </div>
       )}
 
-          <section className="security-todos" aria-labelledby="security-todos-title">
-            <h2 id="security-todos-title" className="sr-only">資安發現</h2>
-            <nav className="security-tabs" aria-label="資安發現狀態">
-              {TABS.map((t) => (
-                <Link
-                  key={t}
-                  href={t === 'open' ? '/security' : `/security?tab=${t}`}
-                  className={t === tab ? 'security-tab is-active' : 'security-tab'}
-                  aria-current={t === tab ? 'page' : undefined}
-                >
-                  {TAB_LABEL[t]} ({findings.counts[t]})
-                </Link>
-              ))}
-            </nav>
-            {findings.items.length === 0 ? (
-              <p className="hint">{EMPTY_TEXT[tab]}</p>
-            ) : (
-              <ul>
-                {findings.items.map((f) => (
-                  <li key={f.id} className="security-todo">
-                    <span className={`badge security-sev-${f.severity}`}>{SEVERITY_LABEL[f.severity]}</span>
-                    <div className="security-todo-body">
-                      <div>
-                        <span className="security-todo-service">{f.serviceName}</span>
-                        <span className="security-todo-check">{CHECK_LABEL[f.check]}</span>
-                        {f.keyFallback && <span className="security-stale">未分類</span>}
-                        <span>{f.title}</span>
-                      </div>
-                      {f.recommendation !== '' && <div className="security-todo-rec">{f.recommendation}</div>}
-                      <div className="security-todo-meta">
-                        首次 {formatDateTime(f.firstSeenAt)} · 最後 {formatDateTime(f.lastSeenAt)}
-                        {f.reopenCount > 0 && ` · 復發 ${f.reopenCount} 次`}
-                        {f.status === 'open' && staleServices.has(f.serviceName) && (
-                          <span className="security-stale">掃描停擺，狀態可能過期</span>
-                        )}
-                        {f.check === 'changes' && Date.parse(f.lastSeenAt) < windowStart && (
-                          <span className="security-stale">已不在變動比對窗內</span>
-                        )}
-                      </div>
-                      <FindingActions id={f.id} status={f.status} transitions={MANUAL_TRANSITIONS[f.status]} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+    <section className="security-todos" aria-labelledby="security-todos-title">
+      <h2 id="security-todos-title" className="sr-only">資安發現</h2>
+      <nav className="security-tabs" aria-label="資安發現狀態">
+        {TABS.map((t) => (
+          <Link
+            key={t}
+            href={t === 'open' ? '/security' : `/security?tab=${t}`}
+            className={t === tab ? 'security-tab is-active' : 'security-tab'}
+            aria-current={t === tab ? 'page' : undefined}
+          >
+            {TAB_LABEL[t]} ({findings.counts[t]})
+          </Link>
+        ))}
+      </nav>
+      {findings.items.length === 0 ? (
+        <p className="hint">{EMPTY_TEXT[tab]}</p>
+      ) : (
+        <ul>
+          {findings.items.map((f) => (
+            <li key={f.id} className="security-todo">
+              <span className={`badge security-sev-${f.severity}`}>{SEVERITY_LABEL[f.severity]}</span>
+              <div className="security-todo-body">
+                <div>
+                  <span className="security-todo-service">{f.serviceName}</span>
+                  <span className="security-todo-check">{CHECK_LABEL[f.check]}</span>
+                  {f.keyFallback && <span className="security-stale">未分類</span>}
+                  <span>{f.title}</span>
+                </div>
+                {f.recommendation !== '' && <div className="security-todo-rec">{f.recommendation}</div>}
+                <div className="security-todo-meta">
+                  首次 {formatDateTime(f.firstSeenAt)} · 最後 {formatDateTime(f.lastSeenAt)}
+                  {f.reopenCount > 0 && ` · 復發 ${f.reopenCount} 次`}
+                  {f.status === 'open' && staleServices.has(f.serviceName) && (
+                    <span className="security-stale">掃描停擺，狀態可能過期</span>
+                  )}
+                  {f.status === 'open' && f.check === 'changes' && Date.parse(f.lastSeenAt) < windowStart && (
+                    <span className="security-stale">已不在變動比對窗內</span>
+                  )}
+                </div>
+                <FindingActions id={f.id} status={f.status} transitions={MANUAL_TRANSITIONS[f.status]} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
 
       {view.rows.length === 0 ? (
         <p className="hint">尚無掃描資料。資料由每日排程的 security-scan workflow 推送。</p>

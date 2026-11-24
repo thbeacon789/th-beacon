@@ -55,11 +55,29 @@ beforeEach(async () => {
 describe('SupabaseStore 資安發現', () => {
   it('upsert inserts then updates same fingerprint', async () => {
     await store.upsertSecurityFindings([finding()])
-    await store.upsertSecurityFindings([finding({ title: '新標題', lastSeenAt: '2026-11-21T00:00:00.000Z', reopenCount: 1 })])
+    const [existing] = await store.listSecurityFindings(serviceId)
+    await store.upsertSecurityFindings([finding({ title: '新標題', lastSeenAt: '2026-11-21T00:00:00.000Z', reopenCount: 1, id: existing.id, expectedStatus: 'open' })])
     const rows = await store.listSecurityFindings(serviceId)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ title: '新標題', reopenCount: 1, check: 'ports', statusChangedBy: 'system' })
     expect(Date.parse(rows[0].lastSeenAt)).toBe(Date.parse('2026-11-21T00:00:00.000Z'))
+  })
+
+  it('upsert keeps manual status change made after the list', async () => {
+    await store.upsertSecurityFindings([finding()])
+    const [stale] = await store.listSecurityFindings(serviceId)
+    expect(await store.setSecurityFindingStatus(stale.id, 'ignored', 'open', 'a@x.com', '2026-11-22T00:00:00.000Z')).toBe(true)
+    await store.upsertSecurityFindings([finding({ title: '掃描覆寫', id: stale.id, expectedStatus: 'open' })])
+    const [after] = await store.listSecurityFindings(serviceId)
+    expect(after).toMatchObject({ status: 'ignored', title: stale.title, statusChangedBy: 'a@x.com' })
+  })
+
+  it('insert of an already existing fingerprint without id is ignored', async () => {
+    await store.upsertSecurityFindings([finding()])
+    await store.upsertSecurityFindings([finding({ title: '競態新增' })])
+    const rows = await store.listSecurityFindings(serviceId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].title).toBe('SSH 對外開放')
   })
 
   it('conditional status update fails on mismatch', async () => {

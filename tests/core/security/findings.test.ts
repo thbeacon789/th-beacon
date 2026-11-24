@@ -14,7 +14,7 @@ const ok: CheckResult = { status: 'ok', summary: '' }
 
 function cov(over: Omit<Partial<CoverageInput>, 'checks'> & { checks?: Partial<Record<StoredCheckKey, CheckResult>> } = {}): CoverageInput {
   return {
-    exposure: [], logVolume: [], certs: [],
+    exposure: [], logVolume: [], evaluatedLogSources: [], judgedTruncated: false, certs: [],
     ...over,
     checks: { ports: ok, updates: ok, logins: ok, logVolume: ok, exposure: ok, changes: ok, ...over.checks },
   }
@@ -49,7 +49,7 @@ describe('reconcileFindings', () => {
   it('open observed updates content and resets missedCount', () => {
     const [w] = run([rec({ missedCount: 1 })], [fnd({ severity: 'high', title: 'fresh' })])
     expect(w).toMatchObject({ status: 'open', missedCount: 0, title: 'fresh', severity: 'high', lastSeenAt: NOW })
-    expect(w).not.toHaveProperty('id')
+    expect(w).toMatchObject({ id: 'r1', expectedStatus: 'open' })
   })
   it('judged open needs 2 covered misses', () => {
     const [a] = run([rec()], [])
@@ -135,9 +135,17 @@ describe('isCovered', () => {
     expect(c(fp, 'exposure', cov({ exposure: [expo({ legacyTls: true })] }))).toBe(true)
   })
   it('logVolume source with error is not covered', () => {
-    expect(c('logVolume:nginx', 'logVolume', cov({ logVolume: [{ source: 'nginx', error: true }] }))).toBe(false)
-    expect(c('logVolume:nginx', 'logVolume', cov({ logVolume: [{ source: 'nginx' }] }))).toBe(true)
+    expect(c('logVolume:nginx', 'logVolume', cov({ logVolume: [{ source: 'nginx', error: true }], evaluatedLogSources: ['nginx'] }))).toBe(false)
+    expect(c('logVolume:nginx', 'logVolume', cov({ logVolume: [{ source: 'nginx' }], evaluatedLogSources: ['nginx'] }))).toBe(true)
     expect(c('logVolume:nginx', 'logVolume', cov())).toBe(false)
+  })
+  it('insufficient baseline is not covered', () => {
+    expect(c('logVolume:nginx', 'logVolume', cov({ logVolume: [{ source: 'nginx', hourly: [], anomalousHours: [] }], evaluatedLogSources: [] }))).toBe(false)
+  })
+  it('truncated judged list is not covered', () => {
+    expect(c('ports:tcp/22', 'ports', cov({ judgedTruncated: true }))).toBe(false)
+    expect(c('updates:security', 'updates', cov({ judgedTruncated: true }))).toBe(false)
+    expect(c('ports:tcp/22', 'ports', cov())).toBe(true)
   })
   it('cert domain present is covered', () => {
     const certs = [{ domain: 'a.com', notAfter: NOW }]

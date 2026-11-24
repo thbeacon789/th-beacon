@@ -606,11 +606,23 @@ export class SupabaseStore implements Store {
   }
 
   async upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void> {
-    if (rows.length === 0) return
-    const { error } = await this.client
-      .from('security_findings')
-      .upsert(rows.map(securityFindingWriteToRow), { onConflict: 'service_id,fingerprint' })
-    if (error) throw new Error(`upsertSecurityFindings failed: ${error.message}`)
+    const inserts = rows.filter((r) => r.id === undefined)
+    if (inserts.length > 0) {
+      const { error } = await this.client
+        .from('security_findings')
+        .upsert(inserts.map(securityFindingWriteToRow), { onConflict: 'service_id,fingerprint', ignoreDuplicates: true })
+      if (error) throw new Error(`upsertSecurityFindings failed: ${error.message}`)
+    }
+    // 既有列：僅在 DB status 仍等於 reconcile 讀到的 status 時才寫，衝突者略過（下次掃描會再 reconcile）
+    for (const r of rows) {
+      if (r.id === undefined || r.expectedStatus === undefined) continue
+      const { error } = await this.client
+        .from('security_findings')
+        .update(securityFindingWriteToRow(r))
+        .eq('id', r.id)
+        .eq('status', r.expectedStatus)
+      if (error) throw new Error(`upsertSecurityFindings failed: ${error.message}`)
+    }
   }
 
   async setSecurityFindingStatus(id: string, to: SecurityFindingStatus, expectedFrom: SecurityFindingStatus, by: string, nowIso: string): Promise<boolean> {
