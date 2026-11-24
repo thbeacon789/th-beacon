@@ -670,6 +670,65 @@ echo '2026-11-18T21:31:00Z err line' >&2`)
     })
   })
 
+  describe('images 區段', () => {
+    const section = (stdout: string) => /@@BEACON:[a-f0-9]{32}:images@@\n([\s\S]*?)@@BEACON:/.exec(stdout)![1]
+    const H = (c: string) => c.repeat(64)
+    const dockerFake = (psBody: string) =>
+      fake(
+        'docker',
+        `case "$1" in
+ps) ${psBody};;
+inspect) for a in "$@"; do last="$a"; done
+  case "$last" in
+  aaaaaaaaaaaa) printf '/api\\trepo/app:1\\tsha256:${H('1')}\\n';;
+  bbbbbbbbbbbb) printf '/worker\\trepo/app:1\\tsha256:${H('1')}\\n';;
+  cccccccccccc) printf '/local\\tlocal-build:1\\tsha256:${H('2')}\\n';;
+  dddddddddddd) printf '/ev il\\trepo/x:1\\tsha256:${H('3')}\\n';;
+  *) exit 1;;
+  esac;;
+image) for a in "$@"; do last="$a"; done
+  case "$last" in
+  sha256:${H('1')}) printf 'repo/app@sha256:${H('a')}\\n';;
+  *) printf '\\n';;
+  esac;;
+*) exit 1;;
+esac`,
+      )
+
+    it('輸出 容器名／Config.Image／imageId／RepoDigests，並可被解析', async () => {
+      setupFakes()
+      dockerFake(`printf 'aaaaaaaaaaaa\\nbbbbbbbbbbbb\\ncccccccccccc\\ndddddddddddd\\nnot-an-id\\neeeeeeeeeeee\\n'`)
+      const r = await run()
+      const body = section(r.stdout)
+      // 含非法字元的容器名、非法 id、inspect 失敗的容器一律略過，且不輸出原文
+      expect(body).toBe(
+        `api\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}\n` +
+          `worker\trepo/app:1\tsha256:${H('1')}\trepo/app@sha256:${H('a')}\n` +
+          `local\tlocal-build:1\tsha256:${H('2')}\t\n`,
+      )
+      expect(body).not.toContain('ev il')
+      const f = parseVmDump(r.stdout, NONCE)
+      expect(f.images.entries).toHaveLength(3)
+      expect(f.images.failed).toBe(false)
+    })
+
+    it('沒有 docker 指令 → NONE', async () => {
+      setupFakes()
+      const r = await run()
+      expect(section(r.stdout)).toBe('NONE\n')
+    })
+
+    it('docker ps 失敗 → ERROR，且 images 不進 missingSections', async () => {
+      setupFakes()
+      dockerFake('exit 1')
+      const r = await run()
+      expect(section(r.stdout)).toBe('ERROR\n')
+      const f = parseVmDump(r.stdout, NONCE)
+      expect(f.images.failed).toBe(true)
+      expect(f.missingSections).toEqual(['containers'])
+    })
+  })
+
   it('腳本為唯讀：不含寫入、改動服務或動態執行的語法', () => {
     const code = fs
       .readFileSync(SCRIPT, 'utf8')

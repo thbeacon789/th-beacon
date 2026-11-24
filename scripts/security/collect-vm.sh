@@ -331,6 +331,31 @@ s_containers() {
   done
 }
 
+# images 區段：執行中容器 → 映像檔 digest（供 deps 掃描挑選 <repo>@sha256:<digest>）。
+# 輸出 容器名\tConfig.Image\timageId\tRepoDigests（逗號分隔，可為空）。docker 不存在 → NONE；docker ps 失敗／逾時 → ERROR。
+# 單一容器 inspect 失敗或欄位不符白名單的行直接略過（images 不參與變動偵測，不輸出哨兵）。
+# 注意：`docker inspect -f` 與 `docker image inspect -f` 的輸出格式未在真實 Docker 上驗證前，以首次實跑為準。
+s_images() {
+  command -v docker >/dev/null 2>&1 || { echo NONE; return 0; }
+  local ids id meta digests iname iimage iid iextra
+  local id_re='^[a-f0-9]{12,64}$'
+  local name_re='^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  local image_re='^[A-Za-z0-9][A-Za-z0-9_.:/@-]*$'
+  local iid_re='^sha256:[a-f0-9]{64}$'
+  local dig_re='^[A-Za-z0-9][A-Za-z0-9._/:@,-]*$'
+  ids=$(timeout 20 docker ps -q --no-trunc 2>/dev/null < /dev/null) || { echo ERROR; return 0; }
+  printf '%s\n' "$ids" | while IFS= read -r id; do
+    [[ $id =~ $id_re ]] || continue
+    meta=$(timeout 20 docker inspect --type container -f '{{.Name}}{{"\t"}}{{.Config.Image}}{{"\t"}}{{.Image}}' -- "$id" 2>/dev/null < /dev/null) || continue
+    IFS=$'\t' read -r iname iimage iid iextra <<< "$meta"
+    iname=${iname#/}
+    [ -z "$iextra" ] && [[ $iname =~ $name_re ]] && [[ $iimage =~ $image_re ]] && [[ $iid =~ $iid_re ]] || continue
+    digests=$(timeout 20 docker image inspect -f '{{join .RepoDigests ","}}' -- "$iid" 2>/dev/null < /dev/null) || digests=""
+    [[ -z $digests || $digests =~ $dig_re ]] || digests=""
+    printf '%s\t%s\t%s\t%s\n' "$iname" "$iimage" "$iid" "$digests"
+  done
+}
+
 # journal 型：先確認 unit 存在（不存在時 journalctl 仍以 0 結束且無輸出，會被誤當成「沒有 log」），
 # --utc 直接輸出 UTC，取每行前 13 字元（YYYY-MM-DDTHH）以 awk 串流計數（固定記憶體；輸出順序不保證，由解析端排序）
 log_journal() {
@@ -436,6 +461,7 @@ section ssh_keys s_ssh_keys
 section scheduled s_scheduled
 section services s_services
 section containers s_containers
+section images s_images
 
 # log:<name> 區段：來源由 BEACON_LOG_SOURCES_B64 指定，逐行驗證，不符的行直接略過
 if [ -n "${BEACON_LOG_SOURCES_B64:-}" ]; then

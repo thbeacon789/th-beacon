@@ -1,6 +1,6 @@
 // 注意：本檔會被 Node 直接執行（type stripping），import 只能用相對路徑加 .ts 副檔名。
 // 輸入（VM 輸出）為不可信資料：只做字串切割與固定樣式比對，格式不符的行一律略過。
-import type { ContainerEntry, Inventory, Listener, LogSourceVolume, ScheduledEntry } from '../types.ts'
+import type { ContainerEntry, ImageEntry, Inventory, Listener, LogSourceVolume, ScheduledEntry } from '../types.ts'
 
 export interface VmFacts {
   listeners: Array<Listener & { address: string }>
@@ -17,6 +17,8 @@ export interface VmFacts {
   authLines: string[]
   inventory: Inventory
   logVolume: LogSourceVolume[]
+  /** 映像檔區段（非必要區段：缺漏或 ERROR 都只是 failed: true，不讓整次掃描失敗） */
+  images: { entries: ImageEntry[] | undefined; failed: boolean }
   /** dump 中不存在標記的必要區段（存在但內容為空不算缺漏） */
   missingSections: string[]
 }
@@ -213,6 +215,25 @@ function parseContainers(s: string | undefined): { containers: ContainerEntry[] 
   return { containers: out, failed: false }
 }
 
+/** images 區段：NONE → undefined；ERROR 或缺區段 → failed；欄位數不符的行略過。 */
+function parseImages(s: string | undefined): VmFacts['images'] {
+  if (s === undefined) return { entries: undefined, failed: true }
+  const body = lines(s)
+  if (body.includes('ERROR')) return { entries: undefined, failed: true }
+  if (body.length === 1 && body[0] === 'NONE') return { entries: undefined, failed: false }
+  const entries: ImageEntry[] = []
+  for (const raw of s.split('\n')) {
+    const line = raw.replace(/\r$/, '')
+    if (line.trim() === '') continue
+    const p = line.split('\t')
+    // 行尾 TAB 可能被傳輸層去掉：沒有 RepoDigests 時只剩 3 欄
+    if ((p.length !== 4 && p.length !== 3) || p[0].trim() === '' || p[1].trim() === '' || p[2].trim() === '') continue
+    const repoDigests = (p[3] ?? '').split(',').map((x) => x.trim()).filter((x) => x.length > 0)
+    entries.push({ container: p[0].trim(), configImage: p[1].trim(), imageId: p[2].trim(), repoDigests })
+  }
+  return { entries, failed: false }
+}
+
 function parseLogVolume(sections: Record<string, string>): LogSourceVolume[] {
   const out: LogSourceVolume[] = []
   for (const name of Object.keys(sections)) {
@@ -283,6 +304,7 @@ export function parseVmDump(dump: string, nonce: string): VmFacts {
     authLines: lines(sections.auth),
     inventory,
     logVolume: parseLogVolume(sections),
+    images: parseImages(sections.images),
     missingSections,
   }
 }

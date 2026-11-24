@@ -19,6 +19,8 @@ export interface ScheduledEntry { location: string; schedule: string; executable
 export interface Listener { proto: 'tcp' | 'udp'; port: number; process: string }
 /** 執行中的容器；image 不含版本，ports 只含發佈到主機的對應 */
 export interface ContainerEntry { name: string; image: string; ports: string[] }
+/** 執行中容器對應的映像檔；repoDigests 為本機映像檔記錄的 repo@sha256:… 清單（可為空） */
+export interface ImageEntry { container: string; configImage: string; imageId: string; repoDigests: string[] }
 export interface Inventory {
   users: string[]
   admins: string[]

@@ -235,3 +235,38 @@ describe('parseVmDump containers', () => {
     expect(parse(null).missingSections).toEqual(['containers'])
   })
 })
+
+describe('parseVmDump images', () => {
+  const H = (c: string) => c.repeat(64)
+  const APP = 'asia-east1-docker.pkg.dev/altinvest/backend/app'
+  const base: Array<[string, string]> = REQUIRED_SECTIONS.map((n) => [n, ''])
+  const parse = (body: string | null) => parseVmDump(build(body === null ? base : [...base, ['images', body]]), NONCE)
+
+  it('四欄解析為一筆 entry', () => {
+    const r = parse(`api\t${APP}:abc\tsha256:${H('1')}\t${APP}@sha256:${H('2')}`)
+    expect(r.images).toEqual({
+      entries: [{ container: 'api', configImage: `${APP}:abc`, imageId: `sha256:${H('1')}`, repoDigests: [`${APP}@sha256:${H('2')}`] }],
+      failed: false,
+    })
+    expect(r.missingSections).toEqual([])
+  })
+  it('第 4 欄為空（行尾 TAB 被吃）→ repoDigests []；逗號切分並去空', () => {
+    expect(parse(`db\tpostgres:16\tsha256:${H('1')}`).images.entries?.[0].repoDigests).toEqual([])
+    expect(parse(`db\tpostgres:16\tsha256:${H('1')}\t`).images.entries?.[0].repoDigests).toEqual([])
+    expect(parse(`db\tp:1\tsha256:${H('1')}\ta@sha256:${H('2')}, ,b@sha256:${H('3')}`).images.entries?.[0].repoDigests).toEqual([`a@sha256:${H('2')}`, `b@sha256:${H('3')}`])
+  })
+  it('NONE → entries undefined、failed false；ERROR → failed true', () => {
+    expect(parse('NONE').images).toEqual({ entries: undefined, failed: false })
+    expect(parse('ERROR').images).toEqual({ entries: undefined, failed: true })
+    expect(parse('ERROR').missingSections).toEqual([])
+  })
+  it('缺 images 區段 → failed true，但 missingSections 不含 images', () => {
+    const r = parse(null)
+    expect(r.images).toEqual({ entries: undefined, failed: true })
+    expect(r.missingSections).toEqual([])
+  })
+  it('欄位數不符的行略過', () => {
+    const r = parse(`only-one\na\tb\na\tb\tc\td\te\n\tx\ty\tz\nok\timg:1\tsha256:${H('1')}\t`)
+    expect(r.images.entries?.map((e) => e.container)).toEqual(['ok'])
+  })
+})
