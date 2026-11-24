@@ -214,7 +214,11 @@ export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
     serviceId: row.service_id,
     scannedAt: row.scanned_at,
     kind: narrow(row.kind, SCAN_KINDS, 'scan kind'),
-    checks: row.checks as unknown as StoredSecurityScan['checks'],
+    // 舊快照沒有 deps 檢查項：補 na
+    checks: {
+      ...({ deps: { status: 'na', summary: '' } } as Partial<StoredSecurityScan['checks']>),
+      ...(row.checks as unknown as Partial<StoredSecurityScan['checks']>),
+    } as StoredSecurityScan['checks'],
     findings: (row.findings as unknown as Array<Record<string, unknown>>).map((f) =>
       typeof f.key === 'string' ? f : { ...f, key: FALLBACK_KEY, keyFallback: true },
     ) as unknown as StoredSecurityScan['findings'],
@@ -222,6 +226,7 @@ export function rowToSecurityScan(row: SecurityScanRow): StoredSecurityScan {
     logVolume: row.log_volume as unknown as StoredSecurityScan['logVolume'],
     exposure: row.exposure as unknown as StoredSecurityScan['exposure'],
     inventory: row.inventory === null ? null : (row.inventory as unknown as StoredSecurityScan['inventory']),
+    deps: row.deps === null ? null : (row.deps as unknown as StoredSecurityScan['deps']),
   }
 }
 

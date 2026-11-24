@@ -162,6 +162,57 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
               </tbody>
             </table>
           </div>
+
+          {view.rows.filter((r) => r.deps !== null && r.deps.length > 0).map((row) => (
+            <details key={row.serviceId} className="security-deps">
+              <summary>{row.serviceName} 映像檔套件漏洞</summary>
+              {row.deps!.map((d) => (
+                <div key={`${d.image}-${d.containers.join(',')}`} className="security-deps-image">
+                  <div className="security-todo-meta">
+                    <span className="security-todo-service">{d.image}</span>
+                    容器：{d.containers.join('、')}
+                  </div>
+                  {d.error !== undefined ? (
+                    <p className="hint">掃描失敗：{d.error}</p>
+                  ) : (
+                    <>
+                      {d.counts && (
+                        <p className="hint">
+                          嚴重 {d.counts.critical}｜高 {d.counts.high}｜中 {d.counts.moderate}｜低 {d.counts.low}｜未分級 {d.counts.unscored}
+                        </p>
+                      )}
+                      {d.packages && d.packages.length > 0 && (
+                        <div className="table-wrap">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th scope="col">套件</th>
+                                <th scope="col">版本</th>
+                                <th scope="col">生態系</th>
+                                <th scope="col">嚴重度</th>
+                                <th scope="col">編號</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {d.packages.map((pkg) => (
+                                <tr key={`${pkg.ecosystem}-${pkg.name}-${pkg.version}`}>
+                                  <th scope="row">{pkg.name}</th>
+                                  <td>{pkg.version}</td>
+                                  <td>{pkg.ecosystem}</td>
+                                  <td>{pkg.severity}</td>
+                                  <td>{pkg.ids.join('、')}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </details>
+          ))}
         </>
       )}
     </main>

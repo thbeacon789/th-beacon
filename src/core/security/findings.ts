@@ -41,7 +41,7 @@ export type SecurityFindingWrite = Omit<SecurityFindingRecord, 'id'> & {
 
 export interface CoverageInput {
   /** deps 只有 vm 帶；缺席（hosted／舊快照）視為未檢查 */
-  checks: Record<StoredCheckKey, CheckResult> & { deps?: CheckResult }
+  checks: Record<Exclude<StoredCheckKey, 'deps'>, CheckResult> & { deps?: CheckResult }
   exposure: ExposureFact[]
   logVolume: LogSourceVolume[]
   /** 本次基準足夠、真正完成評估的 logVolume 來源（基準建立中不算檢查過） */

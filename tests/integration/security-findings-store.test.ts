@@ -38,6 +38,7 @@ const scan = (scannedAt: string): NewSecurityScan => ({
   logVolume: [],
   exposure: [],
   inventory: null,
+  deps: null,
 })
 
 beforeAll(() => {

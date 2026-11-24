@@ -291,4 +291,21 @@ describe('rowToSecurityScan', () => {
     expect(r.findings[1]).toMatchObject({ key: 'tcp/22' })
     expect('keyFallback' in r.findings[1]).toBe(false)
   })
+
+  it('checks 無 deps、row.deps 為 null 時補 na 與 null；有則原樣', () => {
+    const base = {
+      id: 'i', service_id: 's', scanned_at: '2026-11-18T00:00:00.000Z', kind: 'vm',
+      checks: { ports: { status: 'ok', summary: '' } }, certs: [], log_volume: null, exposure: [], inventory: null,
+      findings: [], deps: null,
+    }
+    const old = rowToSecurityScan(base as unknown as Parameters<typeof rowToSecurityScan>[0])
+    expect(old.checks.deps).toEqual({ status: 'na', summary: '' })
+    expect(old.deps).toBeNull()
+    const deps = [{ image: 'app', digest: null, containers: ['web'], error: 'x' }]
+    const withDeps = rowToSecurityScan({
+      ...base, checks: { ports: { status: 'ok', summary: '' }, deps: { status: 'bad', summary: 's' } }, deps,
+    } as unknown as Parameters<typeof rowToSecurityScan>[0])
+    expect(withDeps.checks.deps).toEqual({ status: 'bad', summary: 's' })
+    expect(withDeps.deps).toEqual(deps)
+  })
 })

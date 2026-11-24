@@ -9,14 +9,16 @@ import type {
   Evaluation,
   ExposureFact,
   Finding,
+  ImageDeps,
   Inventory,
   JudgedCheckKey,
   LogSourceVolume,
+  RunnerCheckKey,
   ScanKind,
 } from './types.ts'
 
 export type OverallStatus = 'ok' | 'warn' | 'bad' | 'unknown'
-export type StoredCheckKey = JudgedCheckKey | ComputedCheckKey
+export type StoredCheckKey = JudgedCheckKey | ComputedCheckKey | RunnerCheckKey
 
 export interface StoredSecurityScan {
   id: string
@@ -29,12 +31,14 @@ export interface StoredSecurityScan {
   logVolume: LogSourceVolume[]
   exposure: ExposureFact[]
   inventory: Inventory | null
+  /** 映像檔套件漏洞明細；hosted 與舊快照為 null */
+  deps: ImageDeps[] | null
 }
 
 const DAY_MS = 86400000
 const HOUR_MS = 3600000
 
-export const CHECK_ORDER: readonly CheckKey[] = ['ports', 'updates', 'logins', 'cert', 'exposure', 'changes', 'logVolume']
+export const CHECK_ORDER: readonly CheckKey[] = ['ports', 'updates', 'logins', 'deps', 'cert', 'exposure', 'changes', 'logVolume']
 export const CHECK_LABEL: Record<CheckKey, string> = {
   ports: '連接埠',
   updates: '待更新',
@@ -109,6 +113,7 @@ export interface ServiceSecurityRow {
   overall: OverallStatus
   checks: Record<CheckKey, CheckResult>
   logVolume: LogSourceVolume[]
+  deps: ImageDeps[] | null
 }
 export interface SecurityView {
   /** 掃描停擺的服務名稱；待處理紀錄仍顯示，但標註狀態可能過期 */
@@ -140,6 +145,7 @@ export function buildSecurityView(
       overall: stale ? 'unknown' : overallStatus(CHECK_ORDER.map((k) => checks[k].status)),
       checks,
       logVolume: scan.logVolume,
+      deps: scan.deps ?? null,
     })
     if (stale) staleServices.push({ serviceName, hours: Math.floor((now.getTime() - Date.parse(scan.scannedAt)) / HOUR_MS) })
   }

@@ -544,6 +544,7 @@ export class SupabaseStore implements Store {
         log_volume: scan.logVolume as unknown as Json,
         exposure: scan.exposure as unknown as Json,
         inventory: scan.inventory === null ? null : (scan.inventory as unknown as Json),
+        deps: scan.deps === null ? null : (scan.deps as unknown as Json),
       })
       .select('id')
       .single()

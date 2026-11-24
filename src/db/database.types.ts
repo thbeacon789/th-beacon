@@ -534,6 +534,7 @@ export type Database = {
         Row: {
           certs: Json
           checks: Json
+          deps: Json | null
           exposure: Json
           findings: Json
           id: string
@@ -547,6 +548,7 @@ export type Database = {
         Insert: {
           certs?: Json
           checks: Json
+          deps?: Json | null
           exposure?: Json
           findings?: Json
           id?: string
@@ -560,6 +562,7 @@ export type Database = {
         Update: {
           certs?: Json
           checks?: Json
+          deps?: Json | null
           exposure?: Json
           findings?: Json
           id?: string

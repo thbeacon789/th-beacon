@@ -31,6 +31,7 @@ const scan = (serviceId: string, scannedAt: string): NewSecurityScan => ({
   logVolume: [],
   exposure: [],
   inventory: null,
+  deps: null,
 })
 
 describe('InMemoryStore security findings', () => {

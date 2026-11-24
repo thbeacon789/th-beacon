@@ -7,6 +7,7 @@ import { evaluateChanges, pickBaseline } from '@/core/security/changes'
 import { BASELINE_WINDOW_DAYS, JUDGE_MAX_FINDINGS } from '@/core/security/constants'
 import { evaluateCertFindings } from '@/core/security/cert-findings'
 import { reconcileFindings } from '@/core/security/findings'
+import type { CheckResult } from '@/core/security/types'
 import type { Store } from '@/store/contracts'
 
 const UNAUTHORIZED: IngestResponse = { status: 401, body: { error: 'unauthorized' } }
@@ -59,6 +60,7 @@ export async function handleSecurityScan(
   const changes = evaluateChanges(payload.kind, payload.inventory, pickBaseline(history))
 
   const checks = {
+    deps: { status: 'na', summary: '' } as CheckResult, // hosted 不帶；vm 由 payload.checks 覆蓋
     ...payload.checks,
     logVolume: logVolume.check,
     exposure: exposure.check,
@@ -76,6 +78,7 @@ export async function handleSecurityScan(
     logVolume: logVolume.logVolume,
     exposure: payload.exposure,
     inventory: payload.inventory ?? null,
+    deps: payload.deps ?? null,
   })
   if (inserted === null) return { status: 200, body: { duplicate: true } }
 
@@ -99,7 +102,7 @@ export async function handleSecurityScan(
           exposure: payload.exposure,
           logVolume: logVolume.logVolume,
           evaluatedLogSources: logVolume.evaluatedSources,
-          judgedTruncated: payload.findings.length >= JUDGE_MAX_FINDINGS,
+          judgedTruncated: payload.findings.filter((f) => f.check !== 'deps').length >= JUDGE_MAX_FINDINGS,
           certs: payload.certs,
         },
         scannedAt: payload.scannedAt,

@@ -14,12 +14,13 @@ function scan(over: Partial<StoredSecurityScan> = {}): StoredSecurityScan {
     serviceId: 'svc1',
     scannedAt: '2026-11-18T23:00:00.000Z',
     kind: 'vm',
-    checks: { ports: ok, updates: ok, logins: ok, logVolume: ok, exposure: ok, changes: ok },
+    checks: { ports: ok, updates: ok, logins: ok, logVolume: ok, exposure: ok, changes: ok, deps: ok },
     findings: [],
     certs: [],
     logVolume: [],
     exposure: [],
     inventory: null,
+    deps: null,
     ...over,
   }
 }
@@ -122,7 +123,15 @@ describe('buildSecurityView', () => {
     expect(v.rows[0].logVolume).toEqual([{ source: 's', error: true }])
   })
   it('舊快照沒有 checks.deps 時不 throw，deps 格為 na', () => {
-    const v = buildSecurityView([{ serviceName: 'A', scan: scan() }], now)
+    const legacy = scan()
+    delete (legacy.checks as Partial<typeof legacy.checks>).deps
+    const v = buildSecurityView([{ serviceName: 'A', scan: legacy }], now)
     expect(v.rows[0].checks.deps).toEqual({ status: 'na', summary: '' })
+  })
+  it('deps 為 bad 的快照讓 overall 為 bad，並帶出 deps 明細', () => {
+    const deps = [{ image: 'app', digest: null, containers: ['web'], error: 'x' }]
+    const v = buildSecurityView([{ serviceName: 'A', scan: scan({ checks: { ...scan().checks, deps: { status: 'bad', summary: '2 高' } }, deps }) }], now)
+    expect(v.rows[0].overall).toBe('bad')
+    expect(v.rows[0].deps).toEqual(deps)
   })
 })

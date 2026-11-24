@@ -82,6 +82,7 @@ const seed = (store: InMemoryStore, over: Partial<NewSecurityScan> = {}) =>
     logVolume: [],
     exposure: [],
     inventory: null,
+    deps: null,
     ...over,
   })
 
@@ -211,6 +212,58 @@ describe('handleSecurityScan', () => {
     expect(checks.logVolume.status).toBe('na')
     expect(checks.changes.status).toBe('na')
     expect(store.listSecurityScans()[0].inventory).toBeNull()
+    expect(checks.deps).toEqual({ status: 'na', summary: '' })
+    expect(store.listSecurityScans()[0].checks.deps).toEqual({ status: 'na', summary: '' })
+    expect(store.listSecurityScans()[0].deps).toBeNull()
+  })
+
+  it('vm 快照的 deps 檢查與明細原樣存入，findings 含 deps 那筆', async () => {
+    const depsFinding = { check: 'deps', key: 'img:app:GHSA-1', severity: 'high', title: 'app 有高風險套件', recommendation: '升級' }
+    const deps = [{
+      image: 'app', digest: 'sha256:' + 'a'.repeat(64), containers: ['web'],
+      counts: { critical: 0, high: 1, moderate: 0, low: 0, unscored: 0 },
+      packages: [{ name: 'lodash', version: '4.0.0', ecosystem: 'npm', severity: 'high', ids: ['GHSA-1'] }],
+    }]
+    const res = await send(store, payload({
+      checks: {
+        ports: { status: 'ok', summary: '無異常' },
+        updates: { status: 'ok', summary: '無待更新' },
+        logins: { status: 'ok', summary: '無異常' },
+        deps: { status: 'bad', summary: '1 個高風險' },
+      },
+      deps,
+      findings: [depsFinding],
+    }))
+    expect(res.status).toBe(201)
+    const stored = store.listSecurityScans()[0]
+    expect(stored.checks.deps).toEqual({ status: 'bad', summary: '1 個高風險' })
+    expect(stored.deps).toEqual(deps)
+    expect(stored.findings.some((f) => f.check === 'deps')).toBe(true)
+  })
+
+  it('vm 有大量 deps finding、judged finding 很少時，不視為 judged 截斷', async () => {
+    await store.upsertSecurityFindings([{
+      serviceId: 's-1', fingerprint: 'ports:tcp/22', check: 'ports', status: 'open', severity: 'medium',
+      title: 't', recommendation: 'r', keyFallback: false, firstSeenAt: '2026-11-01T00:00:00.000Z',
+      lastSeenAt: '2026-11-17T00:00:00.000Z', statusChangedAt: '2026-11-01T00:00:00.000Z', statusChangedBy: 'system',
+      reopenCount: 0, missedCount: 1,
+    }])
+    const findings = Array.from({ length: 20 }, (_, i) => ({
+      check: 'deps', key: `img:app:GHSA-${i}`, severity: 'high', title: `dep ${i}`, recommendation: 'r',
+    }))
+    const res = await send(store, payload({
+      checks: {
+        ports: { status: 'ok', summary: '無異常' },
+        updates: { status: 'ok', summary: '無待更新' },
+        logins: { status: 'ok', summary: '無異常' },
+        deps: { status: 'bad', summary: '20 個' },
+      },
+      findings,
+    }))
+    expect(res.status).toBe(201)
+    const port = store.listAllSecurityFindings().find((r) => r.fingerprint === 'ports:tcp/22')!
+    // 有被檢查到且這次沒出現 → 缺席計數累加（若誤判截斷會維持 1）
+    expect(port.missedCount).toBeGreaterThan(1)
   })
   describe('資安發現紀錄 reconcile', () => {
     const certPayload = (scannedAt = '2026-11-18T09:00:00.000Z', over: Record<string, unknown> = {}) =>

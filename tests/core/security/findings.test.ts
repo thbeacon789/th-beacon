@@ -12,7 +12,7 @@ import type { StoredCheckKey } from '../../../src/core/security/view.ts'
 const NOW = '2026-11-24T22:07:00Z'
 const ok: CheckResult = { status: 'ok', summary: '' }
 
-function cov(over: Omit<Partial<CoverageInput>, 'checks'> & { checks?: Partial<Record<StoredCheckKey | 'deps', CheckResult>> } = {}): CoverageInput {
+function cov(over: Omit<Partial<CoverageInput>, 'checks'> & { checks?: Partial<Record<StoredCheckKey, CheckResult>> } = {}): CoverageInput {
   return {
     exposure: [], logVolume: [], evaluatedLogSources: [], judgedTruncated: false, certs: [],
     ...over,

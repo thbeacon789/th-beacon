@@ -12,10 +12,18 @@ const scan = (over: Partial<NewSecurityScan> = {}): NewSecurityScan => ({
   logVolume: [],
   exposure: [],
   inventory: null,
+  deps: null,
   ...over,
 })
 
 describe('InMemoryStore security scans', () => {
+  it('deps 欄位寫入後原樣讀回', async () => {
+    const store = new InMemoryStore()
+    const deps = [{ image: 'app', digest: 'sha256:a', containers: ['web'], error: 'boom' }]
+    await store.insertSecurityScan(scan({ deps }))
+    expect(store.listSecurityScans()[0].deps).toEqual(deps)
+  })
+
   it('新增後可列出並回傳 id', async () => {
     const store = new InMemoryStore()
     const r = await store.insertSecurityScan(scan())

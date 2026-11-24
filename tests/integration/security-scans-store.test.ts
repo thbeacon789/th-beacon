@@ -14,12 +14,13 @@ const scan = (over: Partial<NewSecurityScan> = {}): NewSecurityScan => ({
   serviceId,
   scannedAt: '2026-11-18T00:00:00.000Z',
   kind: 'vm',
-  checks: { ports: { status: 'ok', summary: '無異常' } } as unknown as NewSecurityScan['checks'],
+  checks: { ports: { status: 'ok', summary: '無異常' }, deps: { status: 'na', summary: '' } } as unknown as NewSecurityScan['checks'],
   findings: [],
   certs: [],
   logVolume: [],
   exposure: [],
   inventory: null,
+  deps: null,
   ...over,
 })
 
@@ -62,6 +63,7 @@ describe('SupabaseStore 資安掃描', () => {
       logVolume: [{ source: 'nginx', count: 10 }] as unknown as NewSecurityScan['logVolume'],
       exposure: [{ port: 22 }] as unknown as NewSecurityScan['exposure'],
       inventory: { packages: ['a'] } as unknown as NewSecurityScan['inventory'],
+      deps: [{ image: 'app', digest: null, containers: ['web'], error: 'x' }],
     })
     await store.insertSecurityScan(full)
     await store.insertSecurityScan(scan({ scannedAt: '2026-11-19T00:00:00.000Z' }))
@@ -73,6 +75,8 @@ describe('SupabaseStore 資安掃描', () => {
     expect(rows[0].exposure).toEqual(full.exposure)
     expect(rows[0].inventory).toEqual(full.inventory)
     expect(rows[1].inventory).toBeNull()
+    expect(rows[0].deps).toEqual(full.deps)
+    expect(rows[1].deps).toBeNull()
   })
 
   it('purgeSecurityScansBefore 回刪除筆數且只刪更早的', async () => {
