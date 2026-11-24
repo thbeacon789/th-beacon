@@ -1,0 +1,158 @@
+// 注意：本目錄會被 Node 直接執行（type stripping），import 只能用相對路徑加 .ts 副檔名。
+import {
+  AUTO_RESOLVE_MISSES_COMPUTED,
+  AUTO_RESOLVE_MISSES_JUDGED,
+  CHANGES_REOPEN_GAP_DAYS,
+  MAX_TITLE,
+} from './constants.ts'
+import { fingerprintOf } from './finding-key.ts'
+import { truncateToUtf16Length } from './text.ts'
+import type { CertFact, CheckKey, CheckResult, ExposureFact, Finding, FindingSeverity, LogSourceVolume } from './types.ts'
+import type { StoredCheckKey } from './view.ts'
+
+export type SecurityFindingStatus = 'open' | 'resolved' | 'ignored'
+
+export interface SecurityFindingRecord {
+  id: string
+  serviceId: string
+  fingerprint: string
+  check: CheckKey
+  status: SecurityFindingStatus
+  severity: FindingSeverity
+  title: string
+  recommendation: string
+  keyFallback: boolean
+  firstSeenAt: string
+  lastSeenAt: string
+  statusChangedAt: string
+  statusChangedBy: string | null
+  reopenCount: number
+  missedCount: number
+}
+
+/** 以 (serviceId, fingerprint) upsert */
+export type SecurityFindingWrite = Omit<SecurityFindingRecord, 'id'>
+
+export interface CoverageInput {
+  checks: Record<StoredCheckKey, CheckResult>
+  exposure: ExposureFact[]
+  logVolume: LogSourceVolume[]
+  certs: CertFact[]
+}
+
+export const MANUAL_TRANSITIONS: Record<SecurityFindingStatus, readonly SecurityFindingStatus[]> = {
+  open: ['resolved', 'ignored'],
+  resolved: ['ignored'],
+  ignored: ['open'],
+}
+
+const SEVERITY_RANK: Record<FindingSeverity, number> = { low: 0, medium: 1, high: 2 }
+const DAY_MS = 86_400_000
+const JUDGED = new Set<CheckKey>(['ports', 'updates', 'logins'])
+
+const checked = (r: CheckResult | undefined) => r?.status === 'ok' || r?.status === 'warn' || r?.status === 'bad'
+
+/** 該筆紀錄本次掃描是否「確實檢查過」，只有如此才可累計 miss 並自動解決 */
+export function isCovered(record: Pick<SecurityFindingRecord, 'check' | 'fingerprint'>, cov: CoverageInput): boolean {
+  const { check, fingerprint } = record
+  const key = fingerprint.slice(fingerprint.indexOf(':') + 1)
+  switch (check) {
+    case 'ports':
+    case 'updates':
+    case 'logins':
+      return checked(cov.checks[check]) // 含 _fallback（類別級）
+    case 'changes':
+      return false
+    case 'logVolume':
+      return cov.logVolume.some((s) => s.source === key && s.error !== true)
+    case 'cert': {
+      const domain = key.slice(key.indexOf(':') + 1)
+      return cov.certs.some((c) => c.domain === domain)
+    }
+    case 'exposure': {
+      if (cov.checks.exposure?.status === 'unknown') return false
+      const sep = key.indexOf(':')
+      const kind = key.slice(0, sep)
+      const rest = key.slice(sep + 1)
+      const domain = kind === 'path' || kind === 'header' ? rest.split('|')[0] : rest
+      const fact = cov.exposure.find((e) => e.domain === domain)
+      if (!fact) return false
+      if (kind === 'path') return fact.probeErrors === 0
+      if (kind === 'legacy-tls') return fact.legacyTls !== null
+      return kind === 'header'
+    }
+  }
+}
+
+function mergeObserved(observed: Finding[]): Map<string, Finding> {
+  const map = new Map<string, Finding>()
+  for (const f of observed) {
+    const fp = fingerprintOf(f)
+    const prev = map.get(fp)
+    if (!prev || SEVERITY_RANK[f.severity] > SEVERITY_RANK[prev.severity]) map.set(fp, f)
+  }
+  return map
+}
+
+export function reconcileFindings(input: {
+  serviceId: string
+  existing: SecurityFindingRecord[]
+  observed: Finding[]
+  coverage: CoverageInput
+  scannedAt: string
+}): SecurityFindingWrite[] {
+  const { serviceId, existing, coverage, scannedAt } = input
+  const observed = mergeObserved(input.observed)
+  const existingByFp = new Map(existing.map((r) => [r.fingerprint, r]))
+  const out: SecurityFindingWrite[] = []
+
+  for (const [fp, f] of observed) {
+    const content = {
+      severity: f.severity,
+      title: truncateToUtf16Length(f.title, MAX_TITLE),
+      recommendation: f.recommendation,
+      keyFallback: f.keyFallback === true,
+    }
+    const prev = existingByFp.get(fp)
+    if (!prev) {
+      out.push({
+        serviceId, fingerprint: fp, check: f.check, status: 'open', ...content,
+        firstSeenAt: scannedAt, lastSeenAt: scannedAt, statusChangedAt: scannedAt, statusChangedBy: 'system',
+        reopenCount: 0, missedCount: 0,
+      })
+      continue
+    }
+    const { id: _id, ...base } = prev
+    if (prev.status === 'resolved') {
+      const gapMs = Date.parse(scannedAt) - Date.parse(prev.lastSeenAt)
+      if (prev.check === 'changes' && gapMs <= CHANGES_REOPEN_GAP_DAYS * DAY_MS) {
+        out.push({ ...base, lastSeenAt: scannedAt }) // 同一事件的重報
+      } else {
+        out.push({
+          ...base, ...content, status: 'open', lastSeenAt: scannedAt, statusChangedAt: scannedAt,
+          statusChangedBy: 'system', reopenCount: prev.reopenCount + 1, missedCount: 0,
+        })
+      }
+    } else if (prev.status === 'ignored') {
+      out.push({ ...base, ...content, lastSeenAt: scannedAt })
+    } else {
+      out.push({ ...base, ...content, lastSeenAt: scannedAt, missedCount: 0 })
+    }
+  }
+
+  for (const prev of existing) {
+    if (observed.has(prev.fingerprint)) continue
+    if (prev.status !== 'open' || prev.check === 'changes') continue
+    if (!isCovered(prev, coverage)) continue
+    const { id: _id, ...base } = prev
+    const missed = prev.missedCount + 1
+    const threshold = JUDGED.has(prev.check) ? AUTO_RESOLVE_MISSES_JUDGED : AUTO_RESOLVE_MISSES_COMPUTED
+    out.push(
+      missed >= threshold
+        ? { ...base, status: 'resolved', missedCount: missed, statusChangedAt: scannedAt, statusChangedBy: 'system' }
+        : { ...base, missedCount: missed },
+    )
+  }
+  return out
+}
+
