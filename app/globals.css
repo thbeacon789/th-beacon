@@ -349,6 +349,29 @@ button:disabled,
   gap: var(--space-2) var(--space-4);
 }
 
+.nav-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* 重要分頁：白字、略大，視覺權重高於次要組 */
+.nav-group-primary a {
+  color: var(--fg);
+  font-size: 1.05rem;
+}
+
+/* 次要分頁：較小、淡化，並以分隔線與重要組切開 */
+.nav-group-secondary {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--line-strong);
+}
+.nav-group-secondary a {
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+
 .nav a {
   display: inline-flex;
   align-items: center;
@@ -1089,6 +1112,12 @@ tbody tr:last-child td {
     order: 1;
     flex-basis: 100%;
     gap: var(--space-2) var(--space-3);
+  }
+  .nav-group {
+    gap: var(--space-2) var(--space-3);
+  }
+  .nav-group-secondary {
+    padding-left: var(--space-3);
   }
   .filters {
     align-items: stretch;
