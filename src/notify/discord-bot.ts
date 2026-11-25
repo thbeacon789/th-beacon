@@ -1,5 +1,5 @@
 import type { SendResult } from '@/notify/discord'
-import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, type DiscordFile } from '@/notify/discord-files'
+import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, hasUniqueFilenames, type DiscordFile } from '@/notify/discord-files'
 import type { DiscordOutgoing } from '@/notify/message'
 
 export type BotPostResult = { ok: true; channelId: string; messageId: string } | { ok: false; reason: string }
@@ -64,6 +64,7 @@ export function createDiscordBot(
     post: (message) => postToChannel(config.channelId, message),
     postTo: postToChannel,
     async postFiles(message, files) {
+      if (!hasUniqueFilenames(files)) return { ok: false, reason: 'duplicate_filename' }
       try {
         // 不設 content-type：讓 fetch 自帶 multipart boundary
         const response = await fetchImpl(`${API_BASE}/channels/${config.channelId}/messages`, {

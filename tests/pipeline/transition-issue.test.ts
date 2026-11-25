@@ -57,7 +57,7 @@ function fakeBot(opts: { editRejects?: boolean; threadPostFails?: number; startF
       return { ok: true, channelId, messageId: 'reply-1' }
     },
     async postFiles() {
-      return { ok: false as const, reason: "unused" }
+      return { ok: false as const, reason: 'unused' }
     },
     async startThread(channelId, messageId, name) {
       threads.push({ channelId, messageId, name })

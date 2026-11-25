@@ -48,7 +48,7 @@ function fakeBot(opts: { fail?: boolean } = {}) {
       return opts.fail ? { ok: false, reason: 'http 500' } : { ok: true, channelId, messageId: 'r-1' }
     },
     async postFiles() {
-      return { ok: false as const, reason: "unused" }
+      return { ok: false as const, reason: 'unused' }
     },
     async startThread() {
       return { ok: true }

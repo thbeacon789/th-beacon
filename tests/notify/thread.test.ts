@@ -36,7 +36,7 @@ function fakeBot(postResults: boolean[]) {
       return ok ? { ok: true, channelId, messageId: 'r-1' } : { ok: false, reason: 'http 500' }
     },
     async postFiles() {
-      return { ok: false as const, reason: "unused" }
+      return { ok: false as const, reason: 'unused' }
     },
     async startThread(channelId, messageId, name) {
       threads.push({ channelId, messageId, name })

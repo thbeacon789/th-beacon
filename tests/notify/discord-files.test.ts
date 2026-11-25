@@ -47,7 +47,16 @@ describe('bot postFiles', () => {
     const payload = JSON.parse(form.get('payload_json') as string)
     expect(payload).not.toHaveProperty('username')
     expect(payload.content).toBe('hi')
+    expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(result).toEqual({ ok: true, channelId: 'c1', messageId: 'm1' })
+  })
+
+  it('檔名重複 → 不發請求，回 duplicate_filename', async () => {
+    const f = fakeFetch()
+    const dup = [files[0], { ...files[1], filename: 'a.png' }]
+    const result = await createDiscordBot(config, f as unknown as typeof fetch).postFiles(message, dup)
+    expect(f).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: false, reason: 'duplicate_filename' })
   })
 
   it('403 → ok:false', async () => {
@@ -70,7 +79,16 @@ describe('sendDiscordWebhookFiles', () => {
     expect(init.headers).toBeUndefined()
     const payload = JSON.parse((init.body as FormData).get('payload_json') as string)
     expect(payload.username).toBe('th-beacon')
+    expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(result).toEqual({ ok: true })
+  })
+
+  it('檔名重複 → 不發請求，回 duplicate_filename', async () => {
+    const f = fakeFetch(204)
+    const dup = [files[0], { ...files[1], filename: 'a.png' }]
+    const result = await sendDiscordWebhookFiles('https://x/hook', message, dup, f as unknown as typeof fetch)
+    expect(f).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: false, reason: 'duplicate_filename' })
   })
 
   it('fetch throw → ok:false', async () => {

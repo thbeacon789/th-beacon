@@ -1,4 +1,4 @@
-import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, type DiscordFile } from '@/notify/discord-files'
+import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, hasUniqueFilenames, type DiscordFile } from '@/notify/discord-files'
 import type { DiscordMessage } from '@/notify/message'
 
 export type SendResult = { ok: true } | { ok: false; reason: string }
@@ -30,6 +30,7 @@ export async function sendDiscordWebhookFiles(
   files: DiscordFile[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<SendResult> {
+  if (!hasUniqueFilenames(files)) return { ok: false, reason: 'duplicate_filename' }
   try {
     const response = await fetchImpl(webhookUrl, {
       method: 'POST',

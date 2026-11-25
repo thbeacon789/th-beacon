@@ -17,7 +17,14 @@ export function buildMultipartBody(payload: Record<string, unknown>, files: Disc
     JSON.stringify({ ...payload, attachments: files.map((f, i) => ({ id: i, filename: f.filename })) }),
   )
   files.forEach((f, i) => {
+    // TS 5.7+ 的 Uint8Array<ArrayBufferLike> 與 BlobPart 型別不相容，但執行期安全：
+    // Blob 只複製該 view 的 byteOffset／byteLength 範圍（含 Node Buffer pool 切片），不會多帶底層 buffer。
     form.append(`files[${i}]`, new Blob([f.data as BlobPart], { type: f.contentType }), f.filename)
   })
   return form
+}
+
+/** Discord 要求每個 file part 檔名唯一；重名回 false（呼叫端回 duplicate_filename，不發請求） */
+export function hasUniqueFilenames(files: DiscordFile[]): boolean {
+  return new Set(files.map((f) => f.filename)).size === files.length
 }
