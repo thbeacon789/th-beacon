@@ -289,6 +289,41 @@ export type Database = {
           },
         ]
       }
+      issue_comments: {
+        Row: {
+          author: string
+          body: string
+          created_at: string
+          id: string
+          issue_id: string
+          kind: string
+        }
+        Insert: {
+          author: string
+          body: string
+          created_at?: string
+          id?: string
+          issue_id: string
+          kind: string
+        }
+        Update: {
+          author?: string
+          body?: string
+          created_at?: string
+          id?: string
+          issue_id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issue_comments_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       issues: {
         Row: {
           acknowledged_at: string | null
@@ -464,6 +499,41 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      security_finding_comments: {
+        Row: {
+          author: string
+          body: string
+          created_at: string
+          finding_id: string
+          id: string
+          kind: string
+        }
+        Insert: {
+          author: string
+          body: string
+          created_at?: string
+          finding_id: string
+          id?: string
+          kind: string
+        }
+        Update: {
+          author?: string
+          body?: string
+          created_at?: string
+          finding_id?: string
+          id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_finding_comments_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "security_findings"
             referencedColumns: ["id"]
           },
         ]
