@@ -297,23 +297,23 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(messages()).toHaveLength(0)
   })
 
-  it('秘密跨在截斷邊界時仍被遮蔽（先遮蔽再取尾段）', async () => {
-    await start(() => ({ json: okMessage() }))
+  it('秘密跨在頭／尾截斷邊界時仍被遮蔽（先遮蔽再截斷）', async () => {
     const secret = 'SUPERSECRETVALUE'
-    // 尾端 = 秘密 + 5 字元；budget 刻意讓切口落在秘密中間
-    const log = 'y'.repeat(500) + secret + 'zzzzz'
-    // 腳本以「尾段」版標題（size/size）的位元組數預留標題空間，內文預算因此精確等於 max - header - 2
-    const header = `=== a.log（只有尾段：${log.length}/${log.length} bytes，前面已截掉）===`
-    const cut = 'RETVALUEzzzzz'.length // 保留秘密後半 + 5 字元
-    const max = cut + Buffer.byteLength(header) + 2
-    await runBash(
-      SCRIPT,
-      ['android', write('k.md', 'k'), out(), write('a.log', log)],
-      keyEnv({ E2E_PW: secret, DIAGNOSE_REDACT_VARS: 'E2E_PW', DIAGNOSE_MAX_BYTES: String(max) }),
-    )
-    const content = JSON.parse(messages()[0].body).messages[0].content as string
-    expect(content).toContain('zzzzz')
-    for (const frag of ['RETV', 'ETVALUE', 'VALUE', 'SECR']) expect(content).not.toContain(frag)
+    // 每 50 bytes 出現一次秘密，換多組預算讓頭、尾切口都落在秘密中間
+    const log = ('y'.repeat(34) + secret).repeat(120)
+    const logFile = write('a.log', log)
+    for (const max of [700, 713, 727, 741, 755, 769, 783, 797]) {
+      const r = await runBash(
+        SCRIPT,
+        ['android', write('k.md', 'k'), out(), logFile],
+        { DIAGNOSE_DRY_RUN: '1', E2E_PW: secret, DIAGNOSE_REDACT_VARS: 'E2E_PW', DIAGNOSE_MAX_BYTES: String(max) },
+      )
+      expect(r.code).toBe(0)
+      const content = fs.readFileSync(out(), 'utf8')
+      expect(content).toContain('***')
+      expect(Buffer.byteLength(content)).toBeLessThanOrEqual(max)
+      expect(content).not.toMatch(/SUPERSEC|PERSECR|SECRETVALUE|RETVALUE|ETVALUE|TVALUE|SECRE|VALUE/)
+    }
   })
 
   it('輸出檔先被失敗佔位覆寫：失敗時不會殘留舊結果；參數不足寫 usage', async () => {
@@ -345,7 +345,7 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(readOut().category).toBe('env')
   })
 
-  it('預算按需分配：小檔整份送、省下的給大檔，標題註明完整或尾段', async () => {
+  it('預算按需分配：小檔整份送、省下的給大檔，標題註明完整或頭＋尾', async () => {
     await start(() => ({ json: okMessage() }))
     const small = 'SMALL_HEAD ' + 's'.repeat(200) + ' SMALL_TAIL' // 221 bytes，遠小於平分額度
     const big = 'BIG_HEAD ' + 'b'.repeat(5000) + ' BIG_TAIL'
@@ -360,8 +360,9 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(content).toContain('SMALL_TAIL')
     expect(content).toContain(`=== small.log（完整，${small.length} bytes）===`)
     expect(content).toContain('BIG_TAIL')
-    expect(content).not.toContain('BIG_HEAD')
-    expect(content).toMatch(new RegExp(`=== big\\.log（只有尾段：\\d+/${big.length} bytes，前面已截掉）===`))
+    expect(content).toContain('BIG_HEAD') // 頭＋尾：頭部也保留
+    expect(content).toMatch(new RegExp(`=== big\\.log（頭 \\d+＋尾 \\d+ / 共 ${big.length} bytes，中間省略 \\d+ bytes）===`))
+    expect(content).toMatch(/…（中間省略 \d+ bytes）…/)
     const bCount = content.split('b').length - 1
     expect(bCount).toBeGreaterThan(2000) // 平分只會有 ~1500 個 b
     // log 部分（第一個標題起）總量不超過預算；前面是固定的 user prompt 前言，不計
@@ -394,7 +395,7 @@ describe('diagnose-e2e-failure.sh', () => {
     expect(text).not.toContain('SECRET')
   })
 
-  it('超過 DIAGNOSE_MAX_BYTES 只取尾段', async () => {
+  it('超過 DIAGNOSE_MAX_BYTES 取頭＋尾（頭 30%／尾 70%）', async () => {
     await start(() => ({ json: okMessage() }))
     await runBash(
       SCRIPT,
@@ -403,6 +404,7 @@ describe('diagnose-e2e-failure.sh', () => {
     )
     const content = JSON.parse(messages()[0].body).messages[0].content as string
     expect(content).toContain('TAIL_MARKER')
+    expect(content).toContain('…（中間省略')
     expect(content.split('x').length - 1).toBeLessThanOrEqual(1000)
     expect(content.split('x').length - 1).toBeLessThan(5000)
   })
