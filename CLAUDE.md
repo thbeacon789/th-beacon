@@ -21,6 +21,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **資安監控（已實作，尚未實跑驗收）**：每日 GitHub Actions 掃描，結果顯示於 `/security`（`POST /api/security-scan`，契約 `docs/api.md` §9），不發 Discord、不進 issue 管線。`src/core/security/**` 只用相對路徑加 `.ts` 副檔名 import（Node 直接執行 `.mts`）。`.github/workflows/security-scan.yml` 持有 GCP 與各服務 HMAC 憑證，**勿加 `pull_request`／`push` 觸發**。**已知限制：快照與 ingest 共用同一把服務金鑰，取得它的人可推送偽造的「全部正常」快照**（啟用前最該知道這一條）。分工、啟用前必做、其餘限制見 `scripts/CLAUDE.md` 與 spec。Spec：`docs/superpowers/specs/2026-11-18-security-monitoring-design.md`；Plan：`docs/superpowers/plans/2026-11-18-security-monitoring.md`。
 
+**留言（已完成）**：issue 詳情頁與 `/security` 每條發現可隨時留言（表 `issue_comments`／`security_finding_comments`，RLS 無 policy）；Close（resolved）改兩段式可選填備註（`kind='resolve'`），僅 issue 的 close 備註經 `transitionIssue` 的 `resolveNote` 併入 Discord「已解決」討論串，資安永不發 Discord。Spec：`docs/superpowers/specs/2026-11-25-comments-design.md`；Plan：`docs/superpowers/plans/2026-11-25-comments.md`。
+
 **未完事項**：reopen 復發語意與恢復通知已隨告警生命週期完成；per-service `discord_webhook_url` 目前四個服務都未設，通知全走全域 `DISCORD_WEBHOOK_URL` fallback。部署清單見 `docs/superpowers/plans/2026-07-28-plan7-dashboard.md`。計畫都在 `docs/superpowers/plans/`，執行走 superpowers subagent-driven-development。
 
 ## 常用指令
