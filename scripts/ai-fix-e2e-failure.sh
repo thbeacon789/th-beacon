@@ -432,6 +432,15 @@ if [ -n "${FULL_LOG_DIR:-}" ]; then
     while IFS= read -r -d '' lf; do
       lb="${lf##*/}"
       [ "$lb" = ".git" ] && continue
+      # 目標 repo 的 .gitignore 若忽略這個檔名（例如 Android 的 *.log），Grep（ripgrep 預設尊重 ignore）會搜不到它：
+      # 改名加 .txt 後綴避開；仍被忽略就照放並印 warning（越界檢查不受影響：它在快照前就存在）。
+      if g check-ignore -q -- ".ai-fix-logs/$lb" 2>/dev/null; then
+        if g check-ignore -q -- ".ai-fix-logs/${lb}.txt" 2>/dev/null; then
+          echo "ai-fix: warning: .ai-fix-logs/${lb} is gitignored in this repo; Grep may skip it"
+        else
+          lb="${lb}.txt"
+        fi
+      fi
       utf8_clean "$lf" "$LOGS_DIR/$lb"
       LOGS_LIST="${LOGS_LIST}- .ai-fix-logs/${lb}（$(wc -c <"$LOGS_DIR/$lb" | tr -d ' ') bytes）"$'\n'
     done < <(find "$FULL_LOG_DIR" -mindepth 1 -maxdepth 1 -type f -print0 2>/dev/null)

@@ -604,6 +604,18 @@ describe('ai-fix-e2e-failure.sh', () => {
       expect(porcelain().trim()).toBe('')
     })
 
+    it('目標 repo 忽略的檔名（*.log）改名加 .txt，讓 Grep 搜得到；不算越界', async () => {
+      put('.gitignore', '*.log\n')
+      sh(repo, 'add', '.gitignore')
+      sh(repo, 'commit', '-qm', 'ignore logs')
+      const r = await run({}, args6())
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(Object.keys(logsSeen()!).sort()).toEqual(['e2e.log.txt', 'logcat.txt'])
+      expect(stdin()).toContain('.ai-fix-logs/e2e.log.txt')
+      expect(exists()).toBe(false)
+      expect(porcelain().trim()).toBe('')
+    })
+
     it('env AI_FIX_FULL_LOG_DIR 與參數等效；兩者並存時參數優先', async () => {
       await run({ AI_FIX_FULL_LOG_DIR: fullDir })
       expect(Object.keys(logsSeen()!).sort()).toEqual(['e2e.log', 'logcat.txt'])
