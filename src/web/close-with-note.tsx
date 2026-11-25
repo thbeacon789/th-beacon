@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useId, useState } from 'react'
 import { COMMENT_MAX } from '@/core/comments'
 import { SubmitButton } from '@/web/submit-button'
 
@@ -22,6 +22,7 @@ export function CloseWithNote({
   hidden: Record<string, string>
   label: string
 }) {
+  const noteId = useId()
   const [open, setOpen] = useState(false)
   const [state, formAction] = useActionState(action, IDLE)
   return (
@@ -33,8 +34,8 @@ export function CloseWithNote({
           {Object.entries(hidden).map(([k, v]) => (
             <input key={k} type="hidden" name={k} value={v} />
           ))}
-          <label className="sr-only" htmlFor="close-note">備註</label>
-          <textarea id="close-note" name="note" rows={3} maxLength={COMMENT_MAX} placeholder="備註（選填）" />
+          <label className="sr-only" htmlFor={noteId}>備註</label>
+          <textarea id={noteId} name="note" rows={3} maxLength={COMMENT_MAX} placeholder="備註（選填）" />
           <div className="comment-form-row">
             <SubmitButton pendingLabel="更新中…">確認關閉</SubmitButton>
             <SubmitButton pendingLabel="更新中…" name="skip" value="1">略過</SubmitButton>

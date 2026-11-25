@@ -9,6 +9,10 @@ import type { FindingSeverity } from '@/core/security/types'
 import { MANUAL_TRANSITIONS, type SecurityFindingStatus } from '@/core/security/findings'
 import { BASELINE_WINDOW_DAYS } from '@/core/security/constants'
 import { FindingActions } from './finding-actions'
+import { CommentThread } from '@/web/comment-thread'
+import { CommentForm } from '@/web/comment-form'
+import { addFindingCommentAction } from './actions'
+import type { StoredComment } from '@/core/comments'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +38,13 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
     getSecurityView(client, now),
     getSecurityFindings(client, tab),
   ])
+  const commentRows = await createServerStore().listSecurityFindingComments(findings.items.map((f) => f.id))
+  const commentsByFinding = new Map<string, StoredComment[]>()
+  for (const { findingId, ...c } of commentRows) {
+    const list = commentsByFinding.get(findingId) ?? []
+    list.push(c)
+    commentsByFinding.set(findingId, list)
+  }
   const staleServices = new Set(view.staleServices.map((x) => x.serviceName))
   const windowStart = now.getTime() - BASELINE_WINDOW_DAYS * DAY_MS
 
@@ -81,7 +92,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
         <p className="hint">{EMPTY_TEXT[tab]}</p>
       ) : (
         <ul>
-          {findings.items.map((f) => (
+          {findings.items.map((f) => {
+            const comments = commentsByFinding.get(f.id) ?? []
+            return (
             <li key={f.id} className="security-todo">
               <span className={`badge security-sev-${f.severity}`}>{SEVERITY_LABEL[f.severity]}</span>
               <div className="security-todo-body">
@@ -103,9 +116,15 @@ export default async function SecurityPage({ searchParams }: { searchParams: Pro
                   )}
                 </div>
                 <FindingActions id={f.id} status={f.status} transitions={MANUAL_TRANSITIONS[f.status]} />
+                <details className="security-comments">
+                  <summary>留言 ({comments.length})</summary>
+                  <CommentThread comments={comments} />
+                  <CommentForm action={addFindingCommentAction.bind(null, f.id)} />
+                </details>
               </div>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </section>

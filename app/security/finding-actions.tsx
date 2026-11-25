@@ -2,7 +2,8 @@
 
 import { useActionState } from 'react'
 import { SubmitButton } from '@/web/submit-button'
-import { setFindingStatusAction, type FindingActionState } from './actions'
+import { CloseWithNote } from '@/web/close-with-note'
+import { setFindingStatusAction, closeFindingAction, type FindingActionState } from './actions'
 import type { SecurityFindingStatus } from '@/core/security/findings'
 
 const IDLE: FindingActionState = { kind: 'idle' }
@@ -34,9 +35,13 @@ export function FindingActions({ id, status, transitions }: {
 }) {
   return (
     <div className="security-finding-actions">
-      {transitions.map((to) => (
-        <ActionForm key={to} id={id} from={status} to={to} />
-      ))}
+      {transitions.map((to) =>
+        to === 'resolved' ? (
+          <CloseWithNote key={to} action={closeFindingAction.bind(null, id)} hidden={{}} label="Close" />
+        ) : (
+          <ActionForm key={to} id={id} from={status} to={to} />
+        ),
+      )}
     </div>
   )
 }
