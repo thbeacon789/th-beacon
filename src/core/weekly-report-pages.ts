@@ -32,7 +32,7 @@ export function pageHeight(blocks: ReportBlock[], report: WeeklyReport): number 
   return LAYOUT.header + LAYOUT.footer + sum + LAYOUT.gap * (blocks.length + 1)
 }
 
-function layout(report: WeeklyReport, reserveOverflow: boolean): { pages: ReportBlock[][]; remaining: number } {
+function layout(report: WeeklyReport, reserveOverflow: boolean): { pages: ReportBlock[][]; remaining: number; droppedEmpty: boolean } {
   const pages: ReportBlock[][] = [[{ kind: 'verdict' }, { kind: 'stats' }, { kind: 'services' }, { kind: 'security' }]]
   const lists = [
     { list: 'longStanding' as const, rows: report.longStanding },
@@ -40,6 +40,7 @@ function layout(report: WeeklyReport, reserveOverflow: boolean): { pages: Report
   ]
   let remaining = 0
   let stopped = false
+  let droppedEmpty = false
   for (const { list, rows } of lists) {
     let placed = 0
     // 空清單仍輸出一個空 block；其餘在還有列時持續填入
@@ -48,25 +49,32 @@ function layout(report: WeeklyReport, reserveOverflow: boolean): { pages: Report
       const isLast = () => pages.length === MAX_PAGES
       const limit = () => PAGE_MAX_HEIGHT - (reserveOverflow && isLast() ? LAYOUT.gap + LAYOUT.row : 0)
       const fitRows = () => Math.floor((limit() - pageHeight(page, report) - LAYOUT.gap - LAYOUT.sectionTitle) / LAYOUT.row)
-      const need = Math.min(1, Math.max(rows.length - placed, 1)) // 至少要塞得下一列
+      const need = 1 // 至少要塞得下一列（空清單也算一列）
       if (stopped || fitRows() < need) {
-        if (stopped || isLast()) { stopped = true; remaining += rows.length - placed; break }
+        if (stopped || isLast()) {
+          stopped = true
+          remaining += rows.length - placed
+          if (rows.length === 0) droppedEmpty = true
+          break
+        }
         page = []
         pages.push(page)
       }
       const take = rows.length === 0 ? 0 : Math.min(fitRows(), rows.length - placed)
-      page.push({ list, continued: placed > 0, rows: rows.slice(placed, placed + take) , kind: 'list' })
+      page.push({ list, continued: placed > 0, rows: rows.slice(placed, placed + take), kind: 'list' })
       placed += take
     } while (placed < rows.length)
   }
-  return { pages, remaining }
+  return { pages, remaining, droppedEmpty }
 }
 
 export function paginateReport(report: WeeklyReport): ReportPage[] {
   let result = layout(report, false)
-  if (result.remaining > 0) {
+  if (result.remaining > 0 || result.droppedEmpty) {
     result = layout(report, true)
-    result.pages[result.pages.length - 1].push({ kind: 'overflow', remaining: result.remaining })
+    // 只剩空清單（「本週無」佔位列）放不下時，remaining 記為 1，讓使用者看得到仍有內容未上圖
+    const remaining = result.remaining > 0 ? result.remaining : 1
+    result.pages[result.pages.length - 1].push({ kind: 'overflow', remaining })
   }
   const total = result.pages.length
   return result.pages.map((blocks, i) => ({ index: i, total, height: pageHeight(blocks, report), blocks }))

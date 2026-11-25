@@ -68,4 +68,37 @@ describe('paginateReport', () => {
     // 再多一列則進第 2 頁
     expect(paginateReport(makeReport({ long: 2 + fit }))).toHaveLength(2)
   })
+
+  it('兩份清單皆有資料且第一份被截斷：第二份全數計入 remaining', () => {
+    const pages = paginateReport(makeReport({ long: 500, recurring: 10 }))
+    expect(pages).toHaveLength(MAX_PAGES)
+    const tail = pages[pages.length - 1].blocks.at(-1) as { kind: string; remaining: number }
+    expect(tail.kind).toBe('overflow')
+    expect(tail.remaining).toBeGreaterThan(0)
+    expect(tail.remaining).toBe(510 - listRows(pages))
+    const recurringBlocks = pages.flatMap((p) => p.blocks).filter((b) => b.kind === 'list' && b.list === 'recurring')
+    expect(recurringBlocks).toHaveLength(0)
+    for (const p of pages) expect(p.height).toBeLessThanOrEqual(PAGE_MAX_HEIGHT)
+  })
+
+  it('空清單在末頁放不下：不得靜默消失，須以 overflow 呈現', () => {
+    let hit = false
+    for (let n = 100; n < 300 && !hit; n++) {
+      const pages = paginateReport(makeReport({ long: n }))
+      const blocks = pages.flatMap((p) => p.blocks)
+      const hasEmptyRecurring = blocks.some((b) => b.kind === 'list' && b.list === 'recurring' && b.rows.length === 0)
+      const tail = pages[pages.length - 1].blocks.at(-1)
+      if (!hasEmptyRecurring) {
+        // 空清單放不下時，預留 overflow 會再擠掉末頁的列，remaining >= 1 且 = n − 已上圖列數
+        expect(tail?.kind).toBe('overflow')
+        expect((tail as { remaining: number }).remaining).toBeGreaterThan(0)
+        expect((tail as { remaining: number }).remaining).toBe(n - listRows(pages))
+        for (const p of pages) expect(p.height).toBeLessThanOrEqual(PAGE_MAX_HEIGHT)
+        hit = true
+      }
+      // 任何情況下，空 recurring 不可無聲消失
+      expect(hasEmptyRecurring || tail?.kind === 'overflow').toBe(true)
+    }
+    expect(hit).toBe(true)
+  })
 })
