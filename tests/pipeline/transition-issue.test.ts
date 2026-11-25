@@ -56,6 +56,9 @@ function fakeBot(opts: { editRejects?: boolean; threadPostFails?: number; startF
       posts.push(message)
       return { ok: true, channelId, messageId: 'reply-1' }
     },
+    async postFiles() {
+      return { ok: false as const, reason: "unused" }
+    },
     async startThread(channelId, messageId, name) {
       threads.push({ channelId, messageId, name })
       return opts.startFails ? { ok: false, reason: 'http 403' } : { ok: true }

@@ -1,4 +1,5 @@
 import type { SendResult } from '@/notify/discord'
+import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, type DiscordFile } from '@/notify/discord-files'
 import type { DiscordOutgoing } from '@/notify/message'
 
 export type BotPostResult = { ok: true; channelId: string; messageId: string } | { ok: false; reason: string }
@@ -10,6 +11,8 @@ export interface DiscordBot {
   postTo(channelId: string, message: DiscordOutgoing): Promise<BotPostResult>
   /** 以既有訊息開討論串（thread id = 該訊息 id）；該訊息已有討論串時 Discord 回 400，視為失敗但呼叫端可忽略 */
   startThread(channelId: string, messageId: string, name: string): Promise<SendResult>
+  /** 發附件（multipart）到 config.channelId */
+  postFiles(message: DiscordOutgoing, files: DiscordFile[]): Promise<BotPostResult>
 }
 
 /** Start Thread from Message：name 1–100 字元；auto_archive_duration 僅 60／1440／4320／10080 */
@@ -20,9 +23,12 @@ const API_BASE = 'https://discord.com/api/v10'
 const SEND_TIMEOUT_MS = 5000
 
 /** username 是 webhook 專用欄位，Bot 端點不認，送出前移除 */
-function toBotBody(message: DiscordOutgoing): string {
+function stripUsername(message: DiscordOutgoing): Record<string, unknown> {
   const { username: _username, ...rest } = message as DiscordOutgoing & { username?: string }
-  return JSON.stringify(rest)
+  return rest
+}
+function toBotBody(message: DiscordOutgoing): string {
+  return JSON.stringify(stripUsername(message))
 }
 
 export function createDiscordBot(
@@ -57,6 +63,26 @@ export function createDiscordBot(
   return {
     post: (message) => postToChannel(config.channelId, message),
     postTo: postToChannel,
+    async postFiles(message, files) {
+      try {
+        // 不設 content-type：讓 fetch 自帶 multipart boundary
+        const response = await fetchImpl(`${API_BASE}/channels/${config.channelId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bot ${config.token}` },
+          body: buildMultipartBody(stripUsername(message), files),
+          signal: AbortSignal.timeout(FILE_SEND_TIMEOUT_MS),
+        })
+        if (!isOk(response)) {
+          await response.arrayBuffer().catch(() => undefined)
+          return { ok: false, reason: `http ${response.status}` }
+        }
+        const json = (await response.json().catch(() => null)) as { id?: unknown } | null
+        if (typeof json?.id !== 'string') return { ok: false, reason: 'bad_response' }
+        return { ok: true, channelId: config.channelId, messageId: json.id }
+      } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.name : 'fetch_failed' }
+      }
+    },
     async startThread(channelId, messageId, name) {
       try {
         const body = JSON.stringify({

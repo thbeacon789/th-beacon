@@ -70,6 +70,9 @@ function fakeBot(): DiscordBot {
       botPosts.push(m)
       return { ok: true, channelId: 'thread-1', messageId: 'reply-1' }
     },
+    async postFiles() {
+      return { ok: false as const, reason: "unused" }
+    },
     async startThread() {
       return { ok: true }
     },
