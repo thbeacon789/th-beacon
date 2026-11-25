@@ -8,7 +8,7 @@ import type { SecurityFindingStatus } from '@/core/security/findings'
 const IDLE: FindingActionState = { kind: 'idle' }
 
 const LABEL: Record<SecurityFindingStatus, { label: string; pending: string }> = {
-  resolved: { label: 'Mark Resolved', pending: 'Updating…' },
+  resolved: { label: 'Close', pending: 'Updating…' },
   ignored: { label: 'Ignore', pending: 'Updating…' },
   open: { label: 'Reopen', pending: 'Updating…' },
 }

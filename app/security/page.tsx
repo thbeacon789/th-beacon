@@ -16,7 +16,7 @@ const SEVERITY_LABEL: Record<FindingSeverity, string> = { high: '高', medium: '
 const OVERALL_LABEL: Record<OverallStatus, string> = { bad: '需處理', warn: '留意', ok: '正常', unknown: '未知' }
 
 const TABS: readonly SecurityFindingStatus[] = ['open', 'resolved', 'ignored']
-const TAB_LABEL: Record<SecurityFindingStatus, string> = { open: 'Open', resolved: 'Resolved', ignored: 'Ignored' }
+const TAB_LABEL: Record<SecurityFindingStatus, string> = { open: 'Open', resolved: 'Closed', ignored: 'Ignored' }
 const EMPTY_TEXT: Record<SecurityFindingStatus, string> = {
   open: '沒有待處理的資安發現',
   resolved: '尚無已解決紀錄',
