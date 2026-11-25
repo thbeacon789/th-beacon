@@ -1,0 +1,608 @@
+11-25 04:45:26.877  3296  3296 I vol.VolumeDialogImpl: mDialog.dismiss() reason: volume_controller from: com.android.systemui.volume.VolumeDialogImpl$7.onDismissRequested:3
+11-25 04:45:27.373   525  1897 V SystemServerTiming: getInt-ALLOW_USER_SWITCHING_WHEN_SYSTEM_USER_LOCKED took to complete: 0ms
+11-25 04:45:27.574   525  1894 D SystemServerTiming: hasUserRestriction-DISALLOW_USER_SWITCH
+11-25 04:45:28.020  2138  2672 D SharedPreferencesImpl: Time required to fsync /data/user/0/com.google.android.apps.messaging/shared_prefs/gms_icing_mdd_groups.xml: [<1: 0, <2: 0, <4: 0, <8: 0, <16: 0, <32: 0, <64: 1, <128: 0, <256: 0, <512: 1, <1024: 0, <2048: 0, <4096: 0, <8192: 0, <16384: 0, >=16384: 0]
+11-25 04:45:28.421   946  1260 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.google.android.settings.touch.TouchSensitivityPreferenceController
+11-25 04:45:28.569   946  1260 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.display.BatteryPercentagePreferenceController
+11-25 04:45:28.949  3322  3455 W GLSUser : 	at dlnv.s(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):3)
+11-25 04:45:29.539   918  1086 D BtGatt.GattService: onScannerRegistered() - UUID=61fe0404-160a-42dc-87f6-7c22c8930d58, scannerId=1, status=0
+11-25 04:45:29.768  2138  2672 E ctbc    : 	at bxef.run(PG:2)
+11-25 04:45:30.116  2138  2672 E ctbc    : 	at ctfm.run(PG:4)
+11-25 04:45:30.124  2138  2672 E PhFileGroupPop: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+11-25 04:45:30.784   525  1895 D CompatibilityChangeReporter: Compat change id reported: 168419799; UID 10138; state: DISABLED
+11-25 04:45:31.067  4641  4641 W .android.gms.ui: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, tremont, kabylake, default
+11-25 04:45:31.308  2138  2672 E ctbc    : java.lang.NullPointerException: Attempt to read from field 'java.lang.String cayk.b' on a null object reference in method 'void ccdw.b(java.lang.Object)'
+11-25 04:45:31.309  2138  2672 E ctbc    : 	at ctfm.run(PG:4)
+11-25 04:45:31.921  1471  2274 I Checkin : [EventLogChimeraService] Opted in for usage reporting: false
+11-25 04:45:34.666  1653  2494 W YouTubeMusic: 	at zgl.run(PG:13)
+11-25 04:45:38.569  1471  4142 I ChimeraConfigurator: Starting update, reason: 3 urgentFeatures: 
+11-25 04:45:43.096   839   839 D TrafficStats: tagSocket(6) with statsTag=0xffffffff, statsUid=-1
+11-25 04:45:49.433  3322  4774 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.languageprofile.GcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 191 uptime_millis: 191 exec_start_elapsed_seconds: 109 [CONTEXT service_id=218 ]
+11-25 04:45:53.911  3322  3533 E bwel    : 	at java.util.concurrent.FutureTask.run(FutureTask.java:264)
+11-25 04:45:56.829  1471  4780 D Backup  : [MigrateCleaner] D2D transport was not selected, not selecting cloud transport.
+11-25 04:45:57.590     0     0 I binder  : cannot allocate buffer: no space left
+11-25 04:45:58.576   525   797 I RegistrationProxy: IGetRegistrationCallback.onSuccess
+11-25 04:45:59.562  3186  4815 D TrafficStats: tagSocket(125) with statsTag=0x1809, statsUid=-1
+11-25 04:46:00.658  1471  4772 I NearbyFastPair: FastPairInitIntentOperation: check the Footprints sync tasks. [CONTEXT service_id=265 ]
+11-25 04:46:01.589  1471  4772 W ChimeraUtils: Module com.google.android.gms.smartdevice missing resource null(0)
+11-25 04:46:02.342  1447  1686 I AiAiEcho: Predicting[0]: 
+11-25 04:46:02.571  1447  1686 I AiAiEcho: Filtered by AiAi flag check: 
+11-25 04:46:02.830  1447  1447 I AiAiEcho: AppFetcherImpl onPackageChanged com.google.android.gms.
+11-25 04:46:03.772  1471  4789 I GmsDebugLogger: [83] 1 [vision.ocr]
+11-25 04:46:04.161  3322  3662 W ChimeraUtils: Module com.google.android.gms.nearby_en missing resource null(0)
+11-25 04:46:05.850  3322  3706 I GCoreUlr: Unbound from all signal providers.
+11-25 04:46:07.807   333   333 I netd    : tetherGetStats() -> {[]} <0.82ms>
+11-25 04:46:13.443  1447  1686 I AiAiEcho: EchoTargets: 
+11-25 04:46:13.801  2138  4471 W SubscriptionMetadataUti: 	at awsw.ai(PG:3)
+11-25 04:46:14.060   525   561 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 946 in 0ms
+11-25 04:46:14.450  1672  1672 E A       : 	at com.google.android.apps.gsa.assistant.shared.n.h.a(PG:5)
+11-25 04:46:14.610  1532  2016 I BugleRcsEngine: [54] EventHubProxy.unsubscribe: Removing event listener 145573377 for category 8 for hub ENGINE
+11-25 04:46:15.635  3322  3458 E bwfc    : 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:46:16.573   333  5037 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+11-25 04:46:19.157  3322  3533 W .gms.persistent: Long monitor contention with owner lowpool[4] (3681) at void bwhy.D(java.util.Set, java.util.List, dmtw, java.lang.String, boolean, dzew, bwhx, java.util.LinkedHashMap, dhlq, boolean, edam)(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):200) waiters=0 in void bwhy.D(java.util.Set, java.util.List, dmtw, java.lang.String, boolean, dzew, bwhx, java.util.LinkedHashMap, dhlq, boolean, edam) for 2.123s
+11-25 04:46:19.955  3322  3382 I .gms.persistent: Background young concurrent copying GC freed 112011(3580KB) AllocSpace objects, 0(0B) LOS objects, 2% free, 32MB/33MB, paused 69us,6.418ms total 438.869ms
+11-25 04:46:20.962  1672  2718 E PhFileGroupPop: Failed to add file group 
+11-25 04:46:21.072  2138  2327 I BugleRcsProvisioning: RcsProvisioningTrigger: updateRcsAvailability : hint = CSLIB_PHENOTYPE_UPDATE
+11-25 04:46:21.473  3322  3456 W AsyncOperation: 	at java.lang.Thread.run(Thread.java:1012)
+11-25 04:46:21.639  1672  2008 W A       : Can't format flag bindle_flags__velour_jar to integer.
+11-25 04:46:21.898  3322  3458 E bwfc    : 	at aced.c(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):6)
+11-25 04:46:22.383  5122  5122 I PhenotypeBackgroundRecv: Skipping assistant_auto_tng_libraries_user#com.google.android.googlequicksearchbox which doesn't use ProcessStable flags.
+11-25 04:46:22.709  1672  1992 E BgTaskExecutorImpl: PERIODIC background task MDD_WIFI_CHARGING_TASK was cancelled.
+11-25 04:46:22.822  3322  3456 W AsyncOperation: 	at avsy.eo(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):1)
+11-25 04:46:23.407  5195  5195 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, tremont, kabylake, default
+11-25 04:46:23.554   525   560 I ActivityManager: Start proc 5213:com.trustnel.app.debug/u0a192 for added application com.trustnel.app.debug
+11-25 04:46:23.559   525   599 D CompatibilityChangeReporter: Compat change id reported: 265195908; UID 10192; state: ENABLED
+11-25 04:46:23.789  3322  5081 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:46:23.971  1672  2010 W A       : Can't format flag bindle_flags__velour_jar to integer.
+11-25 04:46:24.519  2138  2497 W SubscriptionMetadataUti: 	at ctet.run(PG:4)
+11-25 04:46:24.719  1447  2226 I AiAiEcho: Settings changed for uri: content://settings/secure/incompatible_charger_warning_disabled
+11-25 04:46:24.828  4988  4999 W PrefCtrlListHelper: Cannot instantiate controller from reflection: com.android.settings.network.telephony.MobileDataPreferenceController
+11-25 04:46:24.878  4988  5000 D SlicesIndexer: Slices already indexed - returning.
+11-25 04:46:24.923  4988  5003 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.regionalpreferences.FirstDayOfWeekItemCategoryController
+11-25 04:46:25.006  3296  3355 I ndroid.systemui: Background young concurrent copying GC freed 329270(15MB) AllocSpace objects, 0(0B) LOS objects, 37% free, 21MB/33MB, paused 74us,29us total 296.114ms
+11-25 04:46:25.067  4988  5003 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.accessibility.ReduceBrightColorsPreferenceController
+11-25 04:46:25.124  4988  5003 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.location.LocationForWorkPreferenceController
+11-25 04:46:25.197  4988  5003 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.gestures.ButtonNavigationSettingsAssistController
+11-25 04:46:25.484  4988  4999 W libc    : Access denied finding property "ro.vendor.aware_available"
+11-25 04:46:25.566  3322  5081 I NamespaceManager: Package com.android.media.swcodec name not found! Using module version.
+11-25 04:46:25.705  4988  4999 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.location.RecentLocationAccessPreferenceController
+11-25 04:46:25.820  4988  4999 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.fuelgauge.batteryusage.BatteryUsageBreakdownController
+11-25 04:46:25.933  4988  4999 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.accessibility.MagnificationModePreferenceController
+11-25 04:46:26.042  4988  4999 D PrefCtrlListHelper: Could not find Context-only controller for pref: com.android.settings.connecteddevice.AddDevicePreferenceController
+11-25 04:46:26.089  4988  4999 I ActiveUnlockStatusUtils: authority not set
+11-25 04:46:26.246  1786  3804 W RemoteCallableBase: Null cursor. Cannot add index data for Uri: content://com.google.android.marvin.talkback.preference.search.TalkBackSearchIndexablesProvider/settings/dynamic_indexables_raw
+11-25 04:46:26.470   525  1892 I AppsFilter: interaction: PackageSetting{e7c0e60 com.trustnel.app.debug/10192} -> PackageSetting{d99de43 com.android.internal.emulation.pixel_7a/10033} BLOCKED
+11-25 04:46:26.471   525  1892 I AppsFilter: interaction: PackageSetting{e7c0e60 com.trustnel.app.debug/10192} -> PackageSetting{749b06b com.android.systemui.emulation.pixel_4a/10000} BLOCKED
+11-25 04:46:26.830  3322  4864 E PlatformStatsCollectorS: Task scheduled with period of 0 for task: TelecomstatsPH [CONTEXT service_id=254 ]
+11-25 04:46:27.163  1672  2001 W CorpusConfigHelper: 	at com.google.android.libraries.gsa.k.a.h.run(PG:2)
+11-25 04:46:27.325   525   525 I PackageWatchdog: Syncing health check requests for packages: {}
+11-25 04:46:27.583  3103  3223 I PhenotypeBackgroundRecv: Successfully updated snapshot for com.google.android.gms.clearcut_client#com.google.android.dialer
+11-25 04:46:27.821  3322  3681 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.stats.PlatformStatsCollectorService started execution. cause:5 exec_start_elapsed_seconds: 148 [CONTEXT service_id=218 ]
+11-25 04:46:27.920   525   599 D CompatibilityChangeReporter: Compat change id reported: 265195908; UID 10094; state: ENABLED
+11-25 04:46:28.306  3322  5459 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_CHANGED [CONTEXT service_id=17 ]
+11-25 04:46:28.685   525   797 I AppsFilter: interaction: PackageSetting{e7c0e60 com.trustnel.app.debug/10192} -> PackageSetting{dddba53 com.android.systemui.emulation.pixel_fold/10009} BLOCKED
+11-25 04:46:28.691   525   797 I AppsFilter: interaction: PackageSetting{e7c0e60 com.trustnel.app.debug/10192} -> PackageSetting{b0b327b com.android.carrierconfig.auto_generated_rro_product__/10064} BLOCKED
+11-25 04:46:29.057  1672  2605 W SearchServiceCore: Abort, client detached.
+11-25 04:46:29.219   525  1892 I AppsFilter: interaction: PackageSetting{e7c0e60 com.trustnel.app.debug/10192} -> PackageSetting{9971b20 com.android.internal.emulation.pixel_5/10012} BLOCKED
+11-25 04:46:29.341  2887  5497 D DownloadManager: [18] Starting
+11-25 04:46:29.546  5213  5499 I TestRunner: run started: 1 tests
+11-25 04:46:29.548  5213  5499 I TestRunner: started: launchesToLandingWhenUnpaired(com.trustnel.viewer.phone.e2e.SmokeTest)
+11-25 04:46:29.762  1672  2010 W A       : Can't format flag AndroidGsaVelourJars__velour_messaging_jar__name to integer.
+11-25 04:46:29.839  1672  2001 W CorpusConfigHelper: 	at com.google.android.libraries.gsa.k.a.h.run(PG:2)
+11-25 04:46:30.474  3296  3391 V WindowManagerShell:  try handler com.android.wm.shell.activityembedding.ActivityEmbeddingController_at_0
+11-25 04:46:31.333  5213  5213 W stnel.app.debug: Accessing hidden method Landroid/view/ViewGroup;->makeOptionalFitsSystemWindows()V (unsupported, reflection, allowed)
+11-25 04:46:31.738  2887  3152 V DownloadManager: Deleting /data/data/com.android.providers.downloads/cache/09252026-sms-denylist-metadata.txt via provider delete
+11-25 04:46:31.979  5213  5491 E FirebaseCrashlytics: 	at com.android.okhttp.internal.huc.DelegatingHttpsURLConnection.getInputStream(DelegatingHttpsURLConnection.java:211)
+11-25 04:46:32.736  1471  1471 W PackageParser: Unknown element under <manifest>: queries at /data/user_de/0/com.google.android.gms/app_chimera/m/00000004/DynamiteModulesC.apk Binary XML file line #15
+11-25 04:46:34.223   525   560 D CompatibilityChangeReporter: Compat change id reported: 143937733; UID 10149; state: ENABLED
+11-25 04:46:35.873   525   552 W ActivityTaskManager: Activity pause timeout for ActivityRecord{5cac43e u0 com.trustnel.app.debug/com.trustnel.viewer.phone.MainActivity t10}
+11-25 04:46:36.798   525   560 I ActivityManager: Start proc 5575:com.trustnel.app.debug.test/u0a193 for next-top-activity {com.trustnel.app.debug.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}
+11-25 04:46:36.798   525   560 W ActivityManager: Slow operation: 1301ms so far, now at startProcess: starting to update pids map
+11-25 04:46:37.132  5575  5575 W ziparchive: Unable to open '/data/app/~~vVHsNCS4VvlMo1abFUQXdA==/com.trustnel.app.debug.test-oY2wPx0pY3Y-SJIno-yC0w==/base.dm': No such file or directory
+11-25 04:46:38.613  3296  3391 V WindowManagerShell: Playing animation for (#10)android.os.BinderProxy_at_0_at_0
+11-25 04:46:39.792  1672  1672 W A       : 	at com.google.common.util.concurrent.aj.a(PG:2)
+11-25 04:46:40.393  5213  5499 I TestRunner: finished: launchesToLandingWhenUnpaired(com.trustnel.viewer.phone.e2e.SmokeTest)
+11-25 04:46:40.650  5213  5499 I TestRunner: run finished: 1 tests, 0 failed, 0 ignored
+11-25 04:46:41.944     0     0 I BpBinder: onLastStrongRef automatically unlinking death recipients:
+11-25 04:46:42.052  1319  1497 E ResourcesManager: 	at android.app.ApplicationPackageManager.getText(ApplicationPackageManager.java:2363)
+11-25 04:46:42.457   525   525 W Looper  : Slow dispatch took 168ms main h=android.app.ActivityThread$H c=null m=131
+11-25 04:46:43.105   396  1078 D AF::TrackHandle: OpPlayAudio: track:55 usage:13 not muted
+11-25 04:46:43.542   525   734 W HealthConnectPackageInfoUtils: Can't extract requested permissions from the package info.
+11-25 04:46:43.838  3296  3433 D StylusManager: Stylus InputDevice changed: 9 virtio_input_multi_touch_6
+11-25 04:46:44.568  1319  1499 E ResourcesManager: 	at android.content.pm.PackageItemInfo.loadUnsafeLabel(PackageItemInfo.java:222)
+11-25 04:46:44.696  3322  4790 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.clearcut.uploader.QosUploaderService finished executing. cause:5 result: 1 elapsed_millis: 221 uptime_millis: 221 exec_start_elapsed_seconds: 164 [CONTEXT service_id=218 ]
+11-25 04:46:47.137  3322  4847 W GLSUser : java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-25 04:46:48.195     0     0 I binder  : undelivered transaction 288191, process died.
+11-25 04:46:49.794  5782  5782 W SystemServiceRegistry: No service published for: uimode
+11-25 04:46:51.382  5807  5807 I cr_SplitCompatApp: Launched version=113.0.5672.136 minSdkVersion=29 isBundle=true processName=com.android.chrome:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:12 isIsolated=true
+11-25 04:46:53.157  5861  5861 I cessService0:13: Using CollectorTypeCC GC.
+11-25 04:46:53.812   525   560 I ActivityManager: Start proc 5903:com.trustnel.app.debug/u0a194 for added application com.trustnel.app.debug
+11-25 04:46:53.850  5903  5903 I stnel.app.debug: Late-enabling -Xcheck:jni
+11-25 04:46:53.906   419   427 I adbd    : jdwp connection from 5903
+11-25 04:46:54.675   525  1361 I AppsFilter: interaction: PackageSetting{742fa85 com.trustnel.app.debug/10194} -> PackageSetting{8321902 com.google.android.overlay.googleconfig/10055} BLOCKED
+11-25 04:46:55.426   525  1143 I AppsFilter: interaction: PackageSetting{742fa85 com.trustnel.app.debug/10194} -> PackageSetting{55fcf90 com.android.simappdialog.auto_generated_rro_product__/10030} BLOCKED
+11-25 04:46:55.463   525  1143 I AppsFilter: interaction: PackageSetting{742fa85 com.trustnel.app.debug/10194} -> PackageSetting{ef8f8c7 com.google.android.nearby.halfsheet/10182} BLOCKED
+11-25 04:46:55.638   525  1361 I AppsFilter: interaction: PackageSetting{742fa85 com.trustnel.app.debug/10194} -> PackageSetting{39600a8 com.android.internal.emulation.pixel_3a_xl/10044} BLOCKED
+11-25 04:46:55.642   525  1361 I AppsFilter: interaction: PackageSetting{742fa85 com.trustnel.app.debug/10194} -> PackageSetting{3b775f3 com.android.internal.emulation.pixel_2_xl/10016} BLOCKED
+11-25 04:46:56.043   333  5981 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x766226810dd0
+11-25 04:46:56.114  5903  5967 I TestRunner: run started: 1 tests
+11-25 04:46:56.115  5903  5967 I TestRunner: started: fixedVideoReachesReady(com.trustnel.viewer.phone.e2e.EmbedIdentitySmokeTest)
+11-25 04:46:56.259  5903  5967 I TrustnelE2E: [e2e-stage] 進入：播放
+11-25 04:46:56.697  3296  3391 V WindowManagerShell: Track 0 became idle
+11-25 04:46:57.962   525  1901 I AppsFilter: interaction: PackageSetting{a6e87f1 com.trustnel.app.debug/10194} -> PackageSetting{b99ef9a com.google.android.marvin.talkbackoverlay/10077} BLOCKED
+11-25 04:46:57.973   525  1901 I AppsFilter: interaction: PackageSetting{a6e87f1 com.trustnel.app.debug/10194} -> PackageSetting{3b775f3 com.android.internal.emulation.pixel_2_xl/10016} BLOCKED
+11-25 04:46:58.455   525   669 D ConnectivityService: NetReassign [no changes] [c 1] [a 0] [i 1]
+11-25 04:46:59.086   525   549 V WindowManager: Sent Transition #12 createdAt=11-25 04:46:58.570 via request=TransitionRequestInfo { type = CHANGE, triggerTask = null, remoteTransition = null, displayChange = DisplayChange { displayId = 0, startAbsBounds = null, endAbsBounds = null, startRotation = 0, endRotation = 1, physicalDisplayChanged = false } }
+11-25 04:46:59.685  3296  3699 I Choreographer: Skipped 31 frames!  The application may be doing too much work on its main thread.
+11-25 04:47:00.790  2507  2507 I PhenotypeBackgroundRecv: Skipping com.google.android.libraries.surveys#com.android.chrome which doesn't use ProcessStable flags.
+11-25 04:47:04.080   525   599 D CompatibilityChangeReporter: Compat change id reported: 265195908; UID 10133; state: ENABLED
+11-25 04:47:04.737  1672  2709 I A       : Skipping. Expected model: 2 Found: 1
+11-25 04:47:07.995  3322  5539 I NamespaceManager: Package com.android.media.swcodec name not found! Using module version.
+11-25 04:47:09.435   333  6157 I resolv  : res_nsend: used send_dg 109 terrno: 0
+11-25 04:47:10.330   525   560 I ActivityManager: Start proc 6160:com.trustnel.app.debug.test/u0a195 for next-top-activity {com.trustnel.app.debug.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}
+11-25 04:47:10.330   525   560 W ActivityManager: Slow operation: 699ms so far, now at startProcess: starting to update pids map
+11-25 04:47:11.717  3296  3391 V WindowManagerShell: Display changed: 0
+11-25 04:47:12.259   839   891 E SystemServiceRegistry: 	at com.android.networkstack.tethering.Tethering$StateReceiver.onReceive(Tethering.java:1184)
+11-25 04:47:14.198  5903  5903 D LifecycleMonitor: Lifecycle status change: com.trustnel.viewer.phone.MainActivity_at_0 in: STOPPED
+11-25 04:47:20.535  1672  1672 E A       : 	at com.google.common.util.concurrent.eb.a(PG:1)
+11-25 04:47:21.055  1672  2017 I A       : There are 0 elements to be updated on the server for corpus GDD_APA_BISTO.
+11-25 04:47:21.455  3322  5539 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:47:22.317   963  1854 D OneSearchSuggestProvider: Created the binder channel successfully for end point service =com.google.android.apps.search.googleapp.search.suggest.plugins.onesearch.server.OneSearchSuggestService , mChannel=z1{delegate=s1{logId=13, target=directaddress:///AndroidComponentAddress%5BIntent%20%7B%20act=grpc.io.action.BIND%20cmp=com.google.android.googlequicksearchbox/com.google.android.apps.search.googleapp.search.suggest.plugins.onesearch.server.OneSearchSuggestService%20%7D%5D}} , mOneSearchConnection=X1.T_at_0
+11-25 04:47:23.498   333  6229 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7660c6811350
+11-25 04:47:23.906   525  1851 D OomAdjuster: Not killing cached processes
+11-25 04:47:24.594  5903  5967 I TestRunner: finished: fixedVideoReachesReady(com.trustnel.viewer.phone.e2e.EmbedIdentitySmokeTest)
+11-25 04:47:24.634  5903  5967 I TestRunner: run finished: 1 tests, 0 failed, 0 ignored
+11-25 04:47:24.772  5890  5890 I app_process: System.exit called, status: 0
+11-25 04:47:25.371   918   918 V MediaPlayerList: mPackageChangedBroadcastReceiver: action: android.intent.action.PACKAGE_CHANGED
+11-25 04:47:25.575  1672  2001 W CorpusConfigHelper: 	at com.google.android.libraries.i.ae.run(PG:1)
+11-25 04:47:25.705   525   558 E MidiService: 	at android.os.Looper.loopOnce(Looper.java:205)
+11-25 04:47:26.312   525  1901 V ActivityManager: Got obituary of 6160:com.trustnel.app.debug.test
+11-25 04:47:26.507  3322  6218 I NamespaceManager: Package com.android.refreshratecontrol name not found! Using module version.
+11-25 04:47:26.848   525  1550 D CompatibilityChangeReporter: Compat change id reported: 261072174; UID 10119; state: DISABLED
+11-25 04:47:27.627  1672  1992 W TimedProcessReaper: Scheduling killing of process to refresh configuration
+11-25 04:47:28.223  1471  6361 I PackageIntentOperation: 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:47:28.947  1471  6359 I Auth    : [SupervisedAccountIntentOperation] onHandleIntent(): android.intent.action.PACKAGE_ADDED
+11-25 04:47:29.592  1471  6411 E GmscoreIpa: 	at com.google.android.gms.ipa.appsindexer.IpaPackageBroadcastIntentOperation.onHandleIntent(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):7)
+11-25 04:47:30.316  3322  6218 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:47:30.532  1447  2760 I AiAiEcho: AppFetcherImplV2 updateApps package:[com.trustnel.app.debug.test], userId:[0], reason:[package is updated.].
+11-25 04:47:31.776  1447  1686 I AiAiEcho: [pnb-agg] Reload pnb aggregation on events deleted
+11-25 04:47:32.517  1672  2008 I FedAssExpListener: Successfully processed experiments changed.
+11-25 04:47:33.015  3322  6217 I NamespaceManager: Package com.google.android.crashrecovery name not found! Using module version.
+11-25 04:47:33.444  1672  2011 W CorpusConfigHelper: 	at com.google.android.apps.gsa.shared.util.c.a.ci.run(PG:1)
+11-25 04:47:33.698  2138  2675 W SubscriptionMetadataUti: 	at java.lang.Thread.run(Thread.java:1012)
+11-25 04:47:33.734  3322  5539 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:47:34.037  3322  5539 W PhenotypeConfigurationU: 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:47:34.354  3322  6466 I NamespaceManager: Package com.android.media.swcodec name not found! Using module version.
+11-25 04:47:34.605  3322  6475 I NamespaceManager: Package com.google.oslo name not found! Using module version.
+11-25 04:47:34.729  3322  6467 I NamespaceManager: Package com.google.android.telephonycore name not found! Using module version.
+11-25 04:47:34.973  3322  6466 W PhenotypeConfigurationU: Update for unknown DeviceConfig package com.google.android.gms.constellation [CONTEXT service_id=204 ]
+11-25 04:47:35.100   525   582 D PackageInstallerSession: Marking session 1264336181 as applied
+11-25 04:47:35.337  3296  3433 D StylusManager: Stylus InputDevice changed: 6 virtio_input_multi_touch_3
+11-25 04:47:35.653  1365  1374 D StrictMode: 	at android.database.sqlite.SQLiteCursor.finalize(SQLiteCursor.java:282)
+11-25 04:47:35.718  3322  6466 I PTCommittedOperation: Receive new configuration for com.google.android.gms.clearcut.public
+11-25 04:47:36.033  1447  1870 I AiAiEcho: EchoSearch: WidgetFetcherImpl is initialized with [30] widgets [reason=package added for userId: 0]
+11-25 04:47:36.316  3322  5539 I NamespaceManager: Package com.android.refreshratecontrol name not found! Using module version.
+11-25 04:47:36.541  3322  6350 W PhenotypeConfigurationU: 	at java.lang.Thread.run(Thread.java:1012)
+11-25 04:47:36.576   525   560 I ActivityManager: Start proc 6529:com.trustnel.app.debug/u0a196 for added application com.trustnel.app.debug
+11-25 04:47:36.583  3322  5539 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_CHANGED [CONTEXT service_id=17 ]
+11-25 04:47:36.972  3322  6466 I NamespaceManager: Package com.google.android.telephonycore name not found! Using module version.
+11-25 04:47:37.203  6529  6529 W ziparchive: Unable to open '/data/app/~~FO4Mpp4fUCO6K0N-uE413g==/com.trustnel.app.debug-AKFnmgZCXt3HVL3cBuXcoA==/base.dm': No such file or directory
+11-25 04:47:37.294  3322  6531 I NamespaceManager: Package com.google.android.nfcservices name not found! Using module version.
+11-25 04:47:37.362  3322  6285 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.tapandpay.gcmtask.TapAndPayGcmTaskService started execution. cause:5 exec_start_elapsed_seconds: 217 [CONTEXT service_id=218 ]
+11-25 04:47:37.675  3322  6467 I NamespaceManager: Package com.google.android.apps.pixel.psi name not found! Using module version.
+11-25 04:47:37.803  3322  6350 W PhenotypeConfigurationU: 	at com.google.android.gms.platformconfigurator.PhenotypeConfigurationUpdateListener.b(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):6)
+11-25 04:47:38.033  3322  6465 I NamespaceManager: Package com.google.oslo name not found! Using module version.
+11-25 04:47:38.085  3322  6215 W PhenotypeConfigurationU: Update for unknown DeviceConfig package com.google.android.libraries.mdi.sync#com.google.android.gms [CONTEXT service_id=204 ]
+11-25 04:47:38.119  3322  6465 I NamespaceManager: Package com.google.android.aicore name not found! Using module version.
+11-25 04:47:38.136  3322  6216 W PhenotypeConfigurationU: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+11-25 04:47:38.158  3322  6218 I NamespaceManager: Package com.google.android.telephonycore name not found! Using module version.
+11-25 04:47:38.214  3322  5536 W PhenotypeConfigurationU: 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:47:38.325  3322  6465 I NamespaceManager: Package rkpd name not found! Using module version.
+11-25 04:47:38.429  3322  6465 I NamespaceManager: Package com.google.android.profiling name not found! Using module version.
+11-25 04:47:38.517  3322  6215 I NamespaceManager: Package com.google.android.aicore name not found! Using module version.
+11-25 04:47:38.641  3322  6350 I NamespaceManager: Package com.google.oslo name not found! Using module version.
+11-25 04:47:38.908  3322  6465 W PhenotypeConfigurationU: 	at hjm.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):3)
+11-25 04:47:39.141  3322  6218 W PhenotypeConfigurationU: 	at com.google.android.gms.platformconfigurator.PhenotypeConfigurationUpdateListener.a(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):4)
+11-25 04:47:39.226   525  1896 I AppsFilter: interaction: PackageSetting{7625b5c com.trustnel.app.debug/10196} -> PackageSetting{3a25a4d com.android.server.telecom.auto_generated_rro_product__/10032} BLOCKED
+11-25 04:47:39.294  3322  6465 I NamespaceManager: Package com.google.android.crashrecovery name not found! Using module version.
+11-25 04:47:39.405  3322  6465 I NamespaceManager: Package android.companion name not found! Using module version.
+11-25 04:47:39.492  3322  6215 I NamespaceManager: Package com.google.android.crashrecovery name not found! Using module version.
+11-25 04:47:39.700  1471  4142 I Process : Sending signal. PID: 1471 SIG: 9
+11-25 04:47:39.899  1653  2494 W YouTubeMusic: 	at zgl.run(PG:19)
+11-25 04:47:40.173  6569  6597 I GmsApplication: Registering the BackgroundBroadcastReceiverSupport receiver.
+11-25 04:47:40.523  6569  6569 W ActivityThread: getPackageInfo() called with an older ApplicationInfo than the cached version for package com.google.android.gms
+11-25 04:47:40.548   525  1819 I AppsFilter: interaction: PackageSetting{7625b5c com.trustnel.app.debug/10196} -> PackageSetting{2c593a8 com.google.android.apps.wallpaper.nexus/10141} BLOCKED
+11-25 04:47:40.734   525   606 D ActivityManager: freezing 3894 com.google.android.youtube
+11-25 04:47:40.985   525  1348 I AppsFilter: interaction: PackageSetting{7625b5c com.trustnel.app.debug/10196} -> PackageSetting{c73a16d com.android.systemui.emulation.pixel_3/10015} BLOCKED
+11-25 04:47:40.987   525  1348 I AppsFilter: interaction: PackageSetting{7625b5c com.trustnel.app.debug/10196} -> PackageSetting{5eb7d33 com.android.bluetoothmidiservice/10107} BLOCKED
+11-25 04:47:41.284  6529  6710 I TestRunner: run started: 1 tests
+11-25 04:47:41.285  6529  6710 I TestRunner: started: whitelistVideoReachesReady(com.trustnel.viewer.phone.e2e.PlaybackSmokeTest)
+11-25 04:47:41.537  6627  6707 I DynamiteModule: Selected local version of com.google.android.gms.googlecertificates
+11-25 04:47:41.841   525   591 D CoreBackPreview: Window{5930073 u0 Splash Screen com.trustnel.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy_at_0, mPriority=0, mIsAnimationCallback=false}
+11-25 04:47:42.796  6569  6610 I NearbySharing: Dismissing HUN as there's no device nearby. [CONTEXT service_id=194 ]
+11-25 04:47:43.478   525   606 D ActivityManager: freezing 6331 com.google.android.apps.restore
+11-25 04:47:43.695  1786  1786 W rules.WifiRx: FenceState currentState is not true
+11-25 04:47:43.980   918  1110 I bt_stack: [INFO:le_scanning_manager.cc(243)] ScanFilterAdd in shim layer
+11-25 04:47:44.285   140   140 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper_at_4.0::IMapper/default in either framework or device VINTF manifest.
+11-25 04:47:45.385  6529  6710 I TrustnelE2E: [e2e-stage] 進入：登入
+11-25 04:47:46.086  6569  6791 W NearbyDiscovery: Runnable[OffloadFastPairScanner] was delayed for 00:02.044 [CONTEXT service_id=265 ]
+11-25 04:47:46.778   525  1888 D CompatibilityChangeReporter: Compat change id reported: 161145287; UID 10128; state: ENABLED
+11-25 04:47:47.102  6627  6712 I ChimeraConfigurator: Detected pending changes for urgent request: [tflite_dynamite]. Pending module sets: container:2318189190800,tflite_dynamite:2640104055100800+tflite_dynamite
+11-25 04:47:48.813  6529  6710 I TrustnelE2E: [e2e-stage] 進入：登入
+11-25 04:47:49.690  6529  6710 I TrustnelE2E: [e2e-stage] 進入：綁定
+11-25 04:47:50.077   918  1086 D BtGatt.GattService: onScanFilterConfig() - clientIf=2, action = 0 status = 0, filterType=0, availableSpace=0
+11-25 04:47:54.886  6569  6745 W PhenotypeConfigurationU: 	at hjm.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):3)
+11-25 04:47:55.160  6569  6745 W PhenotypeConfigurationU: 	at com.google.android.gms.platformconfigurator.PhenotypeConfigurationUpdateListener.a(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):4)
+11-25 04:47:55.276  6569  6905 I NamespaceManager: Package com.google.android.webapp name not found! Using module version.
+11-25 04:47:55.463  6569  6901 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:47:55.508  6569  6900 W PhenotypeConfigurationU: 	at com.google.android.gms.platformconfigurator.PhenotypeConfigurationUpdateListener.a(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):4)
+11-25 04:47:55.636  6627  6911 I GmsSyncPolicyEngine: Periodic sync 1 disabled by policy, cancelled.
+11-25 04:47:55.789  6569  6924 I NamespaceManager: Package com.google.android.apps.pixel.psi name not found! Using module version.
+11-25 04:47:55.941  6569  6923 I NamespaceManager: Package com.google.android.nfcservices name not found! Using module version.
+11-25 04:47:56.011  6569  6925 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:47:56.136  6627  6915 I GmsSyncPolicyEngine: Periodic sync 1 disabled by policy, cancelled.
+11-25 04:47:56.333  6569  6923 I NamespaceManager: Package com.google.android.apps.agentunderstander name not found! Using module version.
+11-25 04:47:56.549  6569  6891 I NamespaceManager: Package com.google.android.audioproxy name not found! Using module version.
+11-25 04:47:56.628  6569  6891 W PhenotypeConfigurationU: 	at zhv.onHandleIntent(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):4)
+11-25 04:47:56.706  6569  6921 I NamespaceManager: Package com.android.refreshratecontrol name not found! Using module version.
+11-25 04:47:56.846  6569  6925 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:47:57.057  6569  6889 I NamespaceManager: Package com.google.android.apps.safetycore name not found! Using module version.
+11-25 04:47:57.168  6569  6902 I NamespaceManager: Package com.android.neuralnetworks name not found! Using module version.
+11-25 04:47:57.353  6627  6916 I GmsSyncPolicyEngine: Periodic sync 1 disabled by policy, cancelled.
+11-25 04:47:57.443  6569  6892 W PhenotypeConfigurationU: 	at hjl.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):11)
+11-25 04:47:57.565  6569  6889 I NamespaceManager: Package com.google.android.nfcservices name not found! Using module version.
+11-25 04:47:57.740  6569  6889 W PhenotypeConfigurationU: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 04:47:58.087  6569  6901 I NamespaceManager: Package com.google.android.aicore name not found! Using module version.
+11-25 04:47:58.220  6569  6902 I NamespaceManager: Package com.google.android.profiling name not found! Using module version.
+11-25 04:47:58.335  6569  6655 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.tapandpay.gcmtask.TapAndPayGcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 266 uptime_millis: 266 exec_start_elapsed_seconds: 238 [CONTEXT service_id=218 ]
+11-25 04:47:58.515  6627  6910 W ModuleInitIntentOp: Dropping unexpected action com.google.android.gms.phenotype.COMMITTED
+11-25 04:47:58.610  6627  6909 W ModuleInitIntentOp: Dropping unexpected action com.google.android.gms.phenotype.COMMITTED
+11-25 04:47:58.709  6569  6902 I NamespaceManager: Package com.google.android.bt name not found! Using module version.
+11-25 04:47:58.975  6569  6890 I NamespaceManager: Package com.google.android.audioproxy name not found! Using module version.
+11-25 04:47:59.072  6529  6710 I TrustnelE2E: [e2e-stage] 進入：播放
+11-25 04:47:59.207  6569  6886 W PhenotypeConfigurationU: 	at hjl.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):11)
+11-25 04:47:59.288  6569  6925 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:47:59.385  6569  6886 W PhenotypeConfigurationU: 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:47:59.484  6569  6901 W PhenotypeConfigurationU: Update for unknown DeviceConfig package com.google.android.gms.mobile_data_plan [CONTEXT service_id=204 ]
+11-25 04:47:59.577  6569  6921 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:47:59.647  6569  6905 W PhenotypeConfigurationU: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+11-25 04:47:59.773  6627  6959 W ModuleInitIntentOp: Dropping unexpected action com.google.android.gms.phenotype.COMMITTED
+11-25 04:47:59.988  6569  6924 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:48:00.274   333  6990 I resolv  : doQuery: rcode=0, ancount=10, return value=191
+11-25 04:48:00.743  6627  6908 I MdiSyncModule: flag handling is skipping irrelevant intent.
+11-25 04:48:00.873  6569  6886 W PhenotypeConfigurationU: 	at com.google.android.gms.platformconfigurator.PhenotypeConfigurationUpdateListener.b(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):6)
+11-25 04:48:01.083   333  6995 I resolv  : res_nsend: used send_dg 158 terrno: 0
+11-25 04:48:01.482  6569  6925 W PhenotypeConfigurationU: 	at java.lang.Thread.run(Thread.java:1012)
+11-25 04:48:01.652  6569  6900 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:48:01.699  6529  6710 I TrustnelE2E: [e2e-playback] 選片：videoId=wIisbxtg5jk（第 1 輪，已檢查 wIisbxtg5jk, LWSiddw_xGs）
+11-25 04:48:01.715  6569  6900 W PhenotypeConfigurationU: 	at zhv.onHandleIntent(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):4)
+11-25 04:48:01.874  6569  6889 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:48:02.084  6569  6902 I NamespaceManager: Package com.google.android.webapp name not found! Using module version.
+11-25 04:48:02.204   525  1893 I AppsFilter: interaction: PackageSetting{efc3e79 com.trustnel.app.debug/10196} -> PackageSetting{d6192ea com.google.android.gm/10140} BLOCKED
+11-25 04:48:02.211   525  1893 I AppsFilter: interaction: PackageSetting{efc3e79 com.trustnel.app.debug/10196} -> PackageSetting{228dca2 com.google.android.apps.youtube.music/10156} BLOCKED
+11-25 04:48:02.294  6569  6886 W PhenotypeConfigurationU: 	at dfhf.run(:com.google.android.gms_at_0_at_23.18.18 (190800-535401451):2)
+11-25 04:48:02.337  6569  6889 I NamespaceManager: Package com.google.android.webapp name not found! Using module version.
+11-25 04:48:02.620  6569  6902 I NamespaceManager: Package com.google.android.aicore name not found! Using module version.
+11-25 04:48:02.794   525   716 D ConnectivityService: requestNetwork for uid/pid:10196/6529 activeRequest: null callbackRequest: 187 [NetworkRequest [ REQUEST id=188, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10196 RequestorUid: 10196 RequestorPkg: com.trustnel.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-25 04:48:03.225   963   963 D b/254119092: mActivity and mContext agree taskbarIsPresent=false
+11-25 04:48:03.466   333  7091 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x766286810350
+11-25 04:48:03.888  6569  6892 I NamespaceManager: Package com.google.android.bt name not found! Using module version.
+11-25 04:48:04.029  6569  6889 I NamespaceManager: Package com.google.android.nfcservices name not found! Using module version.
+11-25 04:48:04.167  6569  6892 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:48:04.276  6569  6905 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:48:04.474   525   558 I PackageWatchdog: Syncing state, reason: updated observers
+11-25 04:48:04.877  6569  6889 I NamespaceManager: Package com.android.media.swcodec name not found! Using module version.
+11-25 04:48:05.211   525   525 I PackageWatchdog: Syncing health check requests for packages: {}
+11-25 04:48:05.372  6569  6902 I NamespaceManager: Package com.google.android.telephonycore name not found! Using module version.
+11-25 04:48:05.520  6569  6902 I NamespaceManager: Package com.android.neuralnetworks name not found! Using module version.
+11-25 04:48:05.561  6569  6902 I NamespaceManager: Package com.google.android.apps.agentunderstander name not found! Using module version.
+11-25 04:48:05.641  6569  6902 I NamespaceManager: Package com.google.android.bt name not found! Using module version.
+11-25 04:48:05.908  6569  6905 I NamespaceManager: Package com.google.android.uprobestats name not found! Using module version.
+11-25 04:48:06.058  6569  6886 I NamespaceManager: Package com.android.media name not found! Using module version.
+11-25 04:48:06.179   525   525 I ExplicitHealthCheckController: Explicit health check service is connected ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+11-25 04:48:06.336  6569  6900 I NamespaceManager: Package com.google.android.profiling name not found! Using module version.
+11-25 04:48:06.428  6569  6892 I NamespaceManager: Package com.google.oslo name not found! Using module version.
+11-25 04:48:06.516  6569  6886 I NamespaceManager: Package com.google.android.apps.safetycore name not found! Using module version.
+11-25 04:48:06.623  6569  6886 I NamespaceManager: Package 1 name not found! Using module version.
+11-25 04:48:06.676  6569  6886 I NamespaceManager: Package com.google.android.apps.pixel.psi name not found! Using module version.
+11-25 04:48:06.728  6569  6900 I NamespaceManager: Package com.google.android.nfcservices name not found! Using module version.
+11-25 04:48:08.039   333  7123 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x76627680d690
+11-25 04:48:08.039   333  7123 I resolv  : doQuery: rcode=0, ancount=8, return value=160
+11-25 04:48:08.121  6529  7110 E ComposeInternal: Error was captured in composition.
+11-25 04:48:08.121  6529  7110 E ComposeInternal: android.view.ViewRootImpl$CalledFromWrongThreadException: Only the original thread that created a view hierarchy can touch its views. Expected: main Calling: JavaBridge
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.ViewRootImpl.checkThread(ViewRootImpl.java:9994)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.ViewRootImpl.requestLayout(ViewRootImpl.java:2082)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at android.view.View.requestLayout(View.java:27043)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.platform.AndroidComposeView.scheduleMeasureAndLayout(AndroidComposeView.android.kt:1850)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.platform.AndroidComposeView.onRequestMeasure(AndroidComposeView.android.kt:1937)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.Owner.onRequestMeasure$default(Owner.kt:185)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutNode.requestRemeasure$ui(LayoutNode.kt:1118)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutNode.requestRemeasure$ui$default(LayoutNode.kt:1111)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutNode.invalidateMeasurements$ui(LayoutNode.kt:1170)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutModifierNodeKt.invalidateMeasurement(LayoutModifierNode.kt:129)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.NodeKindKt.autoInvalidateNodeSelf(NodeKind.kt:339)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.NodeKindKt.autoInvalidateNodeIncludingDelegates(NodeKind.kt:329)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.NodeKindKt.autoInvalidateUpdatedNode(NodeKind.kt:314)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.NodeChain.updateNode(NodeChain.kt:639)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.NodeChain.updateFrom$ui(NodeChain.kt:165)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutNode.applyModifier(LayoutNode.kt:954)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.LayoutNode.setModifier(LayoutNode.kt:941)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.ComposeUiNode$Companion.SetModifier$lambda$0(ComposeUiNode.kt:42)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.node.ComposeUiNode$Companion$$ExternalSyntheticLambda1.invoke(D8$$SyntheticClass:0)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Applier.apply(Applier.kt:180)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.composer.gapbuffer.changelist.Operation$UpdateNode.execute(Operation.kt:566)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.composer.gapbuffer.changelist.Operation.executeWithComposeStackTrace(Operation.kt:64)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.composer.gapbuffer.changelist.Operations.executeAndFlushAllPendingOperations(Operations.kt:350)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.composer.gapbuffer.changelist.ChangeList.executeAndFlushAllPendingChanges(ChangeList.kt:109)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.composer.gapbuffer.changelist.ChangeList.execute(ChangeList.kt:94)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.CompositionImpl.applyChangesInLocked(Composition.kt:1221)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.CompositionImpl.applyChanges(Composition.kt:1256)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2.invokeSuspend$lambda$2(Recomposer.kt:733)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2$$ExternalSyntheticLambda0.invoke(D8$$SyntheticClass:0)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock$withFrameNanos$2$1$1.invoke(TestMonotonicFrameClock.jvmAndAndroid.kt:108)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock$withFrameNanos$2$1$1.invoke(TestMonotonicFrameClock.jvmAndAndroid.kt:108)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock.performFrame$lambda$0(TestMonotonicFrameClock.jvmAndAndroid.kt:153)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock$$ExternalSyntheticLambda1.invoke(D8$$SyntheticClass:0)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.FrameDeferringContinuationInterceptor.runWithoutResumingCoroutines(FrameDeferringContinuationInterceptor.jvmAndAndroid.kt:59)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock.performFrame(TestMonotonicFrameClock.jvmAndAndroid.kt:135)
+11-25 04:48:08.121  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock.access$performFrame(TestMonotonicFrameClock.jvmAndAndroid.kt:57)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock$withFrameNanos$2$1$2.invokeSuspend(TestMonotonicFrameClock.jvmAndAndroid.kt:113)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.internal.DispatchedContinuationKt.resumeCancellableWith(DispatchedContinuation.kt:359)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.intrinsics.CancellableKt.startCoroutineCancellable(Cancellable.kt:26)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CoroutineStart.invoke(CoroutineStart.kt:358)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.AbstractCoroutine.start(AbstractCoroutine.kt:124)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch(Builders.common.kt:52)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.BuildersKt.launch(Unknown Source:1)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch$default(Builders.common.kt:43)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.BuildersKt.launch$default(Unknown Source:1)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.TestMonotonicFrameClock.withFrameNanos(TestMonotonicFrameClock.jvmAndAndroid.kt:111)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2.invokeSuspend(Recomposer.kt:626)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.ApplyingContinuationInterceptor$SendApplyContinuation.resumeWith(ApplyingContinuationInterceptor.kt:52)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.FrameDeferringContinuationInterceptor$FrameDeferredContinuation.resumeWith(FrameDeferringContinuationInterceptor.jvmAndAndroid.kt:187)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.DispatchedTaskKt.resume(DispatchedTask.kt:165)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.DispatchedTaskKt.dispatch(DispatchedTask.kt:154)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.dispatchResume(CancellableContinuationImpl.kt:470)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core(CancellableContinuationImpl.kt:504)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core$default(CancellableContinuationImpl.kt:493)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeWith(CancellableContinuationImpl.kt:359)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Recomposer$recompositionRunner$2.invokeSuspend$lambda$0(Recomposer.kt:1071)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.Recomposer$recompositionRunner$2$$ExternalSyntheticLambda0.invoke(D8$$SyntheticClass:0)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.snapshots.SnapshotKt.advanceGlobalSnapshot(Snapshot.kt:2030)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.snapshots.SnapshotKt.advanceGlobalSnapshot(Snapshot.kt:2045)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.snapshots.SnapshotKt.access$advanceGlobalSnapshot(Snapshot.kt:1)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.runtime.snapshots.Snapshot$Companion.sendApplyNotifications(Snapshot.kt:690)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.ApplyingContinuationInterceptor$SendApplyContinuation.resumeWith(ApplyingContinuationInterceptor.kt:53)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at androidx.compose.ui.test.FrameDeferringContinuationInterceptor$FrameDeferredContinuation.resumeWith(FrameDeferringContinuationInterceptor.jvmAndAndroid.kt:187)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.DispatchedTaskKt.resume(DispatchedTask.kt:165)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.DispatchedTaskKt.dispatch(DispatchedTask.kt:154)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.dispatchResume(CancellableContinuationImpl.kt:470)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core(CancellableContinuationImpl.kt:504)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core$default(CancellableContinuationImpl.kt:493)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.CancellableContinuationImpl.resumeWith(CancellableContinuationImpl.kt:359)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.flow.StateFlowSlot.makePending(StateFlow.kt:290)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.flow.StateFlowImpl.updateState(StateFlow.kt:354)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at kotlinx.coroutines.flow.StateFlowImpl.compareAndSet(StateFlow.kt:324)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at com.trustnel.viewer.presentation.playback.PlaybackViewModel.onPlayerReady(PlaybackViewModel.kt:1485)
+11-25 04:48:08.123  6529  7110 E ComposeInternal: 	at com.trustnel.viewer.phone.screens.playback.PlaybackScreenKt$PlaybackScreen$10$1$1.invoke(PlaybackScreen.kt:273)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at com.trustnel.viewer.phone.screens.playback.PlaybackScreenKt$PlaybackScreen$10$1$1.invoke(PlaybackScreen.kt:273)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at com.trustnel.viewer.phone.screens.playback.YouTubeIFramePlayerKt$YouTubeIFramePlayer$10$1$1.onReady(YouTubeIFramePlayer.kt:100)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at com.trustnel.viewer.phone.screens.playback.PlaybackWebViewHolder$JsBridge.onEvent(PlaybackWebViewHolder.kt:227)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at android.os.MessageQueue.nativePollOnce(Native Method)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at android.os.MessageQueue.next(MessageQueue.java:335)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at android.os.Looper.loopOnce(Looper.java:162)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at android.os.Looper.loop(Looper.java:294)
+11-25 04:48:08.124  6529  7110 E ComposeInternal: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+11-25 04:48:08.564  6529  6767 D EGL_emulation: app_time_stats: avg=340.31ms min=169.90ms max=609.12ms count=3
+11-25 04:48:08.713  6627  6910 I Vision  : Supported ABIS: [x86_64, arm64-v8a]
+11-25 04:48:08.765  6627  6908 I ChimeraConfigurator: Starting update, reason: 4 urgentFeatures: vision.ocr:-1
+11-25 04:48:08.835   525  1749 W PackageConfigPersister: App-specific configuration not found for packageName: com.trustnel.app.debug and userId: 0
+11-25 04:48:08.843  6627  6908 I ChimeraConfigurator: Detected pending changes for urgent request: [vision.ocr]. Pending module sets: container:2318189190800+mlkit.ocr.common,tflite_dynamite:2640104055100800+tflite_dynamite,vision_ocr:2316024025100000+vision.ocr
+11-25 04:48:08.879  6627  6908 I GmsDebugLogger: [73] 1801
+11-25 04:48:08.890  6627  6908 W ZappDownloader: No successful module downloads for requested features [vision.ocr].
+11-25 04:48:08.893  6627  6908 I GmsDebugLogger: [30] [VisionOcrDynamite.integ:231602402100000],[TfliteDynamiteDynamite.integ:264010405100800],[MlkitOcrCommon.optional:231818100800]
+11-25 04:48:11.644  6529  6529 W UiControllerImpl: Waiting for: DYNAMIC_TASKS_HAVE_IDLED for 300 iterations.
+11-25 04:48:34.075  6529  6710 I TrustnelE2E: [e2e-stage] 進入：登入
+11-25 04:48:35.232  6529  6710 I TrustnelE2E: [e2e-stage] 進入：播放
+11-25 04:48:35.656  7141  7141 W .app.debug.test: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, tremont, kabylake, default
+11-25 04:48:36.096  3296  3391 V WindowManagerShell: Display changed: 0
+11-25 04:48:36.281  3296  3391 V WindowManagerShell: Display is changing, resolve the animation hint.
+11-25 04:48:37.348  6529  6529 D AndroidJUnitRunner: Reporting the crash to an event service.
+11-25 04:48:37.348  6529  6529 W TestEventClient: Process crashed before connection to orchestrator
+11-25 04:48:37.348  6529  6529 I AndroidJUnitRunner: Bringing down the entire Instrumentation process.
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: Exception encountered by: com.trustnel.viewer.phone.MainActivity_at_0. Dumping thread state to outputs and pining for the fjords.
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: java.lang.ArrayIndexOutOfBoundsException: length=5340; index=-516
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.moveSlotGapTo(SlotTable.kt:4483)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.removeSlots(SlotTable.kt:3155)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.removeGroup(SlotTable.kt:2163)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.ComposerKt.removeCurrentGroup(Composer.kt:1330)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.composer.gapbuffer.SlotTable.clear(SlotTable.kt:181)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.runtime.CompositionImpl.dispose(Composition.kt:952)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.ui.platform.WrappedComposition.dispose(Wrapper.android.kt:141)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.compose.ui.platform.WrappedComposition.onStateChanged(Wrapper.android.kt:152)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.LifecycleRegistry$ObserverWithState.dispatchEvent(LifecycleRegistry.jvm.kt:313)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.LifecycleRegistry.backwardPass(LifecycleRegistry.jvm.kt:266)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.LifecycleRegistry.sync(LifecycleRegistry.jvm.kt:284)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.LifecycleRegistry.moveToState(LifecycleRegistry.jvm.kt:135)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.LifecycleRegistry.handleLifecycleEvent(LifecycleRegistry.jvm.kt:119)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.ReportFragment$Companion.dispatch$lifecycle_runtime_release(ReportFragment.android.kt:181)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.lifecycle.ReportFragment$LifecycleCallbacks.onActivityPreDestroyed(ReportFragment.android.kt:137)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.Activity.dispatchActivityPreDestroyed(Activity.java:1602)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.Activity.performDestroy(Activity.java:8871)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.Instrumentation.callActivityOnDestroy(Instrumentation.java:1491)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at androidx.test.runner.MonitoringInstrumentation.callActivityOnDestroy(MonitoringInstrumentation.java:753)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.ActivityThread.performDestroyActivity(ActivityThread.java:5600)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.ActivityThread.handleDestroyActivity(ActivityThread.java:5645)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.servertransaction.DestroyActivityItem.execute(DestroyActivityItem.java:47)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.servertransaction.ActivityTransactionItem.execute(ActivityTransactionItem.java:45)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.servertransaction.TransactionExecutor.executeLifecycleState(TransactionExecutor.java:180)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:98)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2443)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.os.Handler.dispatchMessage(Handler.java:106)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.os.Looper.loopOnce(Looper.java:205)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.os.Looper.loop(Looper.java:294)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at java.lang.reflect.Method.invoke(Native Method)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+11-25 04:48:37.352  6529  6529 E MonitoringInstr: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+11-25 04:48:37.459  7141  7162 D libEGL  : loaded /vendor/lib64/egl/libEGL_emulation.so
+11-25 04:48:37.461  7141  7162 D libEGL  : loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+11-25 04:48:37.503  7141  7162 D libEGL  : loaded /vendor/lib64/egl/libGLESv2_emulation.so
+11-25 04:48:37.611  6569  6770 E NetworkScheduler.ATC: Called cancelTask for already completed task com.google.android.gms/.measurement.PackageMeasurementTaskService{u=0 tag="Measurement.PackageMeasurementTaskService.UPLOAD_TASK_TAG" trigger=window{start=9s,end=20s,earliest=-41s,latest=-30s} requirements=[NET_CONNECTED,PREFERRED_CHARGING] attributes=[PERSISTED] scheduled=-50s last_run=-41s exec_window_multiplier=1.0000 jid=N/A status=ACTIVE retries=0 client_lib=GMS_TASK_SCHEDULER-231818000} :1 [CONTEXT service_id=218 ]
+11-25 04:48:37.635  3296  3391 W Looper  : Drained
+11-25 04:48:37.636  3296  3391 W Looper  : Slow dispatch took 37ms wmshell.main h=android.os.Handler c=com.android.wm.shell.transition.Transitions$TransitionPlayerImpl$$ExternalSyntheticLambda1_at_0 m=0
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[Okio Watchdog,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Object.java:386)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Object.java:524)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     com.android.okhttp.okio.AsyncTimeout.awaitTimeout(AsyncTimeout.java:313)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     com.android.okhttp.okio.AsyncTimeout.access$000(AsyncTimeout.java:42)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     com.android.okhttp.okio.AsyncTimeout$Watchdog.run(AsyncTimeout.java:288)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[DefaultDispatcher-worker-9,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:376)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.park(CoroutineScheduler.kt:858)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.tryPark(CoroutineScheduler.kt:806)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:754)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:707)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[OkHttp TaskRunner,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:252)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:401)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:903)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1070)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1131)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Thread.run(Thread.java:1012)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[DefaultDispatcher-worker-11,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:376)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.park(CoroutineScheduler.kt:858)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.tryPark(CoroutineScheduler.kt:806)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:754)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:707)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[GoogleApiHandler,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.MessageQueue.nativePollOnce(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.MessageQueue.next(MessageQueue.java:335)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.Looper.loopOnce(Looper.java:162)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.Looper.loop(Looper.java:294)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.HandlerThread.run(HandlerThread.java:67)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[Measurement Worker,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Object.java:386)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     com.google.android.gms.measurement.internal.zzhy.run(com.google.android.gms:play-services-measurement-impl_at__at_23.2.0:10)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[OkHttp TaskRunner,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:252)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:401)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:903)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1070)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1131)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.lang.Thread.run(Thread.java:1012)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[DefaultDispatcher-worker-2,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:376)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.park(CoroutineScheduler.kt:858)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.tryPark(CoroutineScheduler.kt:806)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:754)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:707)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:   Thread[InteractionJankMonitor-Worker,5,main]
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.MessageQueue.nativePollOnce(Native Method)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.MessageQueue.next(MessageQueue.java:335)
+11-25 04:48:37.647  6529  6529 E THREAD_STATE:     android.os.Looper.loopOnce(Looper.java:162)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     android.os.Looper.loop(Looper.java:294)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     android.os.HandlerThread.run(HandlerThread.java:67)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:   Thread[OkHttp Dispatcher,5,main]
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:252)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:401)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:903)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1070)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1131)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.lang.Thread.run(Thread.java:1012)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:   Thread[OkHttp TaskRunner,5,main]
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     jdk.internal.misc.Unsafe.park(Native Method)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:252)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue$TransferStack.transfer(SynchronousQueue.java:401)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.SynchronousQueue.poll(SynchronousQueue.java:903)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1070)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1131)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.lang.Thread.run(Thread.java:1012)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:   Thread[GmsDynamite,5,dynamiteLoader]
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Native Method)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Object.java:386)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     java.lang.Object.wait(Object.java:524)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:     com.google.android.gms.dynamite.zza.run(com.google.android.gms:play-services-basement_at__at_18.9.0:2)
+11-25 04:48:37.652  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:   Thread[Chrome_IOThread,7,main]
+11-25 04:48:37.652  6529  6529 E THREAD_STATE: 
+11-25 04:48:37.652  6529  6529 E THREAD_STATE:   Thread[OkHttp api.trustnel.com,5,main]
+11-25 04:48:37.653  6529  6529 E THREAD_STATE:     java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:1623)
+11-25 04:48:37.671  6529  6529 E MonitoringInstr: Dying now...
+11-25 04:48:37.671  6529  6529 D AndroidRuntime: Shutting down VM
+--------- beginning of crash
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: FATAL EXCEPTION: main
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: Process: com.trustnel.app.debug, PID: 6529
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: java.lang.RuntimeException: Unable to destroy activity {com.trustnel.app.debug/com.trustnel.viewer.phone.MainActivity}: java.lang.ArrayIndexOutOfBoundsException: length=5340; index=-516
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.ActivityThread.performDestroyActivity(ActivityThread.java:5613)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.ActivityThread.handleDestroyActivity(ActivityThread.java:5645)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.servertransaction.DestroyActivityItem.execute(DestroyActivityItem.java:47)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.servertransaction.ActivityTransactionItem.execute(ActivityTransactionItem.java:45)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.servertransaction.TransactionExecutor.executeLifecycleState(TransactionExecutor.java:180)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:98)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2443)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:106)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:205)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:294)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: Caused by: java.lang.ArrayIndexOutOfBoundsException: length=5340; index=-516
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.moveSlotGapTo(SlotTable.kt:4483)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.removeSlots(SlotTable.kt:3155)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.composer.gapbuffer.SlotWriter.removeGroup(SlotTable.kt:2163)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.ComposerKt.removeCurrentGroup(Composer.kt:1330)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.composer.gapbuffer.SlotTable.clear(SlotTable.kt:181)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.runtime.CompositionImpl.dispose(Composition.kt:952)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.ui.platform.WrappedComposition.dispose(Wrapper.android.kt:141)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.compose.ui.platform.WrappedComposition.onStateChanged(Wrapper.android.kt:152)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.LifecycleRegistry$ObserverWithState.dispatchEvent(LifecycleRegistry.jvm.kt:313)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.LifecycleRegistry.backwardPass(LifecycleRegistry.jvm.kt:266)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.LifecycleRegistry.sync(LifecycleRegistry.jvm.kt:284)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.LifecycleRegistry.moveToState(LifecycleRegistry.jvm.kt:135)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.LifecycleRegistry.handleLifecycleEvent(LifecycleRegistry.jvm.kt:119)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.ReportFragment$Companion.dispatch$lifecycle_runtime_release(ReportFragment.android.kt:181)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.lifecycle.ReportFragment$LifecycleCallbacks.onActivityPreDestroyed(ReportFragment.android.kt:137)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.Activity.dispatchActivityPreDestroyed(Activity.java:1602)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.Activity.performDestroy(Activity.java:8871)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.Instrumentation.callActivityOnDestroy(Instrumentation.java:1491)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at androidx.test.runner.MonitoringInstrumentation.callActivityOnDestroy(MonitoringInstrumentation.java:753)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	at android.app.ActivityThread.performDestroyActivity(ActivityThread.java:5600)
+11-25 04:48:37.674  6529  6529 E AndroidRuntime: 	... 13 more
+11-25 04:48:37.681   399   399 I BpBinder: onLastStrongRef automatically unlinking death recipients: 
+11-25 04:48:37.711   525  1749 D CoreBackPreview: Window{4094b00 u0 com.trustnel.app.debug.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy_at_0, mPriority=0, mIsAnimationCallback=false}
+11-25 04:48:37.731  6529  6529 W stnel.app.debug: Attempt to remove non-JNI local reference
+11-25 04:48:40.986   525  1851 I ActivityManager: Process com.trustnel.app.debug (pid 6529) has died: fg  FGS 
+11-25 04:48:41.002   334   334 I Zygote  : Process 6529 exited due to signal 9 (Killed)
