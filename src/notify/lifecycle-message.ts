@@ -108,19 +108,38 @@ export function buildAckReply(actorLabel: string, atIso: string, replyToMessageI
   return reply(`🟡 Acknowledged — ${displayActor(actorLabel)} · ${formatAlertTime(atIso)}`, replyToMessageId)
 }
 
-/** 解決回覆：手動帶出是誰與時間；自動恢復維持固定文字。不 tag。 */
+const DISCORD_CONTENT_LIMIT = 2000
+const NOTE_TRUNCATED = '…（全文見 dashboard）'
+
+/** 備註轉成引用行；超過 Discord 上限時從原文尾端縮短，尾綴放在最後一個引用行內。 */
+function appendNote(head: string, note: string): string {
+  const quote = (text: string, suffix: string): string =>
+    `${head}\n> 備註：${neutralizeSummary(text).split('\n').join('\n> ')}${suffix}`
+  let content = quote(note, '')
+  if (content.length <= DISCORD_CONTENT_LIMIT) return content
+  let cut = note.length
+  while (cut > 0) {
+    cut = Math.max(0, cut - Math.max(1, content.length - DISCORD_CONTENT_LIMIT))
+    // 避免切在 surrogate pair 中間
+    const code = note.charCodeAt(cut - 1)
+    const safe = code >= 0xd800 && code <= 0xdbff ? cut - 1 : cut
+    content = quote(note.slice(0, safe), NOTE_TRUNCATED)
+    if (content.length <= DISCORD_CONTENT_LIMIT) return content
+  }
+  return content
+}
+
+/** 解決回覆：手動帶出是誰與時間（可附備註）；自動恢復維持固定文字。不 tag。 */
 export function buildResolveReply(
   source: Source,
   replyToMessageId?: string,
-  manual?: { actorLabel: string; atIso: string },
+  manual?: { actorLabel: string; atIso: string; note?: string },
 ): DiscordReplyMessage {
   if (source !== 'manual') return reply(`🟢 Resolved — 自動恢復（${AUTO_SOURCE[source]}）`, replyToMessageId)
-  return reply(
-    manual !== undefined
-      ? `🟢 Resolved — ${displayActor(manual.actorLabel)} · ${formatAlertTime(manual.atIso)}`
-      : '🟢 Resolved',
-    replyToMessageId,
-  )
+  if (manual === undefined) return reply('🟢 Resolved', replyToMessageId)
+  const head = `🟢 Resolved — ${displayActor(manual.actorLabel)} · ${formatAlertTime(manual.atIso)}`
+  const note = manual.note
+  return reply(note !== undefined && note.trim() !== '' ? appendNote(head, note) : head, replyToMessageId)
 }
 
 /** summary 來自外部（CI／AI），進 Discord 前中和偽連結 `](`；mention 另由 allowed_mentions 擋下。 */

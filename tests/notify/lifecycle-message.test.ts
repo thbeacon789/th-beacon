@@ -126,6 +126,30 @@ describe('reply builders', () => {
     expect(d.message_reference).toEqual({ message_id: 'm1', fail_if_not_exists: false })
     expect(buildResolveReply('manual', 'm1', { actorLabel: 'a@b.c', atIso: 'T' }).content).toBe('🟢 Resolved — a@b.c · T')
   })
+  it('buildResolveReply：manual 帶備註以引用行附在後面', () => {
+    const m = { actorLabel: 'discord:5', atIso: '2026-11-10T00:00:00.000Z' }
+    expect(buildResolveReply('manual', 'm1', { ...m, note: '修了 config\n重啟服務' }).content).toBe(
+      '🟢 Resolved — <@5> · 08:00\n> 備註：修了 config\n> 重啟服務',
+    )
+    expect(buildResolveReply('manual', 'm1', { ...m, note: '  ' }).content).toBe('🟢 Resolved — <@5> · 08:00')
+  })
+  it('buildResolveReply：備註中和偽連結且不 tag', () => {
+    const r = buildResolveReply('manual', 'm1', { actorLabel: 'a@b.c', atIso: 'T', note: '@everyone [x](http://evil)' })
+    expect(r.content).toContain('] (')
+    expect(r.content).not.toContain('](')
+    expect(r.allowed_mentions).toEqual({ parse: [] })
+  })
+  it('buildResolveReply：備註過長截斷至 2000 內並附尾綴', () => {
+    const suffix = '…（全文見 dashboard）'
+    for (const note of ['a\n'.repeat(1000), 'a'.repeat(2000)]) {
+      const c = buildResolveReply('manual', 'm1', { actorLabel: 'a@b.c', atIso: 'T', note }).content
+      expect(c.length).toBeLessThanOrEqual(2000)
+      expect(c.endsWith(suffix)).toBe(true)
+    }
+  })
+  it('buildResolveReply：非 manual 忽略備註', () => {
+    expect(buildResolveReply('poll', 'm1', { actorLabel: 'a', atIso: 'T', note: 'x' }).content).toBe('🟢 Resolved — 自動恢復（輪詢）')
+  })
   it('buildAckReply：Discord 用 mention 文字、dashboard 顯示 email，皆不 tag、指向根訊息', () => {
     const d = buildAckReply('discord:111', '2026-11-10T00:00:00.000Z', 'm1')
     expect(d.content).toBe('🟡 Acknowledged — <@111> · 08:00')
