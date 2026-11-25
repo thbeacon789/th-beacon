@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { transitionIssue } from '@/pipeline/transition-issue'
 import { processEvent } from '@/pipeline/process-event'
 import { InMemoryStore } from '@/store/memory'
@@ -377,5 +377,49 @@ describe('transitionIssue', () => {
     expect((await store.getIssue(issue.id))?.status).toBe('open')
     const ok = await store.transitionIssueStatus(issue.id, 'acknowledged', ['open'], 'x', now.toISOString(), 0)
     expect(ok?.changed).toBe(true)
+  })
+
+  describe('resolveNote', () => {
+    const actor = { kind: 'dashboard', email: 'a@b.c' } as const
+    const note = { author: 'a@b.c', body: '已重啟服務' }
+
+    it('open＋resolveNote：寫入 resolve 留言、noteSaved=true、回覆含備註', async () => {
+      const issue = await setupIssue()
+      const f = fakeBot()
+      const r = await transitionIssue(store, f.bot, issue.id, 'resolved', actor, now, { resolveNote: note })
+      expect(r.noteSaved).toBe(true)
+      const comments = await store.listIssueComments(issue.id)
+      expect(comments).toHaveLength(1)
+      expect(comments[0]).toMatchObject({ kind: 'resolve', author: 'a@b.c', body: '已重啟服務' })
+      expect((f.posts[0] as { content: string }).content).toContain('> 備註：')
+    })
+
+    it('已 resolved：unchanged、noteSaved=null、無留言', async () => {
+      const issue = await setupIssue()
+      await store.transitionIssueStatus(issue.id, 'resolved', ['open'], null, now.toISOString())
+      const r = await transitionIssue(store, null, issue.id, 'resolved', actor, now, { resolveNote: note })
+      expect(r.outcome).toBe('unchanged')
+      expect(r.noteSaved).toBeNull()
+      expect(await store.listIssueComments(issue.id)).toHaveLength(0)
+    })
+
+    it('addIssueComment throw：changed、noteSaved=false、回覆不含備註', async () => {
+      const issue = await setupIssue()
+      const f = fakeBot()
+      vi.spyOn(store, 'addIssueComment').mockRejectedValue(new Error('db down'))
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const r = await transitionIssue(store, f.bot, issue.id, 'resolved', actor, now, { resolveNote: note })
+      spy.mockRestore()
+      expect(r.outcome).toBe('changed')
+      expect(r.noteSaved).toBe(false)
+      expect((f.posts[0] as { content: string }).content).not.toContain('備註')
+    })
+
+    it('to=acknowledged＋resolveNote：無留言、noteSaved=null', async () => {
+      const issue = await setupIssue()
+      const r = await transitionIssue(store, null, issue.id, 'acknowledged', actor, now, { resolveNote: note })
+      expect(r.noteSaved).toBeNull()
+      expect(await store.listIssueComments(issue.id)).toHaveLength(0)
+    })
   })
 })

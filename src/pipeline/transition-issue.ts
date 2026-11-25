@@ -12,6 +12,8 @@ export interface TransitionOptions {
   editRoot?: boolean
   /** 僅當 issue 仍在此事故序號時才轉換（防按鈕 TOCTOU） */
   expectedReopenCount?: number
+  /** 解決時附帶的備註（body 已驗證、非空；呼叫端負責）。僅 to=resolved 且實際轉換時寫入 */
+  resolveNote?: { author: string; body: string }
 }
 
 export interface TransitionResult {
@@ -21,6 +23,8 @@ export interface TransitionResult {
   rootEdit: { channelId: string; messageId: string; payload: DiscordMessage } | null
   /** 健康度重算、解決回覆、Discord 編輯（editRoot=true 時） */
   followUp: () => Promise<void>
+  /** 備註寫入結果：沒給 resolveNote／to≠resolved／非 changed → null；成功 true；寫入失敗 false */
+  noteSaved: boolean | null
 }
 
 type Source = 'manual' | 'poll' | 'heartbeat'
@@ -51,15 +55,26 @@ export async function transitionIssue(
   now: Date,
   options: TransitionOptions & { deferFollowUp?: boolean } = {},
 ): Promise<TransitionResult> {
-  const { refreshHealth = true, editRoot = true, deferFollowUp = false, expectedReopenCount } = options
+  const { refreshHealth = true, editRoot = true, deferFollowUp = false, expectedReopenCount, resolveNote } = options
   const nowIso = now.toISOString()
   const noop = async (): Promise<void> => {}
 
   const result = await store.transitionIssueStatus(issueId, to, allowedFrom(to), actorLabel(actor), nowIso, expectedReopenCount)
-  if (result === null) return { outcome: 'not_found', issue: null, rootEdit: null, followUp: noop }
-  if (!result.changed) return { outcome: 'unchanged', issue: result.issue, rootEdit: null, followUp: noop }
+  if (result === null) return { outcome: 'not_found', issue: null, rootEdit: null, followUp: noop, noteSaved: null }
+  if (!result.changed) return { outcome: 'unchanged', issue: result.issue, rootEdit: null, followUp: noop, noteSaved: null }
 
   const issue = result.issue
+  // 備註先於 followUp 寫入：DB 是真實來源，Discord 回覆只在備註確實存下時才引用
+  let noteSaved: boolean | null = null
+  if (to === 'resolved' && resolveNote !== undefined) {
+    try {
+      await store.addIssueComment({ issueId: issue.id, author: resolveNote.author, body: resolveNote.body, kind: 'resolve' })
+      noteSaved = true
+    } catch (error) {
+      console.error('transitionIssue: save resolve note failed', error)
+      noteSaved = false
+    }
+  }
   let rootEdit: TransitionResult['rootEdit'] = null
   if (bot !== null) {
     try {
@@ -97,7 +112,9 @@ export async function transitionIssue(
       await safely('resolve reply', async () => {
         const label = actorLabel(actor)
         const reply = await postInThread(bot, rootEdit, (replyTo) =>
-          buildResolveReply(sourceOf(actor), replyTo, label !== null ? { actorLabel: label, atIso: nowIso } : undefined),
+          buildResolveReply(sourceOf(actor), replyTo, label !== null
+              ? { actorLabel: label, atIso: nowIso, ...(noteSaved === true && resolveNote ? { note: resolveNote.body } : {}) }
+              : undefined),
           'transitionIssue',
         )
         await store.recordNotification({
@@ -119,5 +136,5 @@ export async function transitionIssue(
   }
 
   if (!deferFollowUp) await followUp()
-  return { outcome: 'changed', issue, rootEdit, followUp }
+  return { outcome: 'changed', issue, rootEdit, followUp, noteSaved }
 }
