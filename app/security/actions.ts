@@ -76,15 +76,16 @@ export async function closeFindingAction(
   const author = user.email ?? user.id
   const store = createServerStore()
   const ok = await store.setSecurityFindingStatus(findingId, 'resolved', 'open', author, new Date().toISOString())
-  revalidatePath('/security')
+  // 只在成功路徑重繪：stale／note_failed 若 revalidate，元件會被移除而吞掉訊息與備註
   if (!ok) return { kind: 'stale' }
   if (note) {
     try {
       await store.addSecurityFindingComment({ findingId, author, body: note, kind: 'resolve' })
     } catch (err) {
       console.error('closeFindingAction: 備註寫入失敗', err)
-      return { kind: 'note_failed' }
+      return { kind: 'note_failed', note }
     }
   }
+  revalidatePath('/security')
   return { kind: 'ok' }
 }

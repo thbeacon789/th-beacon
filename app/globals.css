@@ -1836,3 +1836,16 @@ tbody tr:last-child td {
 .close-with-note {
   align-items: flex-start;
 }
+
+.security-comments {
+  margin-top: var(--space-2);
+}
+.security-comments > summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+.security-comments[open] > summary {
+  margin-bottom: var(--space-2);
+  color: var(--gold);
+}

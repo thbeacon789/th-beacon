@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用指令
 
-- `pnpm test`（Vitest 單元，零 DB 依賴）／`pnpm test:integration`（**只跑本地 stack**——它的 `cleanDatabase` 會清空九張表，指向線上等於清空 production）／`pnpm typecheck`／`pnpm build`（next build；**勿跑 `pnpm dev`**）
+- `pnpm test`（Vitest 單元，零 DB 依賴）／`pnpm test:integration`（**只跑本地 stack**——它的 `cleanDatabase` 會清空十二張表，指向線上等於清空 production）／`pnpm typecheck`／`pnpm build`（next build；**勿跑 `pnpm dev`**）
 - 單檔測試：`pnpm vitest run tests/core/<name>.test.ts`
 - **開發資料庫＝線上專案**（`zyehvumbpciiqbuivnfw`）。本地 stack **只為整合測試存在**，不是開發環境。
 - Schema 變更：`supabase migration new <name>` → 編輯 SQL → `supabase db push`（套上線上）→ `supabase db advisors --type security`（或 MCP `get_advisors`）→ `pnpm db:types`（從線上重生 `src/db/database.types.ts`，自動產物勿手改）

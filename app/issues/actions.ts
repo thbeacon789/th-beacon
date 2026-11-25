@@ -108,10 +108,11 @@ export async function resolveIssueAction(
     { resolveNote: note ? { author: user.email ?? user.id, body: note } : undefined },
   )
   if (result.outcome === 'not_found') throw new Error(`unknown issue: ${issueId}`)
+  // 只在成功路徑重繪：stale／note_failed 若 revalidate，元件會被移除而吞掉訊息與備註
+  if (result.outcome === 'unchanged') return { kind: 'stale' }
+  if (result.noteSaved === false) return { kind: 'note_failed', note: note ?? '' }
   revalidatePath('/')
   revalidatePath('/issues')
   revalidatePath(`/issues/${issueId}`)
-  if (result.outcome === 'unchanged') return { kind: 'stale' }
-  if (result.noteSaved === false) return { kind: 'note_failed' }
   return { kind: 'ok' }
 }

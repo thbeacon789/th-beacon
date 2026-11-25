@@ -201,7 +201,6 @@ export default async function IssueDetailPage({
             <CloseWithNote
               key={status}
               action={resolveIssueAction.bind(null, issue.id)}
-              hidden={{}}
               label="標記為 resolved"
             />
           ) : (

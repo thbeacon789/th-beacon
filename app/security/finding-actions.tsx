@@ -37,7 +37,7 @@ export function FindingActions({ id, status, transitions }: {
     <div className="security-finding-actions">
       {transitions.map((to) =>
         to === 'resolved' ? (
-          <CloseWithNote key={to} action={closeFindingAction.bind(null, id)} hidden={{}} label="Close" />
+          <CloseWithNote key={to} action={closeFindingAction.bind(null, id)} label="Close" />
         ) : (
           <ActionForm key={to} id={id} from={status} to={to} />
         ),
