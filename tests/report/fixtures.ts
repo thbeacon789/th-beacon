@@ -9,7 +9,7 @@ export function issueRow(i: number, over: Partial<IssueRow> = {}): IssueRow {
 
 export function makeReport(over: Partial<WeeklyReport> = {}): WeeklyReport {
   const sec = (serviceName: string, status: 'ok' | 'warn' | 'bad' | 'unknown') => ({
-    serviceName, status, note: null, openFindings: { high: 0, medium: status === 'warn' ? 3 : 0, low: 0 },
+    serviceName, status, note: status === 'unknown' ? ('none' as const) : null, openFindings: { high: 0, medium: status === 'warn' ? 3 : 0, low: 0 },
   })
   return {
     window: { start: new Date('2026-11-16T16:00:00Z'), end: new Date('2026-11-23T16:00:00Z'), label: '11/17–11/23' },

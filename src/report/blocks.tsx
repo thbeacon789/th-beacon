@@ -9,13 +9,14 @@ import {
   SECURITY_COLOR, SECURITY_SHAPE,
 } from './tokens'
 
-type Shape = 'circle' | 'triangle' | 'octagon'
+type Shape = 'circle' | 'triangle' | 'octagon' | 'unknown'
 
 /** 燈號：形狀＋顏色（形狀同 src/web/icons.tsx，不只靠顏色區分） */
 export function Light({ shape, color, size = 28 }: { shape: Shape; color: string; size?: number }) {
   // 外框＋內部符號，同 src/web/icons.tsx（healthy 打勾、degraded「!」、down「X」）
   const paths: Record<Shape, ReactNode[]> = {
     circle: [<circle key="o" cx="12" cy="12" r="9" />, <path key="a" d="M8 12l3 3 5-6" />],
+    unknown: [<circle key="o" cx="12" cy="12" r="9" strokeDasharray="3 3" />, <path key="a" d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7" />, <path key="b" d="M12 17v.5" />],
     triangle: [<path key="o" d="M12 3l10 18H2z" />, <path key="a" d="M12 10v4" />, <path key="b" d="M12 17.5v.5" />],
     octagon: [<path key="o" d="M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z" />, <path key="a" d="M9 9l6 6" />, <path key="b" d="M15 9l-6 6" />],
   }
@@ -141,10 +142,10 @@ function SecurityBlock({ report }: { report: WeeklyReport }) {
         const note = s.note === 'stale' ? '資料過期' : s.note === 'none' ? '尚無快照' : ''
         return (
           <div key={s.serviceName} style={row}>
-            <Light shape={SECURITY_SHAPE[s.status]} color={SECURITY_COLOR[s.status]} />
+            <Light shape={s.status === 'unknown' ? 'unknown' : SECURITY_SHAPE[s.status]} color={SECURITY_COLOR[s.status]} />
             <div style={text({ fontSize: 22, fontWeight: 700, width: 240, flexShrink: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{s.serviceName}</div>
             <div style={text({ fontSize: 18, color: SECURITY_COLOR[s.status], width: 70 })}>{SEC_LABEL[s.status]}</div>
-            <div style={text({ fontSize: 18, color: COLORS.fgMuted })}>{[parts.join('／'), note].filter(Boolean).join(' · ')}</div>
+            <div style={text({ fontSize: 18, color: COLORS.fgMuted, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{[parts.join('／'), note].filter(Boolean).join(' · ')}</div>
           </div>
         )
       })}
