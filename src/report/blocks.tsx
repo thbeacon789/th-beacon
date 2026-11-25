@@ -1,6 +1,6 @@
 // 週報各區塊（Satori 版：只用 flexbox、inline style；每個高度皆取自 LAYOUT / blockHeight）
 import type { CSSProperties, ReactNode } from 'react'
-import { toOneLine, type IssueRow, type ListRow, type SecurityGroupRow, type WeeklyReport } from '@/core/weekly-report'
+import { toOneLine, VERDICT_LABEL, type IssueRow, type ListRow, type SecurityGroupRow, type WeeklyReport } from '@/core/weekly-report'
 import { LAYOUT, blockHeight, type ReportBlock } from '@/core/weekly-report-pages'
 import type { HealthStatus, Severity } from '@/core/types'
 import type { FindingSeverity } from '@/core/security/types'
@@ -12,14 +12,15 @@ import {
 type Shape = 'circle' | 'triangle' | 'octagon'
 
 /** 燈號：形狀＋顏色（形狀同 src/web/icons.tsx，不只靠顏色區分） */
-export function Light({ shape, color, size = 22 }: { shape: Shape; color: string; size?: number }) {
-  const paths: Record<Shape, ReactNode> = {
-    circle: <circle cx="12" cy="12" r="9" />,
-    triangle: <path d="M12 3l10 18H2z" />,
-    octagon: <path d="M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z" />,
+export function Light({ shape, color, size = 28 }: { shape: Shape; color: string; size?: number }) {
+  // 外框＋內部符號，同 src/web/icons.tsx（healthy 打勾、degraded「!」、down「X」）
+  const paths: Record<Shape, ReactNode[]> = {
+    circle: [<circle key="o" cx="12" cy="12" r="9" />, <path key="a" d="M8 12l3 3 5-6" />],
+    triangle: [<path key="o" d="M12 3l10 18H2z" />, <path key="a" d="M12 10v4" />, <path key="b" d="M12 17.5v.5" />],
+    octagon: [<path key="o" d="M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z" />, <path key="a" d="M9 9l6 6" />, <path key="b" d="M15 9l-6 6" />],
   }
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} fillOpacity="0.22" stroke={color} strokeWidth="2.4" strokeLinejoin="miter">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} fillOpacity="0.18" stroke={color} strokeWidth="2.2" strokeLinejoin="miter">
       {paths[shape]}
     </svg>
   )
@@ -67,15 +68,11 @@ export function Header({ report, index, total }: { report: WeeklyReport; index: 
   )
 }
 
-const VERDICT: Record<WeeklyReport['verdict'], { label: string; color: string }> = {
-  ok: { label: '正常', color: COLORS.green },
-  attention: { label: '需關注', color: COLORS.yellow },
-  critical: { label: '嚴重', color: COLORS.pink },
-}
+const VERDICT_COLOR: Record<WeeklyReport['verdict'], string> = { ok: COLORS.green, attention: COLORS.yellow, critical: COLORS.pink }
 const SCORE: Record<HealthStatus, number> = { healthy: 100, degraded: 50, down: 0 }
 
 function VerdictBlock({ report }: { report: WeeklyReport }) {
-  const v = VERDICT[report.verdict]
+  const v = { label: VERDICT_LABEL[report.verdict], color: VERDICT_COLOR[report.verdict] }
   const n = report.services.length
   const score = n === 0 ? 100 : Math.round(report.services.reduce((s, x) => s + SCORE[x.health], 0) / n)
   const barW = 300
@@ -124,7 +121,7 @@ function ServicesBlock({ report }: { report: WeeklyReport }) {
         {report.services.map((s) => (
           <div key={s.name} style={{ ...row, height: LAYOUT.serviceRow, width: 560 }}>
             <Light shape={HEALTH_SHAPE[s.health]} color={HEALTH_COLOR[s.health]} />
-            <div style={text({ fontSize: 22, fontWeight: 700 })}>{s.name}</div>
+            <div style={text({ fontSize: 22, fontWeight: 700, maxWidth: 300, flexShrink: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{s.name}</div>
             <div style={text({ fontSize: 18, color: HEALTH_COLOR[s.health] })}>{HEALTH_LABEL[s.health]}</div>
             {s.openIssues > 0 && <div style={text({ fontSize: 18, color: COLORS.fgMuted })}>{`${s.openIssues} 件未解`}</div>}
           </div>
@@ -145,7 +142,7 @@ function SecurityBlock({ report }: { report: WeeklyReport }) {
         return (
           <div key={s.serviceName} style={row}>
             <Light shape={SECURITY_SHAPE[s.status]} color={SECURITY_COLOR[s.status]} />
-            <div style={text({ fontSize: 22, fontWeight: 700, width: 240 })}>{s.serviceName}</div>
+            <div style={text({ fontSize: 22, fontWeight: 700, width: 240, flexShrink: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{s.serviceName}</div>
             <div style={text({ fontSize: 18, color: SECURITY_COLOR[s.status], width: 70 })}>{SEC_LABEL[s.status]}</div>
             <div style={text({ fontSize: 18, color: COLORS.fgMuted })}>{[parts.join('／'), note].filter(Boolean).join(' · ')}</div>
           </div>
@@ -162,7 +159,7 @@ function IssueLine({ r }: { r: IssueRow }) {
       <div style={{ display: 'flex', width: 52, flexShrink: 0 }}><Badge label={r.severity} color={SEV_COLOR[r.severity]} solid /></div>
       <div style={text({ fontSize: 20, fontWeight: 700, width: 190, flexShrink: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{r.serviceName}</div>
       <div style={text({ fontSize: 20, color: COLORS.fgMuted, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' })}>{toOneLine(r.message, 48)}</div>
-      {r.acknowledgedBy && <Badge label={`已確認 · ${r.acknowledgedBy}`} color={COLORS.lilac} />}
+      {r.acknowledgedBy && <Badge label={`已確認 · ${toOneLine(r.acknowledgedBy, 12)}`} color={COLORS.lilac} />}
       {recurring && <div style={text({ fontSize: 18, color: COLORS.yellow, flexShrink: 0 })}>{`重開 ${r.reopenCount} 次`}</div>}
       {recurring && <div style={text({ fontSize: 18, color: r.status === 'resolved' ? COLORS.green : COLORS.pink, flexShrink: 0 })}>{r.status === 'resolved' ? '已再次解決' : '仍未解'}</div>}
       {r.isNew && <Badge label="NEW" color={COLORS.green} solid />}

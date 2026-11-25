@@ -234,7 +234,7 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
   }
 }
 
-const VERDICT_LABEL: Record<ReportVerdict, string> = { ok: '正常', attention: '需關注', critical: '異常' }
+export const VERDICT_LABEL: Record<ReportVerdict, string> = { ok: '正常', attention: '需關注', critical: '異常' }
 
 /** Discord 訊息本文（圖片的文字備援） */
 export function formatReportText(report: WeeklyReport, opts: { dashboardUrl: string | null; imageFailed: boolean }): string {
