@@ -7,6 +7,7 @@ import { FALLBACK_KEY } from '@/core/security/constants'
 import type { StoredSecurityScan } from '@/core/security/view'
 import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 import type { CheckKey, FindingSeverity } from '@/core/security/types'
+import type { CommentKind, StoredComment } from '@/core/comments'
 import type { IssueAiFix, IssueAiTriage, ServiceRecord, StoredIssue, PollConfig, StoredHeartbeat, StoredAiJudgment } from '@/store/contracts'
 
 type IssueRow = Database['public']['Tables']['issues']['Row']
@@ -31,6 +32,13 @@ export const narrowSeverity = (v: string): Severity => narrow(v, SEVERITIES, 'se
 export const narrowIssueStatus = (v: string): IssueStatus => narrow(v, ISSUE_STATUSES, 'issue status')
 export const narrowHealthStatus = (v: string): HealthStatus => narrow(v, HEALTH_STATUSES, 'health status')
 export const narrowEventSource = (v: string): EventSource => narrow(v, EVENT_SOURCES, 'event source')
+
+const COMMENT_KINDS: readonly CommentKind[] = ['comment', 'resolve']
+export const narrowCommentKind = (v: string): CommentKind => narrow(v, COMMENT_KINDS, 'comment kind')
+
+export function rowToComment(row: { id: string; author: string; body: string; kind: string; created_at: string }): StoredComment {
+  return { id: row.id, author: row.author, body: row.body, kind: narrowCommentKind(row.kind), createdAt: row.created_at }
+}
 
 const CATEGORIES: readonly DiagnosisCategory[] = ['env', 'app']
 

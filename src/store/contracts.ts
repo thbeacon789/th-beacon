@@ -4,6 +4,7 @@ import type { OpenIssue, PollState } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { DiagnosisCategory, HeartbeatDefinition, HeartbeatRunStatus } from '@/core/heartbeat'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { CommentKind, StoredComment } from '@/core/comments'
 import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 
 export type { IssueAiTriage, IssueAiFix }
@@ -251,4 +252,10 @@ export interface Store {
   upsertSecurityFindings(rows: SecurityFindingWrite[]): Promise<void>
   /** 僅當目前 status = expectedFrom 才更新（同時 missed_count 歸零）；成功回 true */
   setSecurityFindingStatus(id: string, to: SecurityFindingStatus, expectedFrom: SecurityFindingStatus, by: string, nowIso: string): Promise<boolean>
+  addIssueComment(input: { issueId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment>
+  /** created_at 升冪 */
+  listIssueComments(issueId: string): Promise<StoredComment[]>
+  addSecurityFindingComment(input: { findingId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment>
+  /** 空陣列直接回 []（不查 DB）；created_at 升冪 */
+  listSecurityFindingComments(findingIds: readonly string[]): Promise<Array<StoredComment & { findingId: string }>>
 }

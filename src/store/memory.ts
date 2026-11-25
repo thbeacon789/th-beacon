@@ -6,6 +6,7 @@ import type { TriageRule } from '@/core/rules'
 import type { OpenIssue } from '@/core/health'
 import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollConfig, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { CommentKind, StoredComment } from '@/core/comments'
 import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 
 interface SeededRule {
@@ -28,6 +29,8 @@ export class InMemoryStore implements Store {
   private aiUsages: Array<NewAiUsage & { id: string }> = []
   private securityScans: StoredSecurityScan[] = []
   private securityFindings: SecurityFindingRecord[] = []
+  private issueComments: Array<StoredComment & { issueId: string }> = []
+  private findingComments: Array<StoredComment & { findingId: string }> = []
   private nextId = 1
 
   seedHeartbeat(serviceId: string, hb: Omit<StoredHeartbeat, 'serviceId'>): void {
@@ -604,6 +607,31 @@ export class InMemoryStore implements Store {
     f.statusChangedBy = by
     f.missedCount = 0
     return true
+  }
+
+  async addIssueComment(input: { issueId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment> {
+    const row = { id: randomUUID(), issueId: input.issueId, author: input.author, body: input.body, kind: input.kind, createdAt: new Date().toISOString() }
+    this.issueComments.push(row)
+    return this.toComment(row)
+  }
+
+  async listIssueComments(issueId: string): Promise<StoredComment[]> {
+    return this.issueComments.filter((c) => c.issueId === issueId).map((c) => this.toComment(c))
+  }
+
+  async addSecurityFindingComment(input: { findingId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment> {
+    const row = { id: randomUUID(), findingId: input.findingId, author: input.author, body: input.body, kind: input.kind, createdAt: new Date().toISOString() }
+    this.findingComments.push(row)
+    return this.toComment(row)
+  }
+
+  async listSecurityFindingComments(findingIds: readonly string[]): Promise<Array<StoredComment & { findingId: string }>> {
+    if (findingIds.length === 0) return []
+    return this.findingComments.filter((c) => findingIds.includes(c.findingId)).map((c) => ({ ...c }))
+  }
+
+  private toComment(c: StoredComment): StoredComment {
+    return { id: c.id, author: c.author, body: c.body, kind: c.kind, createdAt: c.createdAt }
   }
 
   /** 測試輔助 */

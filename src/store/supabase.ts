@@ -6,6 +6,7 @@ import type { OpenIssue } from '@/core/health'
 import type { DiscordMessage } from '@/notify/message'
 import type { ServiceRecord, ServiceAuth, Store, StoredIssue, UpsertOutcome, PollableService, PollStateUpdate, LatestNotification, NotificationRecord, StoredHeartbeat, HeartbeatRun, RegisteredService, NewHeartbeat, IssueAiTriage, IssueAiFix, IncidentRoot, NewAiJudgment, StoredAiJudgment, NewAiUsage, NewSecurityScan } from '@/store/contracts'
 import type { StoredSecurityScan } from '@/core/security/view'
+import type { CommentKind, StoredComment } from '@/core/comments'
 import type { SecurityFindingRecord, SecurityFindingStatus, SecurityFindingWrite } from '@/core/security/findings'
 import {
   narrowIssueStatus,
@@ -17,6 +18,7 @@ import {
   rowToHeartbeat,
   rowToAiJudgment,
   rowToSecurityScan,
+  rowToComment,
   rowToSecurityFinding,
   securityFindingWriteToRow,
 } from '@/store/mapping'
@@ -635,5 +637,46 @@ export class SupabaseStore implements Store {
       .select('id')
     if (error) throw new Error(`setSecurityFindingStatus failed: ${error.message}`)
     return data.length === 1
+  }
+
+  async addIssueComment(input: { issueId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment> {
+    const { data, error } = await this.client
+      .from('issue_comments')
+      .insert({ issue_id: input.issueId, author: input.author, body: input.body, kind: input.kind })
+      .select('*')
+      .single()
+    if (error) throw new Error(`addIssueComment failed: ${error.message}`)
+    return rowToComment(data)
+  }
+
+  async listIssueComments(issueId: string): Promise<StoredComment[]> {
+    const { data, error } = await this.client
+      .from('issue_comments')
+      .select('*')
+      .eq('issue_id', issueId)
+      .order('created_at', { ascending: true })
+    if (error) throw new Error(`listIssueComments failed: ${error.message}`)
+    return data.map(rowToComment)
+  }
+
+  async addSecurityFindingComment(input: { findingId: string; author: string; body: string; kind: CommentKind }): Promise<StoredComment> {
+    const { data, error } = await this.client
+      .from('security_finding_comments')
+      .insert({ finding_id: input.findingId, author: input.author, body: input.body, kind: input.kind })
+      .select('*')
+      .single()
+    if (error) throw new Error(`addSecurityFindingComment failed: ${error.message}`)
+    return rowToComment(data)
+  }
+
+  async listSecurityFindingComments(findingIds: readonly string[]): Promise<Array<StoredComment & { findingId: string }>> {
+    if (findingIds.length === 0) return []
+    const { data, error } = await this.client
+      .from('security_finding_comments')
+      .select('*')
+      .in('finding_id', [...findingIds])
+      .order('created_at', { ascending: true })
+    if (error) throw new Error(`listSecurityFindingComments failed: ${error.message}`)
+    return data.map((r) => ({ ...rowToComment(r), findingId: r.finding_id }))
   }
 }
