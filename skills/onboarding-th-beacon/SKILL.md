@@ -90,6 +90,7 @@ th-beacon 是集中式監控平台，線上網址 **`https://th-beacon.vercel.ap
 - 不要自己加重試迴圈：fail 重送會累計到同一筆 issue 的 count。
 - 第 4 參數 `summary` 選填，會出現在告警內容裡。若能從測試輸出取得失敗數（例如 `"3 of 120 failed"`），建議傳入。
 - 第 5 參數（AI 診斷 `diagnosis`）選填，使用者沒要求就不要接。要接時，用 checkout 出來的 `./.beacon/scripts/diagnose-e2e-failure.sh` 產生診斷檔（同一份釘選版本，不要複製或修改）。它需要 Anthropic WIF 認證，所需環境變數見 script 開頭註解。
+- **log 太大時用 signals（2026-11-25 起）**：diagnose 送模型的 log 有位元組上限，超量只留頭＋尾，真因落在中間會被切掉。先用 `./.beacon/scripts/extract-e2e-signals.sh <android|ios> <log 檔...> > signals.txt` 從完整 log 確定性萃取（例外堆疊去重、時間軸、系統殺進程事件，≤ 30KB），再把它排在 diagnose 的第一個 log 參數，並設 `DIAGNOSE_PRIORITY_FILES="${RUNNER_TEMP}/signals.txt"`（以 `:` 分隔的完整路徑字串）保證整份送出；其餘檔分剩餘預算。android 傳 logcat（adb threadtime 格式）與 e2e.log，ios 傳 xcodebuild 文字 log；App 套件名預設 `com.trustnel.app.debug`，其他 repo 用 `E2E_SIGNALS_PACKAGE`／`E2E_SIGNALS_APP_PREFIX` 覆寫。
 - 要記錄 AI 花費時，diagnose 步驟另設 `BEACON_AI_USAGE_URL`（＋同一組 `BEACON_SERVICE`／`BEACON_SECRET`）；不設則不回報，不影響診斷。
 - `job.status` 為 `cancelled` 時會送出 fail。這是刻意的：nightly 被取消就代表沒有測試結果，需要人看。
 - 回報 step 失敗會讓整個 job 變紅，這也是刻意的：接線出錯必須看得見。
@@ -127,6 +128,7 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
         env:
           # ...原本的 ANTHROPIC_*（WIF）、DIAGNOSE_*、BEACON_* env...
           DIAGNOSE_REDACTED_OUT: ${{ runner.temp }}/ai-fix-redacted.log   # 新增：遮蔽後的 log，供 ai-fix 當輸入
+          DIAGNOSE_REDACTED_FULL_DIR: ${{ runner.temp }}/ai-fix-full-logs   # 選填：每個輸入檔遮蔽後的「完整」內容，供 ai-fix 的 agent Grep（內嵌 log 只是切片）
         run: |
           ./.beacon/scripts/diagnose-e2e-failure.sh <platform> <known-env-issues.md> \
             "${RUNNER_TEMP}/diagnosis.json" <log 檔...>
@@ -149,6 +151,7 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
           path: |
             ${{ runner.temp }}/ai-fix-redacted.log
             ${{ runner.temp }}/diagnosis.json
+            ${{ runner.temp }}/ai-fix-full-logs   # 選填：有設 DIAGNOSE_REDACTED_FULL_DIR 才需要（目錄；upload-artifact 會保留其下檔案）
           retention-days: 7
           if-no-files-found: ignore
 
@@ -247,7 +250,8 @@ E2E 失敗且 AI 判讀認為是 app 程式碼問題時，CI 的 `ai-fix` job �
           bash "$GITHUB_WORKSPACE/beacon/scripts/ai-fix-e2e-failure.sh" <platform> <heartbeat-name> \
             <known-env-issues.md 相對 app/ 的路徑> \
             "$RUNNER_TEMP/ai-fix-input/diagnosis.json" \
-            "$RUNNER_TEMP/ai-fix-input/ai-fix-redacted.log"
+            "$RUNNER_TEMP/ai-fix-input/ai-fix-redacted.log" \
+            "$RUNNER_TEMP/ai-fix-input/ai-fix-full-logs"   # 選填第 6 參數：完整 log 目錄；腳本複製到 .ai-fix-logs/ 讓 agent Grep，用完即刪、不進 commit
 
       # job 在腳本開始前就失敗（App 權杖、artifact 下載、bot id 解析、腳本缺 env）時，th-beacon 否則收不到任何回報。
       # 以「只回報失敗」模式補報；不設 working-directory（app/ 可能不存在）。

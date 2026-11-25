@@ -114,6 +114,7 @@ e2e-prod.yml
 - 輸出 schema 新增必填布林 `needsCodeChange`：「這個失敗是否需要修改本 repo 的程式碼（測試或 App）才能解決」。prompt 補上判斷準則：測試雜訊、外部服務偶發、需要人工操作後台／設定者為 false。
 - 最終 jq 投影保留 `needsCodeChange`。
 - 新增選用環境變數 `DIAGNOSE_REDACTED_OUT`：設定時，把**實際送給模型的遮蔽後 log 內容**寫到該路徑，供 `ai-fix-input` artifact 使用（遮蔽邏輯只有一份）。
+- **2026-11-25 追加（log 盲切修正）**：新增 `scripts/extract-e2e-signals.sh`（確定性萃取 signals，見其檔頭）；diagnose 新增 `DIAGNOSE_PRIORITY_FILES`（保證整份送出的檔）、超量改取頭 30%＋尾 70%、`DIAGNOSE_REDACTED_FULL_DIR`（輸出遮蔽後完整 log）；`ai-fix-e2e-failure.sh` 新增選填第 6 參數／`AI_FIX_FULL_LOG_DIR`，在快照前把完整 log 複製到 `.ai-fix-logs/`（未追蹤、非忽略；agent 結束並取得快照比對清單後、`git add` 之前刪除，不進 commit／改動統計／越界檢查），prompt 要求下結論前先 Grep。
 - th-beacon 伺服器端**不需要**認得 `needsCodeChange`：`parseTriageOutput` 逐欄位重組，未列舉欄位自動丟棄，舊版腳本與新版腳本的心跳都能照常接收。
 
 ### 5.3 修復腳本（新增 `scripts/ai-fix-e2e-failure.sh`）
