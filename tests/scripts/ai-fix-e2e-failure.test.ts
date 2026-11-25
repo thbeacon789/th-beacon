@@ -51,6 +51,8 @@ process.stdin.on('end', () => {
   fs.appendFileSync(path.join(rec, 'calls.log'), 'x\\n')
   fs.writeFileSync(path.join(rec, 'argv.json'), JSON.stringify(process.argv.slice(2)))
   fs.writeFileSync(path.join(rec, 'stdin.txt'), stdin)
+  // 記錄 agent 執行當下 .ai-fix-logs 的內容（驗證暫放目錄存在且內容正確）
+  try { const ld = '.ai-fix-logs'; fs.writeFileSync(path.join(rec, 'logs.json'), JSON.stringify(Object.fromEntries(fs.readdirSync(ld).map((n) => [n, fs.readFileSync(path.join(ld, n), 'utf8')])))) } catch {}
   const tf = process.env.ANTHROPIC_IDENTITY_TOKEN_FILE
   let token = null
   if (tf) { try { token = { content: fs.readFileSync(tf, 'utf8'), mode: (fs.statSync(tf).mode & 0o777).toString(8) } } catch {} }
@@ -553,6 +555,133 @@ describe('ai-fix-e2e-failure.sh', () => {
       setPlan({ writes: { 'app/Login.kt': lines(300), 'app/B.kt': lines(300) }, stdout: successOut() })
       const r = await run()
       expect(r.stdout).toContain('STATUS=failed')
+    })
+  })
+
+  describe('完整 log 暫放 .ai-fix-logs（第 6 個參數／AI_FIX_FULL_LOG_DIR）', () => {
+    let fullDir: string
+    const logsSeen = () =>
+      fs.existsSync(path.join(rec, 'logs.json'))
+        ? (JSON.parse(fs.readFileSync(path.join(rec, 'logs.json'), 'utf8')) as Record<string, string>)
+        : null
+    const args6 = () => ['android', 'android-e2e-prod', path.join(dir, 'known.md'), path.join(dir, 'diag.json'), path.join(dir, 'log.txt'), fullDir]
+    const exists = () => fs.existsSync(path.join(repo, '.ai-fix-logs'))
+    beforeEach(() => {
+      fullDir = path.join(dir, 'full')
+      fs.mkdirSync(fullDir)
+      fs.writeFileSync(path.join(fullDir, 'logcat.txt'), 'line1 Error was captured in composition\nCalledFromWrongThreadException\n')
+      // 含一個非 UTF-8 位元組：暫放前要先清理
+      fs.writeFileSync(path.join(fullDir, 'e2e.log'), Buffer.concat([Buffer.from('BAD-'), Buffer.from([0xff, 0xfe]), Buffer.from('-END\n')]))
+      fs.writeFileSync(path.join(fullDir, '.git'), 'x') // 名為 .git 的檔會被巢狀 .git 偵測誤判，應略過
+      fs.mkdirSync(path.join(fullDir, 'sub'))
+      fs.writeFileSync(path.join(fullDir, 'sub', 'nested.txt'), 'nested') // 子目錄不複製
+    })
+
+    it('agent 執行當下 .ai-fix-logs 內有完整 log（utf8 清理後）；prompt 要求 Grep；結束後目錄已刪、不進 commit', async () => {
+      const r = await run({}, args6())
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      const seen = logsSeen()!
+      expect(Object.keys(seen).sort()).toEqual(['e2e.log', 'logcat.txt'])
+      expect(seen['logcat.txt']).toContain('Error was captured in composition')
+      expect(seen['e2e.log']).toBe('BAD--END\n') // 非 UTF-8 位元組被清掉
+      const p = stdin()
+      expect(p).toContain('## 完整 log（重要）')
+      expect(p).toContain('.ai-fix-logs/logcat.txt')
+      expect(p).toContain('Grep')
+      expect(p).toContain('Error was captured')
+      expect(p).toContain('  - .ai-fix-logs/**') // 禁改清單
+      const a = argv()
+      const di = a.indexOf('--disallowedTools')
+      expect(a.slice(di + 1, di + 6)).toEqual([
+        'Edit(**/.git/**)',
+        'Write(**/.git/**)',
+        'Read(**/.git/**)',
+        'Edit(./.ai-fix-logs/**)',
+        'Write(./.ai-fix-logs/**)',
+      ])
+      expect(exists()).toBe(false)
+      expect(sh(origin, 'show', '--name-only', '--format=', branchRef).trim()).toBe('app/Login.kt')
+      expect(porcelain().trim()).toBe('')
+    })
+
+    it('env AI_FIX_FULL_LOG_DIR 與參數等效；兩者並存時參數優先', async () => {
+      await run({ AI_FIX_FULL_LOG_DIR: fullDir })
+      expect(Object.keys(logsSeen()!).sort()).toEqual(['e2e.log', 'logcat.txt'])
+      fs.rmSync(path.join(rec, 'logs.json'))
+      fresh()
+      const other = path.join(dir, 'other')
+      fs.mkdirSync(other)
+      fs.writeFileSync(path.join(other, 'only.txt'), 'only')
+      await run({ AI_FIX_FULL_LOG_DIR: other }, args6())
+      expect(Object.keys(logsSeen()!).sort()).toEqual(['e2e.log', 'logcat.txt'])
+    })
+
+    it('沒給參數：行為與先前相同（無 .ai-fix-logs、prompt 無完整 log 段、disallowedTools 不變）', async () => {
+      const r = await run()
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(logsSeen()).toBeNull()
+      expect(stdin()).not.toContain('.ai-fix-logs/logcat')
+      expect(stdin()).not.toContain('完整 log（重要）')
+      const a = argv()
+      expect(a.join(' ')).not.toContain('ai-fix-logs/**)')
+      expect(exists()).toBe(false)
+    })
+
+    it('目錄不存在：印 warning、照常執行', async () => {
+      const r = await run({}, [...args6().slice(0, 5), path.join(dir, 'nope')])
+      expect(r.stdout).toContain('full log dir not found')
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(logsSeen()).toBeNull()
+    })
+
+    it('agent 在 .ai-fix-logs 內改檔／新增檔：不算越界（用完即刪）、不進 commit、不影響 MAX_FILES', async () => {
+      setPlan({
+        writes: { 'app/Login.kt': 'class Login2\n', '.ai-fix-logs/logcat.txt': 'tampered', '.ai-fix-logs/evil.txt': 'new' },
+        stdout: successOut(),
+      })
+      const r = await run({ AI_FIX_MAX_FILES: '1' }, args6())
+      expect(r.stdout).toContain('STATUS=pr_opened')
+      expect(sh(origin, 'show', '--name-only', '--format=', branchRef).trim()).toBe('app/Login.kt')
+      expect(exists()).toBe(false)
+      expect(porcelain().trim()).toBe('')
+    })
+
+    it('既有的越界檢查仍成立：agent 同時寫了被忽略的新檔 → failed，且暫放目錄也被清掉', async () => {
+      put('.gitignore', 'build/\n')
+      sh(repo, 'add', '.gitignore')
+      sh(repo, 'commit', '-m', 'ignore build')
+      setPlan({ writes: { 'build/out.txt': 'x', 'app/Login.kt': 'class Login2\n' }, stdout: successOut() })
+      const r = await run({}, args6())
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(r.stdout).toContain('gitignored')
+      expect(exists()).toBe(false)
+      expect(fs.existsSync(path.join(repo, 'build/out.txt'))).toBe(false)
+      expect(porcelain().trim()).toBe('')
+    })
+
+    it('agent 無效輸出（failed）時暫放目錄同樣被清掉', async () => {
+      setPlan({ writes: {}, stdout: 'not json' })
+      const r = await run({}, args6())
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(exists()).toBe(false)
+    })
+
+    it('乾跑：diff 只有 agent 的改動，不含 .ai-fix-logs', async () => {
+      const r = await run({ AI_FIX_DRY_RUN: '1' }, args6())
+      expect(r.stdout).toContain('STATUS=ready')
+      expect(r.stdout).toContain('+class Login2')
+      expect(r.stdout).not.toContain('Error was captured in composition')
+      expect(exists()).toBe(false)
+    })
+
+    it('repo 內已有 .ai-fix-logs → failed，不覆蓋、不刪除既有檔', async () => {
+      put('.ai-fix-logs/keep.txt', 'mine\n')
+      sh(repo, 'add', '--all')
+      sh(repo, 'commit', '-m', 'has logs dir')
+      const r = await run({}, args6())
+      expect(r.stdout).toContain('STATUS=failed')
+      expect(r.stdout).toContain('.ai-fix-logs already exists')
+      expect(calls()).toBe(0)
     })
   })
 
