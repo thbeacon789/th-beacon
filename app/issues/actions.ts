@@ -7,6 +7,9 @@ import { transitionIssue } from '@/pipeline/transition-issue'
 import { narrowIssueStatus } from '@/store/mapping'
 import { isUuid } from '@/web/queries'
 import { validateJudgmentLabel } from '@/core/ai-judgment'
+import { validateCommentBody, parseOptionalNote } from '@/core/comments'
+import type { CommentFormState } from '@/web/comment-form'
+import type { CloseState } from '@/web/close-with-note'
 
 export async function changeIssueStatusAction(issueId: string, status: string): Promise<void> {
   const user = await requireUser()
@@ -61,4 +64,54 @@ export async function labelJudgmentAction(
   revalidatePath(`/issues/${issueId}`)
   revalidatePath('/ai-stats')
   return { status: 'saved' }
+}
+
+export async function addIssueCommentAction(
+  issueId: string,
+  _prev: CommentFormState,
+  form: FormData,
+): Promise<CommentFormState> {
+  const user = await requireUser()
+  if (!isUuid(issueId)) throw new Error(`unknown issue: ${issueId}`)
+  const body = validateCommentBody(form.get('body'))
+  if (!body.ok) return { kind: 'invalid', errors: body.errors }
+  await createServerStore().addIssueComment({
+    issueId,
+    author: user.email ?? user.id,
+    body: body.value,
+    kind: 'comment',
+  })
+  revalidatePath(`/issues/${issueId}`)
+  return { kind: 'ok' }
+}
+
+export async function resolveIssueAction(
+  issueId: string,
+  _prev: CloseState,
+  form: FormData,
+): Promise<CloseState> {
+  const user = await requireUser()
+  if (!isUuid(issueId)) throw new Error(`unknown issue: ${issueId}`)
+  let note: string | null = null
+  if (form.get('skip') !== '1') {
+    const parsed = parseOptionalNote(form.get('note'))
+    if (!parsed.ok) return { kind: 'invalid', errors: parsed.errors }
+    note = parsed.value
+  }
+  const result = await transitionIssue(
+    createServerStore(),
+    createServerNotifyDeps().bot ?? null,
+    issueId,
+    'resolved',
+    { kind: 'dashboard', email: user.email ?? 'dashboard' },
+    new Date(),
+    { resolveNote: note ? { author: user.email ?? user.id, body: note } : undefined },
+  )
+  if (result.outcome === 'not_found') throw new Error(`unknown issue: ${issueId}`)
+  revalidatePath('/')
+  revalidatePath('/issues')
+  revalidatePath(`/issues/${issueId}`)
+  if (result.outcome === 'unchanged') return { kind: 'stale' }
+  if (result.noteSaved === false) return { kind: 'note_failed' }
+  return { kind: 'ok' }
 }

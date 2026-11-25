@@ -1779,3 +1779,60 @@ tbody tr:last-child td {
     gap: var(--space-2);
   }
 }
+
+/* ---- 留言（issue／資安發現共用） ---- */
+.comment-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+.comment-item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.comment-tag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--green);
+  color: var(--green);
+  font-size: 0.85em;
+}
+.comment-body {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comment-form {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-6);
+}
+.comment-form textarea {
+  width: 100%;
+  max-width: 40rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  resize: vertical;
+}
+.comment-form-row,
+.close-with-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.close-with-note {
+  align-items: flex-start;
+}

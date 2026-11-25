@@ -1,14 +1,17 @@
 import { notFound } from 'next/navigation'
 import { requireUser } from '@/web/supabase-server'
 import { createServerStore } from '@/store/server'
-import { getIssueDetail, extractRunUrl, describeLabel } from '@/web/queries'
+import { getIssueDetail, extractRunUrl, describeLabel, isUuid } from '@/web/queries'
 import { SubmitButton } from '@/web/submit-button'
 import { JudgmentLabelForm } from '@/web/judgment-label-form'
 import { ExternalLinkIcon } from '@/web/icons'
 import { formatDateTime, formatDateTimeSeconds } from '@/web/format'
 import { allowedFrom } from '@/core/lifecycle'
 import { isSafePrUrl } from '@/core/ai-fix'
-import { changeIssueStatusAction } from '../actions'
+import { CommentThread } from '@/web/comment-thread'
+import { CommentForm } from '@/web/comment-form'
+import { CloseWithNote } from '@/web/close-with-note'
+import { changeIssueStatusAction, addIssueCommentAction, resolveIssueAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,9 +24,11 @@ export default async function IssueDetailPage({
 }) {
   const { id } = await params
   // 與 requireUser 並行（理由同 app/page.tsx）
-  const [, detail] = await Promise.all([
+  const store = createServerStore()
+  const [, detail, comments] = await Promise.all([
     requireUser(),
-    getIssueDetail(createServerStore().rawClient(), id),
+    getIssueDetail(store.rawClient(), id),
+    isUuid(id) ? store.listIssueComments(id) : Promise.resolve([]),
   ])
   if (detail === null) notFound()
   const { issue, ai, judgment, serviceName, events } = detail
@@ -191,12 +196,24 @@ export default async function IssueDetailPage({
       </ul>
       <p className="hint">severity 為歷史最高判級（只升不降）；降級請改操作狀態（resolve / ignore）。</p>
       <div className="actions">
-        {NEXT_STATUSES.filter((s) => s !== issue.status && allowedFrom(s).includes(issue.status)).map((status) => (
+        {NEXT_STATUSES.filter((s) => s !== issue.status && allowedFrom(s).includes(issue.status)).map((status) =>
+          status === 'resolved' ? (
+            <CloseWithNote
+              key={status}
+              action={resolveIssueAction.bind(null, issue.id)}
+              hidden={{}}
+              label="標記為 resolved"
+            />
+          ) : (
           <form key={status} action={changeIssueStatusAction.bind(null, issue.id, status)}>
             <SubmitButton pendingLabel={`更新中…`}>{`標記為 ${status}`}</SubmitButton>
           </form>
-        ))}
+          ),
+        )}
       </div>
+      <h2>留言</h2>
+      <CommentThread comments={comments} />
+      <CommentForm action={addIssueCommentAction.bind(null, issue.id)} />
       <h2>事件（最近 {events.length} 筆）</h2>
       <div className="table-wrap">
         <table>
