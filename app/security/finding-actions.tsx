@@ -8,9 +8,9 @@ import type { SecurityFindingStatus } from '@/core/security/findings'
 const IDLE: FindingActionState = { kind: 'idle' }
 
 const LABEL: Record<SecurityFindingStatus, { label: string; pending: string }> = {
-  resolved: { label: '標為已解決', pending: '處理中…' },
-  ignored: { label: '忽略', pending: '處理中…' },
-  open: { label: '取消忽略', pending: '處理中…' },
+  resolved: { label: 'Mark Resolved', pending: 'Updating…' },
+  ignored: { label: 'Ignore', pending: 'Updating…' },
+  open: { label: 'Reopen', pending: 'Updating…' },
 }
 
 function ActionForm({ id, from, to }: { id: string; from: SecurityFindingStatus; to: SecurityFindingStatus }) {
