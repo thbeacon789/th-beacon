@@ -37,13 +37,14 @@ function issue(over: Partial<WeeklyReportInput['issues'][number]> = {}): WeeklyR
   return {
     id: 'i1', serviceId: 'a', severity: 'P1', status: 'open', message: 'boom', count: 3,
     firstSeen: iso(winStart - 30 * DAY), lastSeen: iso(winStart - 29 * DAY),
-    resolvedAt: null, acknowledgedBy: null, reopenCount: 0, ...over,
+    resolvedAt: null, acknowledgedBy: null, reopenCount: 0, incidentFirstSeen: null, ...over,
   }
 }
 function finding(over: Partial<WeeklyReportInput['securityFindings'][number]> = {}): WeeklyReportInput['securityFindings'][number] {
   return {
     serviceId: 'a', severity: 'low', status: 'open',
-    firstSeenAt: iso(winStart - 30 * DAY), lastSeenAt: iso(winStart - 1 * DAY), reopenCount: 0, ...over,
+    firstSeenAt: iso(winStart - 30 * DAY), lastSeenAt: iso(winStart - 1 * DAY), reopenCount: 0,
+    statusChangedAt: null, statusChangedBy: null, ...over,
   }
 }
 
@@ -133,7 +134,7 @@ describe('verdict', () => {
   })
 
   it('反覆出現 → attention', () => {
-    const r = buildWeeklyReport(baseInput({ issues: [issue({ reopenCount: 2, lastSeen: iso(winStart + DAY) })] }))
+    const r = buildWeeklyReport(baseInput({ issues: [issue({ reopenCount: 2, lastSeen: iso(winStart + DAY), incidentFirstSeen: iso(winStart + DAY) })] }))
     expect(r.verdict).toBe('attention')
     expect(r.headline).toContain('1 筆反覆出現')
   })
@@ -164,13 +165,14 @@ describe('verdict', () => {
     const rows = fiveServices.map((id, i) => ({ serviceId: id, overall: i === 0 ? ('unknown' as const) : ('ok' as const), stale: i === 0 }))
     const r = buildWeeklyReport(baseInput({ securityRows: rows }))
     expect(r.verdict).toBe('attention')
-    expect(r.headline).toBe('資安掃描過期或缺漏 1 個服務')
+    expect(r.headline).toBe('資安掃描過期 1 個服務')
     expect(r.security[0]).toMatchObject({ status: 'unknown', note: 'stale' })
   })
 
-  it('完全沒有掃描列 → attention，status=unknown、note=none', () => {
+  it('完全沒有掃描列（從未掃描）→ 不影響結論與標題，status=unknown、note=none', () => {
     const r = buildWeeklyReport(baseInput({ securityRows: fiveServices.slice(1).map((id) => ({ serviceId: id, overall: 'ok' as const, stale: false })) }))
-    expect(r.verdict).toBe('attention')
+    expect(r.verdict).toBe('ok')
+    expect(r.headline).toBe('5/5 服務正常，無待處理事項')
     expect(r.security[0]).toMatchObject({ serviceName: 'a', status: 'unknown', note: 'none' })
   })
 
@@ -179,14 +181,14 @@ describe('verdict', () => {
       services: [svc('a', 'down'), svc('b', 'degraded'), ...fiveServices.slice(2).map((i) => svc(i))],
       issues: [
         issue({ id: 'p0', severity: 'P0', status: 'open' }),
-        issue({ id: 'r', reopenCount: 1, lastSeen: iso(winStart + DAY) }),
+        issue({ id: 'r', reopenCount: 1, incidentFirstSeen: iso(winStart + DAY) }),
         issue({ id: 'n', firstSeen: iso(winStart - 7 * DAY + HOUR) }),
       ],
       securityRows: fiveServices.map((id, i) => ({ serviceId: id, overall: i === 0 ? ('bad' as const) : i === 1 ? ('unknown' as const) : ('ok' as const), stale: i === 1 })),
       securityFindings: [finding({ severity: 'high', firstSeenAt: iso(winStart + DAY) })],
     }))
     expect(r.headline).toBe(
-      '1 個服務異常、1 個服務降級、1 筆未解 P0、資安異常 1 個服務、1 筆反覆出現、1 筆本週新進長期未處理、1 筆新資安發現、資安掃描過期或缺漏 1 個服務',
+      '1 個服務異常、1 個服務降級、1 筆未解 P0、資安異常 1 個服務、1 筆反覆出現、1 筆本週新進長期未處理、1 筆新資安發現、資安掃描過期 1 個服務',
     )
   })
 })
@@ -239,48 +241,84 @@ describe('longStanding', () => {
   })
 })
 
-describe('recurring', () => {
-  it('reopenCount ≥ 1 且 lastSeen 在窗內才列', () => {
+describe('recurring（本週重開）', () => {
+  it('issue：incidentFirstSeen 在窗內才列；窗外、ignored、reopenCount=0 都不列', () => {
     const r = buildWeeklyReport(baseInput({
       issues: [
-        issue({ id: '1', reopenCount: 1, lastSeen: iso(winStart + DAY) }),
-        issue({ id: '2', reopenCount: 0, lastSeen: iso(winStart + DAY) }),
-        issue({ id: '3', reopenCount: 2, lastSeen: iso(winStart - DAY) }),
-        issue({ id: '4', reopenCount: 2, lastSeen: iso(winEnd) }),
+        issue({ id: '1', reopenCount: 1, incidentFirstSeen: iso(winStart + DAY), lastSeen: iso(winStart + DAY) }),
+        issue({ id: '2', reopenCount: 0, incidentFirstSeen: iso(winStart + DAY), lastSeen: iso(winStart + DAY) }),
+        issue({ id: '3', reopenCount: 2, incidentFirstSeen: iso(winStart - DAY), lastSeen: iso(winStart + DAY) }),
+        issue({ id: '4', reopenCount: 2, incidentFirstSeen: iso(winEnd), lastSeen: iso(winEnd) }),
+        issue({ id: '5', reopenCount: 2, incidentFirstSeen: null, lastSeen: iso(winStart + DAY) }),
+        issue({ id: '6', status: 'ignored', reopenCount: 2, incidentFirstSeen: iso(winStart + DAY), lastSeen: iso(winStart + DAY) }),
       ],
     }))
     expect(r.recurring).toHaveLength(1)
     expect(r.recurring[0]).toMatchObject({ kind: 'issue', reopenCount: 1, status: 'open' })
   })
 
-  it('資安 finding 依服務聚合', () => {
+  it('issue：lastSeen 在窗內但 incidentFirstSeen 在窗前 → 不算反覆、結論不受影響', () => {
+    const r = buildWeeklyReport(baseInput({
+      issues: [issue({ reopenCount: 1, incidentFirstSeen: iso(winStart - DAY), lastSeen: iso(winStart + DAY) })],
+    }))
+    expect(r.recurring).toHaveLength(0)
+    expect(r.verdict).toBe('ok')
+  })
+
+  it('issue：incidentFirstSeen 在窗內 → 反覆出現且 attention；ignored 永不列', () => {
+    const hit = buildWeeklyReport(baseInput({ issues: [issue({ reopenCount: 1, incidentFirstSeen: iso(winStart + DAY) })] }))
+    expect(hit.recurring).toHaveLength(1)
+    expect(hit.verdict).toBe('attention')
+    const ign = buildWeeklyReport(baseInput({ issues: [issue({ status: 'ignored', reopenCount: 1, incidentFirstSeen: iso(winStart + DAY) })] }))
+    expect(ign.recurring).toHaveLength(0)
+    expect(ign.verdict).toBe('ok')
+  })
+
+  const reopened = { reopenCount: 1, statusChangedBy: 'system', statusChangedAt: iso(winStart + DAY) }
+
+  it('finding：系統於窗內重開 → 依服務聚合進清單', () => {
     const r = buildWeeklyReport(baseInput({
       securityFindings: [
-        finding({ reopenCount: 1, lastSeenAt: iso(winStart + DAY), severity: 'high' }),
-        finding({ reopenCount: 1, lastSeenAt: iso(winStart + DAY), severity: 'low' }),
-        finding({ reopenCount: 0, lastSeenAt: iso(winStart + DAY) }),
+        finding({ ...reopened, severity: 'high' }),
+        finding({ ...reopened, severity: 'low' }),
+        finding({ ...reopened, reopenCount: 0 }),
       ],
     }))
     expect(r.recurring).toHaveLength(1)
     expect(r.recurring[0]).toMatchObject({ kind: 'security', serviceName: 'a', counts: { high: 1, medium: 0, low: 1 } })
   })
-})
 
-describe('recurring 資安狀態', () => {
-  it('resolved 但本週復發的 finding 進清單並使結論為 attention', () => {
-    const r = buildWeeklyReport(baseInput({
-      securityFindings: [finding({ status: 'resolved', reopenCount: 1, lastSeenAt: iso(winStart + DAY) })],
-    }))
-    expect(r.recurring).toHaveLength(1)
-    expect(r.verdict).toBe('attention')
+  it('finding：statusChangedAt 在窗前、非 system、null 皆不算；結論不受影響', () => {
+    for (const over of [
+      { statusChangedAt: iso(winStart - DAY) },
+      { statusChangedBy: 'navi' },
+      { statusChangedBy: null },
+      { statusChangedAt: null },
+      { statusChangedAt: iso(winEnd) },
+    ]) {
+      const r = buildWeeklyReport(baseInput({ securityFindings: [finding({ ...reopened, lastSeenAt: iso(winStart + DAY), ...over })] }))
+      expect(r.recurring).toHaveLength(0)
+      expect(r.verdict).toBe('ok')
+    }
   })
 
-  it('ignored 同條件不進清單', () => {
-    const r = buildWeeklyReport(baseInput({
-      securityFindings: [finding({ status: 'ignored', reopenCount: 1, lastSeenAt: iso(winStart + DAY) })],
-    }))
-    expect(r.recurring).toHaveLength(0)
-    expect(r.verdict).toBe('ok')
+  it('finding：resolved 但本週重開過 → 進清單並 attention；ignored 永不列', () => {
+    const r = buildWeeklyReport(baseInput({ securityFindings: [finding({ ...reopened, status: 'resolved' })] }))
+    expect(r.recurring).toHaveLength(1)
+    expect(r.verdict).toBe('attention')
+    const ign = buildWeeklyReport(baseInput({ securityFindings: [finding({ ...reopened, status: 'ignored' })] }))
+    expect(ign.recurring).toHaveLength(0)
+    expect(ign.verdict).toBe('ok')
+  })
+})
+
+describe('isNew 邊界（半開區間）', () => {
+  const thr = LONG_STANDING_DAYS * DAY
+  const isNewAt = (firstSeen: number) =>
+    buildWeeklyReport(baseInput({ issues: [issue({ firstSeen: iso(firstSeen) })] })).longStanding[0]
+  it('firstSeen 恰為 end−7d 不算新；恰為 start−7d 算新', () => {
+    expect(isNewAt(winEnd - thr)).toMatchObject({ isNew: false })
+    expect(isNewAt(winStart - thr)).toMatchObject({ isNew: true })
   })
 })
 
@@ -336,7 +374,7 @@ describe('formatReportText', () => {
   it('imageFailed 附註、dashboardUrl 為最後一行', () => {
     const text = formatReportText(report, { dashboardUrl: 'https://x.test/', imageFailed: true })
     expect(text).toContain('（圖片產生失敗）')
-    expect(text.split('\n').at(-1)).toBe('https://x.test/')
+    expect(text.split('\n').at(-1)).toBe('<https://x.test/>')
   })
 
   it('verdict 中文對應', () => {

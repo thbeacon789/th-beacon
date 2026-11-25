@@ -20,7 +20,7 @@ export async function loadWeeklyReportInput(
     client
       .from('issues')
       .select(
-        'id,service_id,severity,status,message,count,first_seen,last_seen,resolved_at,acknowledged_by,reopen_count',
+        'id,service_id,severity,status,message,count,first_seen,last_seen,resolved_at,acknowledged_by,reopen_count,incident_first_seen',
       )
       .or(
         `status.in.(open,acknowledged),first_seen.gte.${startIso},last_seen.gte.${startIso},resolved_at.gte.${startIso}`,
@@ -68,6 +68,7 @@ export async function loadWeeklyReportInput(
       resolvedAt: r.resolved_at,
       acknowledgedBy: r.acknowledged_by,
       reopenCount: r.reopen_count,
+      incidentFirstSeen: r.incident_first_seen,
     })),
     healthFailEvents: (eventsRes.data ?? []).map((r) => ({ serviceId: r.service_id, occurredAt: r.occurred_at })),
     alertsSent: notifRes.count ?? 0,
@@ -81,6 +82,8 @@ export async function loadWeeklyReportInput(
         firstSeenAt: f.firstSeenAt,
         lastSeenAt: f.lastSeenAt,
         reopenCount: f.reopenCount,
+        statusChangedAt: f.statusChangedAt ?? null,
+        statusChangedBy: f.statusChangedBy ?? null,
       }
     }),
   }

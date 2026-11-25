@@ -27,15 +27,18 @@ export async function GET(request: Request): Promise<Response> {
 
   const params = new URL(request.url).searchParams
   const nowParam = params.get('now')
+  const preview = params.get('preview') === '1'
   let now = new Date()
   if (nowParam !== null) {
+    // now 只供預覽除錯；正式模式若可被指定時間，會讓發送到 Discord 的週報內容被竄改
+    if (!preview) return Response.json({ error: 'now is preview-only' }, { status: 400 })
     now = new Date(nowParam)
     if (Number.isNaN(now.getTime())) return Response.json({ error: 'invalid now' }, { status: 400 })
   }
   const dashboardUrl = dashboardUrlFromEnv()
   const load = (at: Date) => loadWeeklyReportInput(createServerStore().rawClient(), at)
 
-  if (params.get('preview') === '1') {
+  if (preview) {
     const pageIndex = Number(params.get('page') ?? '0')
     try {
       const report = buildWeeklyReport(await load(now))

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { paginateReport, PAGE_WIDTH } from '@/core/weekly-report-pages'
 import { renderReportPage } from '@/report/render'
-import { makeReport, manyRows } from './fixtures'
+import { issueRow, makeReport, manyRows } from './fixtures'
 
 const SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -57,5 +57,19 @@ describe('renderReportPage', () => {
     const page = paginateReport(report)[0]
     const png = await renderReportPage(report, page, { dashboardUrl: null })
     expectPng(png, PAGE_WIDTH, page.height)
+  }, 30000)
+
+  it('八項原因的 critical 標題不溢出，且含從未掃描列與 discord 確認者', async () => {
+    const base = makeReport()
+    const report = makeReport({
+      verdict: 'critical',
+      headline: '1 個服務異常、1 個服務降級、2 筆未解 P0、資安異常 1 個服務、3 筆反覆出現、4 筆本週新進長期未處理、5 筆新資安發現、資安掃描過期 2 個服務',
+      stats: { pollFailures: 14, pollFailureServices: 3, newIssues: 3, resolvedIssues: 1, alertsSent: 2 },
+      services: base.services.map((s, i) => ({ ...s, pollFailures: i === 3 ? 14 : 0 })),
+      longStanding: [issueRow(1, { severity: 'P0', acknowledgedBy: 'discord:585123456789012345', reopenCount: 2 }), ...base.longStanding.slice(1)],
+    })
+    const { out, dir } = await renderAll(report)
+    for (const { page, png } of out) expectPng(png, PAGE_WIDTH, page.height)
+    if (dir) { mkdirSync(dir, { recursive: true }); out.forEach((o, i) => writeFileSync(path.join(dir, `critical-${i}.png`), o.png)) }
   }, 30000)
 })

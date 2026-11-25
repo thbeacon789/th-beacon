@@ -42,6 +42,8 @@ export interface WeeklyReportInput {
   issues: Array<{
     id: string; serviceId: string; severity: Severity; status: IssueStatus; message: string; count: number
     firstSeen: string; lastSeen: string; resolvedAt: string | null; acknowledgedBy: string | null; reopenCount: number
+    /** 本次事件（最近一次 reopen）的起點；reopen 時重設為事件時間 */
+    incidentFirstSeen: string | null
   }>
   healthFailEvents: Array<{ serviceId: string; occurredAt: string }>
   alertsSent: number
@@ -49,6 +51,7 @@ export interface WeeklyReportInput {
   securityFindings: Array<{
     serviceId: string; severity: FindingSeverity; status: 'open' | 'resolved' | 'ignored'
     firstSeenAt: string; lastSeenAt: string; reopenCount: number
+    statusChangedAt: string | null; statusChangedBy: string | null
   }>
 }
 
@@ -120,7 +123,8 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     .map((i) => toIssueRow(i, isNewLongStanding(i.firstSeen)))
     .sort(bySeverityThenAge)
   const recurringIssues = input.issues
-    .filter((i) => i.reopenCount >= 1 && inWindow(i.lastSeen))
+    // 反覆出現＝本週重開：reopen 時 incident_first_seen 被重設為事件時間
+    .filter((i) => i.status !== 'ignored' && i.reopenCount >= 1 && i.incidentFirstSeen !== null && inWindow(i.incidentFirstSeen))
     .map((i) => toIssueRow(i, false))
     .sort(bySeverityThenAge)
 
@@ -145,7 +149,9 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     true,
   )
   const recurringSecurity = groupFindings(
-    input.securityFindings.filter((f) => f.status !== 'ignored' && f.reopenCount >= 1 && inWindow(f.lastSeenAt)),
+    // 本週重開：reopen 由系統寫入 status_changed_by='system' 與 status_changed_at
+    input.securityFindings.filter((f) => f.status !== 'ignored' && f.reopenCount >= 1 && f.statusChangedBy === 'system'
+      && f.statusChangedAt !== null && inWindow(f.statusChangedAt)),
     false,
   )
   const longStanding: ListRow[] = [...longIssues, ...longSecurity]
@@ -186,7 +192,8 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
   const recurringCount = recurring.length
   const newLongCount = longStanding.filter((r) => r.isNew).length
   const newSecurityFindings = openFindings.filter((f) => f.severity !== 'low' && inWindow(f.firstSeenAt)).length
-  const staleCount = security.filter((s) => s.note !== null).length
+  // 從未掃描（none）不算異常也不進標題；只有曾掃描但過期（stale）才計
+  const staleCount = security.filter((s) => s.note === 'stale').length
 
   const verdict: ReportVerdict =
     downCount > 0 || p0Count > 0 || securityBadCount > 0
@@ -210,7 +217,7 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
       [recurringCount, `${recurringCount} 筆反覆出現`],
       [newLongCount, `${newLongCount} 筆本週新進長期未處理`],
       [newSecurityFindings, `${newSecurityFindings} 筆新資安發現`],
-      [staleCount, `資安掃描過期或缺漏 ${staleCount} 個服務`],
+      [staleCount, `資安掃描過期 ${staleCount} 個服務`],
     ]
     headline = reasons.filter(([n]) => n > 0).map(([, text]) => text).join('、')
   }
@@ -243,6 +250,6 @@ export function formatReportText(report: WeeklyReport, opts: { dashboardUrl: str
     `長期未處理 ${report.longStanding.length} 筆 · 反覆出現 ${report.recurring.length} 筆`,
   ]
   if (opts.imageFailed) lines.push('（圖片產生失敗）')
-  if (opts.dashboardUrl) lines.push(opts.dashboardUrl)
+  if (opts.dashboardUrl) lines.push(`<${opts.dashboardUrl}>`)
   return lines.join('\n')
 }
