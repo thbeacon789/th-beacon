@@ -1,5 +1,5 @@
 import { buildMultipartBody, FILE_SEND_TIMEOUT_MS, hasUniqueFilenames, type DiscordFile } from '@/notify/discord-files'
-import type { DiscordMessage } from '@/notify/message'
+import type { DiscordMessage, DiscordOutgoing } from '@/notify/message'
 
 export type SendResult = { ok: true } | { ok: false; reason: string }
 export type DiscordSender = (webhookUrl: string, message: DiscordMessage) => Promise<SendResult>
@@ -26,7 +26,7 @@ export const sendDiscordWebhook: DiscordSender = async (webhookUrl, message) => 
 /** webhook 附件上傳（multipart）。保留 username；不手動設 content-type。不 throw。 */
 export async function sendDiscordWebhookFiles(
   webhookUrl: string,
-  message: DiscordMessage,
+  message: DiscordOutgoing,
   files: DiscordFile[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<SendResult> {

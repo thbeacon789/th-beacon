@@ -9,6 +9,8 @@ const PUBLIC_PREFIXES = [
   '/api/ai-fix',
   // 資安掃描快照：HMAC 自行驗簽
   '/api/security-scan',
+  // 週報（cron／預覽）：以 CRON_SECRET Bearer 自行驗證
+  '/api/report/weekly',
   // Discord 按鈕回呼：以 Ed25519 簽章自行驗證
   '/api/discord/interactions',
 ]

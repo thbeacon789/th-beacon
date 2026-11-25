@@ -4,6 +4,10 @@
     {
       "path": "/api/poll/services",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/report/weekly",
+      "schedule": "0 1 * * 1"
     }
   ]
 }

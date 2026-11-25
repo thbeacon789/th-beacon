@@ -1,18 +1,12 @@
-import { timingSafeEqual } from 'node:crypto'
 import { CRON_AI_BUDGET } from '@/core/ai-triage'
 import { runPoll } from '@/poll/poll-service'
 import { httpGet } from '@/poll/http'
 import { RETENTION_DAYS } from '@/core/security/constants'
 import { runHeartbeatScan } from '@/heartbeat/scan'
+import { bearerMatches } from '@/web/bearer'
 import { createServerStore, createServerNotifyDeps, getCronSecret } from '@/store/server'
 
 export const maxDuration = 300
-
-function bearerMatches(header: string | null, secret: string): boolean {
-  const provided = Buffer.from(header ?? '')
-  const expected = Buffer.from(`Bearer ${secret}`)
-  return provided.length === expected.length && timingSafeEqual(provided, expected)
-}
 
 export async function GET(request: Request): Promise<Response> {
   let secret: string

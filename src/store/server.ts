@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/db/database.types'
 import { SupabaseStore } from '@/store/supabase'
-import { sendDiscordWebhook } from '@/notify/discord'
+import { sendDiscordWebhook, sendDiscordWebhookFiles, type SendResult } from '@/notify/discord'
+import type { DiscordReplyMessage } from '@/notify/message'
+import type { ReportSender } from '@/report/run-weekly-report'
 import { createDiscordBot } from '@/notify/discord-bot'
 import type { NotifyDeps } from '@/pipeline/process-and-notify'
 import Anthropic from '@anthropic-ai/sdk'
@@ -39,6 +41,26 @@ export function createServerNotifyDeps(opts: { budget?: { remaining: number } | 
         ? createDiscordBot({ token: botToken, channelId: alertChannelId })
         : null,
     ...(dashboardUrl !== null ? { dashboardUrl } : {}),
+  }
+}
+
+/** 週報發送器：bot 模式條件與 createServerNotifyDeps 相同；否則走 webhook；都沒有回 null */
+export function createServerReportSender(): ReportSender | null {
+  const botToken = envOrNull('DISCORD_BOT_TOKEN')
+  const alertChannelId = envOrNull('DISCORD_ALERT_CHANNEL_ID')
+  const botEnabled = botToken !== null && alertChannelId !== null && getDiscordInteractionConfig() !== null
+  if (botEnabled && botToken !== null && alertChannelId !== null) {
+    const bot = createDiscordBot({ token: botToken, channelId: alertChannelId })
+    return async (content, files): Promise<SendResult> => {
+      const result = await bot.postFiles({ username: 'th-beacon', content, allowed_mentions: { parse: [] } }, files)
+      return result.ok ? { ok: true } : { ok: false, reason: result.reason }
+    }
+  }
+  const webhookUrl = envOrNull('DISCORD_WEBHOOK_URL')
+  if (webhookUrl === null) return null
+  return (content, files) => {
+    const message: DiscordReplyMessage = { username: 'th-beacon', content, allowed_mentions: { parse: [] } }
+    return sendDiscordWebhookFiles(webhookUrl, message, files)
   }
 }
 
