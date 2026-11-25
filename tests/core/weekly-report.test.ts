@@ -266,6 +266,24 @@ describe('recurring', () => {
   })
 })
 
+describe('recurring 資安狀態', () => {
+  it('resolved 但本週復發的 finding 進清單並使結論為 attention', () => {
+    const r = buildWeeklyReport(baseInput({
+      securityFindings: [finding({ status: 'resolved', reopenCount: 1, lastSeenAt: iso(winStart + DAY) })],
+    }))
+    expect(r.recurring).toHaveLength(1)
+    expect(r.verdict).toBe('attention')
+  })
+
+  it('ignored 同條件不進清單', () => {
+    const r = buildWeeklyReport(baseInput({
+      securityFindings: [finding({ status: 'ignored', reopenCount: 1, lastSeenAt: iso(winStart + DAY) })],
+    }))
+    expect(r.recurring).toHaveLength(0)
+    expect(r.verdict).toBe('ok')
+  })
+})
+
 describe('stats 與服務列', () => {
   it('stats 計算', () => {
     const r = buildWeeklyReport(baseInput({

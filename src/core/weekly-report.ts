@@ -145,7 +145,7 @@ export function buildWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     true,
   )
   const recurringSecurity = groupFindings(
-    openFindings.filter((f) => f.reopenCount >= 1 && inWindow(f.lastSeenAt)),
+    input.securityFindings.filter((f) => f.status !== 'ignored' && f.reopenCount >= 1 && inWindow(f.lastSeenAt)),
     false,
   )
   const longStanding: ListRow[] = [...longIssues, ...longSecurity]
