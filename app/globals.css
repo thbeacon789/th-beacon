@@ -196,7 +196,9 @@ input {
 .reg-rotate > button,
 .reg-description > button,
 .secret-value button,
-.security-finding-form button {
+.security-finding-form button,
+.close-with-note button,
+.comment-form button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -223,7 +225,9 @@ input {
 .reg-rotate > button:hover:not(:disabled),
 .reg-description > button:hover:not(:disabled),
 .secret-value button:hover:not(:disabled),
-.security-finding-form button {
+.security-finding-form button:hover:not(:disabled),
+.close-with-note button:hover:not(:disabled),
+.comment-form button:hover:not(:disabled) {
   background: var(--lilac);
   border-color: var(--lilac);
   color: var(--bg);
@@ -238,7 +242,9 @@ input {
 .reg-rotate > button:active:not(:disabled),
 .reg-description > button:active:not(:disabled),
 .secret-value button:active:not(:disabled),
-.security-finding-form button {
+.security-finding-form button:active:not(:disabled),
+.close-with-note button:active:not(:disabled),
+.comment-form button:active:not(:disabled) {
   transform: translate(1px, 1px);
 }
 
@@ -300,7 +306,9 @@ button:disabled,
   .filters button,
   .filters select,
   .actions button,
-  .security-finding-form button {
+  .security-finding-form button,
+  .close-with-note button,
+  .comment-form button {
     min-height: 2.75rem;
   }
 }
