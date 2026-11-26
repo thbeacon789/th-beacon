@@ -11,7 +11,7 @@
  *
  * 用 node 原生 TypeScript type stripping 直接執行，不引入 tsx。
  */
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marked, type Token, type Tokens } from 'marked'
@@ -71,11 +71,11 @@ const toc = headings.filter((h) => h.depth === 2).map(({ id, text }) => ({ id, t
 const banner = `// 自動產生，勿手改。來源：docs/api.md，產生器：scripts/build-docs.mts
 // 修改文件請改 docs/api.md，然後跑 pnpm build（prebuild 會重新產生本檔）。`
 
-const contents = `${banner}
+const render = (builtAt: string) => `${banner}
 
 export const API_DOC_TITLE = ${JSON.stringify(title)}
 
-export const API_DOC_BUILT_AT = ${JSON.stringify(new Date().toISOString())}
+export const API_DOC_BUILT_AT = ${JSON.stringify(builtAt)}
 
 export const API_DOC_TOC: readonly { readonly id: string; readonly text: string }[] = ${JSON.stringify(toc, null, 2)}
 
@@ -85,7 +85,14 @@ export const API_DOC_HTML = ${JSON.stringify(htmlWithTables)}
 export const API_DOC_MARKDOWN = ${JSON.stringify(markdown)}
 `
 
-mkdirSync(dirname(OUTPUT), { recursive: true })
-writeFileSync(OUTPUT, contents, 'utf8')
-
-console.log(`build-docs: ${headings.length} 個標題、${toc.length} 個章節 → src/web/generated/api-doc.ts`)
+// 內容沒變就不重寫：否則每次 build 都只為了時間戳把版控中的產物弄髒。
+// 拿舊檔的時間戳重新算一次，與舊檔逐字相同代表文件沒改。
+const previous = existsSync(OUTPUT) ? readFileSync(OUTPUT, 'utf8') : null
+const previousBuiltAt = previous?.match(/^export const API_DOC_BUILT_AT = (".*")$/m)?.[1]
+if (previous !== null && previousBuiltAt !== undefined && render(JSON.parse(previousBuiltAt)) === previous) {
+  console.log('build-docs: docs/api.md 未變更，略過重寫 src/web/generated/api-doc.ts')
+} else {
+  mkdirSync(dirname(OUTPUT), { recursive: true })
+  writeFileSync(OUTPUT, render(new Date().toISOString()), 'utf8')
+  console.log(`build-docs: ${headings.length} 個標題、${toc.length} 個章節 → src/web/generated/api-doc.ts`)
+}
